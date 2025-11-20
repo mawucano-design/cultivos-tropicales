@@ -21,6 +21,11 @@ import base64
 from PIL import Image as PILImage
 import tempfile
 import os
+import zipfile
+from shapely.geometry import mapping, shape
+import fiona
+import warnings
+warnings.filterwarnings('ignore')
 
 # Configuración de la página
 st.set_page_config(page_title="Sistema Agroecológico - Cultivos Tropicales", 
@@ -35,7 +40,6 @@ def initialize_earth_engine():
         return True, "✅ Earth Engine inicializado correctamente"
     except Exception as e:
         try:
-            # Para desarrollo local
             ee.Authenticate()
             ee.Initialize()
             return True, "✅ Earth Engine autenticado e inicializado"
@@ -57,41 +61,147 @@ st.sidebar.header("🌿 Parámetros Agroecológicos")
 
 # Gestión de lotes múltiples
 st.sidebar.subheader("🗂️ Gestión de Lotes")
-num_lotes = st.sidebar.number_input("Número de lotes", 1, 10, 1)
+
+# Opción para cargar archivos o crear lotes manualmente
+opcion_lotes = st.sidebar.radio(
+    "Seleccione opción:",
+    ["Cargar archivo KML/Shapefile", "Crear lotes manualmente"]
+)
 
 lotes_data = []
-for i in range(num_lotes):
-    with st.sidebar.expander(f"Lote {i+1}", expanded=i==0):
-        col1, col2 = st.columns(2)
-        with col1:
-            nombre_lote = st.text_input(f"Nombre Lote {i+1}", f"Lote_{i+1}")
-            area_lote = st.number_input(f"Área (ha) {i+1}", 0.1, 100.0, 5.0)
-        with col2:
-            cultivo_lote = st.selectbox(f"Cultivo {i+1}", 
-                                      ["Palma Aceitera", "Banano", "Cacao", "Café", "Piña", "Mango", "Plátano"])
-        
-        st.subheader("🧪 Análisis de Suelo")
-        col_n, col_p, col_k = st.columns(3)
-        with col_n:
-            nivel_n = st.slider(f"N (ppm) L{i+1}", 0, 200, 50)
-        with col_p:
-            nivel_p = st.slider(f"P (ppm) L{i+1}", 0, 150, 30)
-        with col_k:
-            nivel_k = st.slider(f"K (ppm) L{i+1}", 0, 300, 100)
-        
-        ph = st.slider(f"pH L{i+1}", 4.0, 8.0, 6.0)
-        materia_organica = st.slider(f"M.O. % L{i+1}", 1.0, 10.0, 3.0)
-        
-        lotes_data.append({
-            'nombre': nombre_lote,
-            'cultivo': cultivo_lote,
-            'area': area_lote,
-            'nivel_n': nivel_n,
-            'nivel_p': nivel_p,
-            'nivel_k': nivel_k,
-            'ph': ph,
-            'materia_organica': materia_organica
-        })
+
+if opcion_lotes == "Cargar archivo KML/Shapefile":
+    st.sidebar.subheader("📁 Cargar Archivo Geoespacial")
+    
+    # Subir archivo
+    archivo_cargado = st.sidebar.file_uploader(
+        "Seleccione archivo KML o ZIP (Shapefile):",
+        type=['kml', 'kmz', 'zip'],
+        help="Puede cargar: KML, KMZ o ZIP con Shapefile (.shp, .shx, .dbf, .prj)"
+    )
+    
+    if archivo_cargado:
+        with st.spinner("Procesando archivo geoespacial..."):
+            try:
+                # Crear directorio temporal
+                with tempfile.TemporaryDirectory() as tmp_dir:
+                    archivo_path = os.path.join(tmp_dir, archivo_cargado.name)
+                    
+                    # Guardar archivo subido
+                    with open(archivo_path, 'wb') as f:
+                        f.write(archivo_cargado.getvalue())
+                    
+                    # Procesar según tipo de archivo
+                    if archivo_cargado.name.lower().endswith('.zip'):
+                        # Es un shapefile comprimido
+                        with zipfile.ZipFile(archivo_path, 'r') as zip_ref:
+                            zip_ref.extractall(tmp_dir)
+                        
+                        # Buscar archivo .shp en el zip
+                        shp_files = [f for f in os.listdir(tmp_dir) if f.endswith('.shp')]
+                        if shp_files:
+                            shp_path = os.path.join(tmp_dir, shp_files[0])
+                            gdf = gpd.read_file(shp_path)
+                        else:
+                            st.error("No se encontró archivo .shp en el ZIP")
+                            gdf = None
+                    
+                    elif archivo_cargado.name.lower().endswith(('.kml', '.kmz')):
+                        # Es un archivo KML/KMZ
+                        gdf = gpd.read_file(archivo_path, driver='KML')
+                    
+                    else:
+                        st.error("Formato de archivo no soportado")
+                        gdf = None
+                    
+                    if gdf is not None:
+                        # Procesar geometrías
+                        gdf = gdf.to_crs('EPSG:4326')  # Convertir a WGS84
+                        gdf['area_ha'] = gdf.geometry.area * 10000  # Área en hectáreas
+                        
+                        # Mostrar información del archivo
+                        st.sidebar.success(f"✅ Archivo cargado: {len(gdf)} lotes encontrados")
+                        
+                        # Configurar lotes desde el archivo
+                        for i, row in gdf.iterrows():
+                            nombre_lote = row.get('Name', f'Lote_{i+1}')
+                            if hasattr(row, 'name') and row.name:
+                                nombre_lote = str(row.name)
+                            
+                            # Buscar nombres en columnas comunes
+                            for col in ['nombre', 'name', 'Nombre', 'LOTE', 'lote']:
+                                if col in row.index and pd.notna(row[col]):
+                                    nombre_lote = str(row[col])
+                                    break
+                            
+                            lote_data = {
+                                'nombre': nombre_lote,
+                                'cultivo': "Palma Aceitera",  # Default, se puede cambiar
+                                'area': max(0.1, row['area_ha']),
+                                'nivel_n': 50,
+                                'nivel_p': 30,
+                                'nivel_k': 100,
+                                'ph': 6.0,
+                                'materia_organica': 3.0,
+                                'geometria': row.geometry,
+                                'centroide': row.geometry.centroid
+                            }
+                            lotes_data.append(lote_data)
+                        
+                        # Mostrar preview del archivo
+                        with st.sidebar.expander("📊 Vista previa del archivo"):
+                            st.write(f"**Total de polígonos:** {len(gdf)}")
+                            st.write(f"**Área total:** {gdf['area_ha'].sum():.2f} ha")
+                            st.write(f"**Columnas disponibles:** {list(gdf.columns)}")
+                            
+                            # Mostrar tabla de atributos
+                            if len(gdf) <= 10:
+                                st.dataframe(gdf.drop(columns=['geometry']).head())
+                
+            except Exception as e:
+                st.sidebar.error(f"❌ Error procesando archivo: {str(e)}")
+    
+    # Si no hay archivo cargado, permitir crear lotes manualmente
+    if not archivo_cargado:
+        st.sidebar.info("📝 Cargue un archivo KML/Shapefile o cambie a 'Crear lotes manualmente'")
+
+else:  # Crear lotes manualmente
+    num_lotes = st.sidebar.number_input("Número de lotes", 1, 50, 1)
+
+    for i in range(num_lotes):
+        with st.sidebar.expander(f"Lote {i+1}", expanded=i==0):
+            col1, col2 = st.columns(2)
+            with col1:
+                nombre_lote = st.text_input(f"Nombre Lote {i+1}", f"Lote_{i+1}")
+                area_lote = st.number_input(f"Área (ha) {i+1}", 0.1, 1000.0, 5.0)
+            with col2:
+                cultivo_lote = st.selectbox(f"Cultivo {i+1}", 
+                                          ["Palma Aceitera", "Banano", "Cacao", "Café", "Piña", "Mango", "Plátano"])
+            
+            st.subheader("🧪 Análisis de Suelo")
+            col_n, col_p, col_k = st.columns(3)
+            with col_n:
+                nivel_n = st.slider(f"N (ppm) L{i+1}", 0, 200, 50)
+            with col_p:
+                nivel_p = st.slider(f"P (ppm) L{i+1}", 0, 150, 30)
+            with col_k:
+                nivel_k = st.slider(f"K (ppm) L{i+1}", 0, 300, 100)
+            
+            ph = st.slider(f"pH L{i+1}", 4.0, 8.0, 6.0)
+            materia_organica = st.slider(f"M.O. % L{i+1}", 1.0, 10.0, 3.0)
+            
+            lotes_data.append({
+                'nombre': nombre_lote,
+                'cultivo': cultivo_lote,
+                'area': area_lote,
+                'nivel_n': nivel_n,
+                'nivel_p': nivel_p,
+                'nivel_k': nivel_k,
+                'ph': ph,
+                'materia_organica': materia_organica,
+                'geometria': None,
+                'centroide': None
+            })
 
 # Parámetros agroecológicos avanzados
 st.sidebar.subheader("🌍 Principios Agroecológicos")
@@ -174,7 +284,7 @@ def calcular_recomendaciones_agroecologicas(lote, analisis_fertilidad):
     cultivo = lote['cultivo']
     
     # Cálculo de deficiencias con enfoque agroecológico
-    deficiencia_n = max(0, requerimientos[cultivo]["N"] - lote['nivel_n'] * 2) * 0.8  # Reducción por agroecología
+    deficiencia_n = max(0, requerimientos[cultivo]["N"] - lote['nivel_n'] * 2) * 0.8
     deficiencia_p = max(0, requerimientos[cultivo]["P"] - lote['nivel_p'] * 1.5) * 0.7
     deficiencia_k = max(0, requerimientos[cultivo]["K"] - lote['nivel_k'] * 1.2) * 0.8
     
@@ -251,40 +361,87 @@ def generar_practicas_agroecologicas(lote, analisis_fertilidad):
     
     return practicas
 
-# Funciones para Earth Engine y mapas
-def obtener_datos_satelitales(lat, lon):
-    """Obtener datos satelitales para análisis avanzado"""
-    if not st.session_state.ee_initialized:
-        return None
+# Funciones para procesar datos geoespaciales
+def obtener_centroide_lotes(lotes_data):
+    """Obtener centroide promedio de todos los lotes para centrar el mapa"""
+    centroides = []
+    for lote in lotes_data:
+        if lote.get('centroide'):
+            centroides.append((lote['centroide'].y, lote['centroide'].x))
+        elif lote.get('geometria'):
+            centroide = lote['geometria'].centroid
+            centroides.append((centroide.y, centroide.x))
     
-    try:
-        point = ee.Geometry.Point([lon, lat])
-        
-        # NDVI - Salud vegetal
-        ndvi_collection = ee.ImageCollection('COPERNICUS/S2_SR') \
-            .filterBounds(point) \
-            .filterDate('2024-01-01', '2024-12-31') \
-            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-        
-        # Suelo - SoilGrids
-        suelo = ee.Image("OpenLandMap/SOL/SOL_CLAY-WFRACTION_USDA-3A1A1A_M/v02") \
-            .select('b0')
-        
-        # Temperatura - MODIS
-        temperatura = ee.ImageCollection('MODIS/061/MOD11A1') \
-            .filterBounds(point) \
-            .filterDate('2024-01-01', '2024-12-31') \
-            .select('LST_Day_1km')
-        
-        return {
-            'ndvi': ndvi_collection,
-            'suelo': suelo,
-            'temperatura': temperatura,
-            'punto': point
-        }
-    except Exception as e:
-        st.error(f"Error en datos satelitales: {e}")
-        return None
+    if centroides:
+        avg_lat = sum(c[0] for c in centroides) / len(centroides)
+        avg_lon = sum(c[1] for c in centroides) / len(centroides)
+        return [avg_lat, avg_lon]
+    else:
+        return [9.7489, -83.7534]  # Costa Rica por defecto
+
+def crear_mapa_con_lotes(lotes_data):
+    """Crear mapa interactivo con los lotes cargados"""
+    
+    # Centrar mapa en los lotes
+    centro = obtener_centroide_lotes(lotes_data)
+    m = folium.Map(location=centro, zoom_start=12)
+    
+    # Agregar capas base
+    folium.TileLayer('OpenStreetMap').add_to(m)
+    folium.TileLayer(
+        tiles='https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}',
+        attr='Google Satellite',
+        name='Google Satellite'
+    ).add_to(m)
+    
+    # Agregar cada lote al mapa
+    for lote in lotes_data:
+        if lote.get('geometria'):
+            # Calcular color según fertilidad (si existe)
+            fert = lote.get('fertilidad_puntaje', 50)  # Default 50 si no hay análisis
+            if fert >= 80:
+                color = 'green'
+                fill_color = 'green'
+            elif fert >= 60:
+                color = 'lightgreen'
+                fill_color = 'lightgreen'
+            elif fert >= 40:
+                color = 'orange'
+                fill_color = 'orange'
+            else:
+                color = 'red'
+                fill_color = 'red'
+            
+            # Crear popup informativo
+            popup_html = f"""
+            <b>{lote['nombre']}</b><br>
+            Cultivo: {lote['cultivo']}<br>
+            Área: {lote['area']:.2f} ha<br>
+            Fertilidad: {fert}/100
+            """
+            
+            # Agregar polígono al mapa
+            folium.GeoJson(
+                lote['geometria'].__geo_interface__,
+                style_function=lambda x, color=color, fill_color=fill_color: {
+                    'fillColor': fill_color,
+                    'color': color,
+                    'weight': 2,
+                    'fillOpacity': 0.4
+                },
+                popup=folium.Popup(popup_html, max_width=300)
+            ).add_to(m)
+            
+            # Agregar marcador en el centroide
+            centroide = lote['geometria'].centroid
+            folium.Marker(
+                [centroide.y, centroide.x],
+                popup=lote['nombre'],
+                tooltip=f"Lote: {lote['nombre']}",
+                icon=folium.Icon(color=color, icon='leaf', prefix='fa')
+            ).add_to(m)
+    
+    return m
 
 # Función para generar PDF profesional
 def generar_reporte_pdf(lotes, analisis_completo, map_image=None):
@@ -311,7 +468,10 @@ def generar_reporte_pdf(lotes, analisis_completo, map_image=None):
     # Resumen ejecutivo
     story.append(Paragraph("RESUMEN EJECUTIVO", styles['Heading2']))
     total_fertilidad = sum(analisis['fertilidad']['puntaje_total'] for analisis in analisis_completo) / len(analisis_completo)
+    total_area = sum(lote['area'] for lote in lotes)
     story.append(Paragraph(f"Fertilidad promedio del sistema: {total_fertilidad:.1f}/100", styles['Normal']))
+    story.append(Paragraph(f"Área total analizada: {total_area:.2f} hectáreas", styles['Normal']))
+    story.append(Paragraph(f"Número de lotes: {len(lotes)}", styles['Normal']))
     story.append(Spacer(1, 10))
     
     # Análisis por lote
@@ -322,7 +482,7 @@ def generar_reporte_pdf(lotes, analisis_completo, map_image=None):
         lote_data = [
             ['Parámetro', 'Valor'],
             ['Cultivo', lote['cultivo']],
-            ['Área (ha)', f"{lote['area']}"],
+            ['Área (ha)', f"{lote['area']:.2f}"],
             ['N (ppm)', f"{lote['nivel_n']}"],
             ['P (ppm)', f"{lote['nivel_p']}"],
             ['K (ppm)', f"{lote['nivel_k']}"],
@@ -414,58 +574,77 @@ def generar_reporte_pdf(lotes, analisis_completo, map_image=None):
 # Interfaz principal
 st.header("📊 Análisis Integral por Lotes")
 
-if st.button("🔄 Ejecutar Análisis Completo"):
-    with st.spinner("Realizando análisis agroecológico..."):
-        # Análisis para cada lote
-        resultados = []
-        
-        for i, lote in enumerate(lotes_data):
-            # Análisis de fertilidad real
-            analisis_fertilidad = analizar_fertilidad_real(lote)
+if lotes_data:
+    st.success(f"✅ {len(lotes_data)} lote(s) cargado(s) para análisis")
+    
+    # Mostrar resumen de lotes
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        total_area = sum(lote['area'] for lote in lotes_data)
+        st.metric("Área Total", f"{total_area:.2f} ha")
+    with col2:
+        cultivos_unicos = len(set(lote['cultivo'] for lote in lotes_data))
+        st.metric("Cultivos Diferentes", cultivos_unicos)
+    with col3:
+        st.metric("Lotes Cargados", len(lotes_data))
+    
+    # Ejecutar análisis
+    if st.button("🌱 Ejecutar Análisis Agroecológico Completo"):
+        with st.spinner("Realizando análisis integral..."):
+            resultados = []
             
-            # Recomendaciones agroecológicas
-            recomendaciones = calcular_recomendaciones_agroecologicas(lote, analisis_fertilidad)
+            for i, lote in enumerate(lotes_data):
+                # Análisis de fertilidad real
+                analisis_fertilidad = analizar_fertilidad_real(lote)
+                
+                # Recomendaciones agroecológicas
+                recomendaciones = calcular_recomendaciones_agroecologicas(lote, analisis_fertilidad)
+                
+                # Guardar puntaje de fertilidad para el mapa
+                lote['fertilidad_puntaje'] = analisis_fertilidad['puntaje_total']
+                
+                resultados.append({
+                    'lote': lote,
+                    'fertilidad': analisis_fertilidad,
+                    'recomendaciones': recomendaciones
+                })
             
-            resultados.append({
-                'lote': lote,
-                'fertilidad': analisis_fertilidad,
-                'recomendaciones': recomendaciones
-            })
-        
-        st.session_state.resultados = resultados
+            st.session_state.resultados = resultados
+            st.success("✅ Análisis completado exitosamente")
 
-# Mostrar resultados
-if 'resultados' in st.session_state:
+# Mostrar resultados y mapa
+if 'resultados' in st.session_state and lotes_data:
     resultados = st.session_state.resultados
     
+    # Mapa interactivo
+    st.subheader("🗺️ Mapa de Lotes")
+    mapa = crear_mapa_con_lotes(lotes_data)
+    st_folium(mapa, width=800, height=500)
+    
     # Resumen general
-    st.subheader("🌿 Resumen del Sistema Agroecológico")
+    st.subheader("📈 Resumen del Análisis")
     
     col1, col2, col3, col4 = st.columns(4)
-    
     with col1:
         avg_fert = sum(r['fertilidad']['puntaje_total'] for r in resultados) / len(resultados)
         st.metric("Fertilidad Promedio", f"{avg_fert:.1f}/100")
-    
     with col2:
-        total_area = sum(r['lote']['area'] for r in resultados)
-        st.metric("Área Total", f"{total_area} ha")
-    
-    with col3:
         avg_reduction = sum(r['recomendaciones']['reduccion_quimicos'] for r in resultados) / len(resultados)
         st.metric("Reducción Químicos", f"{avg_reduction:.1f}%")
-    
+    with col3:
+        total_n = sum(r['recomendaciones']['quimicos']['N'] for r in resultados)
+        st.metric("N Total Recomendado", f"{total_n:.1f} kg")
     with col4:
-        cultivos_unicos = len(set(r['lote']['cultivo'] for r in resultados))
-        st.metric("Diversidad", f"{cultivos_unicos} cultivos")
+        total_area = sum(r['lote']['area'] for r in resultados)
+        st.metric("Área Total", f"{total_area:.2f} ha")
     
     # Análisis detallado por lote
     for i, resultado in enumerate(resultados):
-        with st.expander(f"📋 Lote: {resultado['lote']['nombre']} - {resultado['lote']['cultivo']} - {resultado['fertilidad']['categoria']}", expanded=True):
+        with st.expander(f"📋 {resultado['lote']['nombre']} - {resultado['lote']['cultivo']} - {resultado['fertilidad']['categoria']}", expanded=True):
             col_analisis, col_recomendaciones = st.columns(2)
             
             with col_analisis:
-                st.subheader("📈 Análisis de Fertilidad")
+                st.subheader("📊 Análisis de Fertilidad")
                 
                 # Gráfico de fertilidad
                 fig, ax = plt.subplots(figsize=(8, 4))
@@ -477,12 +656,12 @@ if 'resultados' in st.session_state:
                     resultado['fertilidad']['puntaje_npk']
                 ]
                 
-                bars = ax.bar(categorias, valores, color=['#2ecc71', '#e74c3c', '#f39c12', '#3498db'])
+                colors = ['#2ecc71', '#e74c3c', '#f39c12', '#3498db']
+                bars = ax.bar(categorias, valores, color=colors)
                 ax.set_ylim(0, 100)
                 ax.set_ylabel('Puntaje (0-100)')
                 ax.set_title('Análisis Integral de Fertilidad')
                 
-                # Agregar valores en las barras
                 for bar, valor in zip(bars, valores):
                     ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 2, 
                            f'{valor:.1f}', ha='center', va='bottom')
@@ -490,7 +669,7 @@ if 'resultados' in st.session_state:
                 st.pyplot(fig)
                 
             with col_recomendaciones:
-                st.subheader("💡 Recomendaciones")
+                st.subheader("💡 Recomendaciones Agroecológicas")
                 
                 st.info(f"**Fertilizantes Químicos (reducidos {resultado['recomendaciones']['reduccion_quimicos']}%):**")
                 st.write(f"- N: {resultado['recomendaciones']['quimicos']['N']} kg")
@@ -505,62 +684,18 @@ if 'resultados' in st.session_state:
                 for practica in resultado['recomendaciones']['practicas_agroecologicas']:
                     st.write(f"- {practica}")
 
-    # Mapa y análisis espacial
-    st.subheader("🗺️ Análisis Espacial")
-    col_map, col_analysis = st.columns([2, 1])
+    # Generación de reporte PDF
+    st.markdown("---")
+    st.subheader("📄 Generar Reporte Final")
     
-    with col_map:
-        # Mapa base centrado en América Latina
-        m = folium.Map(location=[9.7489, -83.7534], zoom_start=8)
-        
-        # Agregar capas base
-        folium.TileLayer('OpenStreetMap').add_to(m)
-        
-        # Simular ubicaciones de lotes (en una app real, esto vendría de datos GPS)
-        for i, resultado in enumerate(resultados):
-            # Coordenadas simuladas para demostración
-            lat = 9.7489 + (i * 0.05)
-            lon = -83.7534 + (i * 0.05)
-            
-            # Color según fertilidad
-            fert = resultado['fertilidad']['puntaje_total']
-            if fert >= 80:
-                color = 'green'
-            elif fert >= 60:
-                color = 'lightgreen'
-            elif fert >= 40:
-                color = 'orange'
-            else:
-                color = 'red'
-            
-            folium.Marker(
-                [lat, lon],
-                popup=folium.Popup(f"""
-                <b>{resultado['lote']['nombre']}</b><br>
-                Cultivo: {resultado['lote']['cultivo']}<br>
-                Área: {resultado['lote']['area']} ha<br>
-                Fertilidad: {fert}/100<br>
-                Categoría: {resultado['fertilidad']['categoria']}
-                """, max_width=300),
-                tooltip=resultado['lote']['nombre'],
-                icon=folium.Icon(color=color, icon='leaf')
-            ).add_to(m)
-        
-        st_folium(m, width=700, height=400)
-
-# Generación de reporte PDF
-st.markdown("---")
-st.subheader("📄 Reporte Final")
-
-if 'resultados' in st.session_state:
     if st.button("🖨️ Generar Reporte PDF Completo"):
         with st.spinner("Generando reporte profesional..."):
             pdf_buffer = generar_reporte_pdf(
-                [r['lote'] for r in st.session_state.resultados],
-                st.session_state.resultados
+                [r['lote'] for r in resultados],
+                resultados
             )
             
-            # Descargar PDF
+            # Botón de descarga
             st.download_button(
                 label="📥 Descargar Reporte PDF",
                 data=pdf_buffer,
@@ -569,27 +704,34 @@ if 'resultados' in st.session_state:
             )
             st.success("✅ Reporte generado exitosamente")
 
+else:
+    st.info("👆 Cargue archivos KML/Shapefile o configure lotes manualmente en el sidebar")
+
 # Información técnica
-with st.expander("🔬 Metodología Científica"):
+with st.expander("🔧 Instrucciones de Uso"):
     st.write("""
-    **Enfoque Agroecológico Integrado:**
+    **Formatos de archivo soportados:**
     
-    - **Fertilidad Real:** Evaluación multidimensional que considera propiedades físicas, 
-      químicas y biológicas del suelo, ajustada por prácticas agroecológicas.
+    - **KML/KMZ:** Archivos de Google Earth
+    - **Shapefile:** Archivo ZIP que contenga (.shp, .shx, .dbf, .prj)
     
-    - **Balance Nutricional:** Cálculo de requerimientos específicos por cultivo, 
-      considerando eficiencia de uso y ciclos biogeoquímicos.
+    **Requisitos para Shapefile:**
+    - El archivo ZIP debe contener al menos el .shp, .shx y .dbf
+    - Sistema de coordenadas preferible: WGS84 (EPSG:4326)
+    - Los polígonos representan lotes o parcelas
     
-    - **Minimización de Insumos:** Reducción progresiva de fertilizantes sintéticos 
-      mediante enmiendas orgánicas y prácticas sostenibles.
-    
-    - **Indicadores de Sostenibilidad:** Monitoreo de biodiversidad, materia orgánica, 
-      y salud del suelo como indicadores de sostenibilidad a largo plazo.
+    **Funcionalidades:**
+    - Análisis de fertilidad real por lote
+    - Recomendaciones de NPK bajo principios agroecológicos
+    - Mapas interactivos con visualización de lotes
+    - Reportes PDF profesionales
+    - Minimización de insumos químicos
     """)
 
 # Footer
 st.markdown("---")
 st.markdown(
     "🌍 **Sistema Agroecológico para Cultivos Tropicales** • "
-    "Desarrollado bajo principios de agricultura sostenible y resiliencia climática"
+    "Soporte para KML y Shapefile • "
+    "Desarrollado para agricultura sostenible"
 )
