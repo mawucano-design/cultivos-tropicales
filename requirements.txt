@@ -2,4 +2,5 @@ streamlit>=1.32.0
 geopandas>=0.14.0
 pandas>=2.2.0
 numpy>=1.26.0
+matplotlib>=3.7.0
 shapely>=2.0.0
