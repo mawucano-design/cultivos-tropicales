@@ -9,3 +9,4 @@ shapely>=2.0.0
 earthengine-api>=0.1.379
 geemap>=0.29.2
 reportlab>=4.0.0
+Pillow>=10.0.0
