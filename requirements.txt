@@ -6,3 +6,6 @@ matplotlib>=3.7.0
 folium>=0.14.0
 streamlit-folium>=0.15.1
 shapely>=2.0.0
+earthengine-api>=0.1.379
+geemap>=0.29.2
+reportlab>=4.0.0
