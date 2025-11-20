@@ -31,12 +31,12 @@ st.markdown("---")
 # Configurar para restaurar .shx automáticamente
 os.environ['SHAPE_RESTORE_SHX'] = 'YES'
 
-# PARÁMETROS MEJORADOS PARA DIFERENTES CULTIVOS
+# PARÁMETROS MEJORADOS Y MÁS REALISTAS PARA DIFERENTES CULTIVOS
 PARAMETROS_CULTIVOS = {
     'PALMA_ACEITERA': {
         'NITROGENO': {'min': 120, 'max': 200, 'optimo': 160},
         'FOSFORO': {'min': 40, 'max': 80, 'optimo': 60},
-        'POTASIO': {'min': 120, 'max': 200, 'optimo': 160},
+        'POTASIO': {'min': 160, 'max': 240, 'optimo': 200},
         'MATERIA_ORGANICA_OPTIMA': 3.5,
         'HUMEDAD_OPTIMA': 0.35,
         'pH_OPTIMO': 5.5,
@@ -45,16 +45,16 @@ PARAMETROS_CULTIVOS = {
     'CACAO': {
         'NITROGENO': {'min': 100, 'max': 180, 'optimo': 140},
         'FOSFORO': {'min': 30, 'max': 60, 'optimo': 45},
-        'POTASIO': {'min': 100, 'max': 180, 'optimo': 140},
+        'POTASIO': {'min': 120, 'max': 200, 'optimo': 160},
         'MATERIA_ORGANICA_OPTIMA': 4.0,
         'HUMEDAD_OPTIMA': 0.4,
         'pH_OPTIMO': 6.0,
         'CONDUCTIVIDAD_OPTIMA': 1.0
     },
     'BANANO': {
-        'NITROGENO': {'min': 150, 'max': 250, 'optimo': 200},
+        'NITROGENO': {'min': 180, 'max': 280, 'optimo': 230},
         'FOSFORO': {'min': 50, 'max': 90, 'optimo': 70},
-        'POTASIO': {'min': 200, 'max': 300, 'optimo': 250},
+        'POTASIO': {'min': 250, 'max': 350, 'optimo': 300},
         'MATERIA_ORGANICA_OPTIMA': 4.5,
         'HUMEDAD_OPTIMA': 0.45,
         'pH_OPTIMO': 6.2,
@@ -549,7 +549,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
     # Crear mapa centrado con ESRI Satélite por defecto
     m = folium.Map(
         location=[centroid.y, centroid.x],
-        zoom_start=15,  # Zoom más cercano para mejor visualización
+        zoom_start=15,
         tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
         attr='Esri',
         name='Esri Satélite'
@@ -586,11 +586,11 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
         else:
             # RANGOS MÁS REALISTAS PARA RECOMENDACIONES
             if nutriente == "NITRÓGENO":
-                vmin, vmax = 0, 180
+                vmin, vmax = 0, 250
                 colores = PALETAS_GEE['NITROGENO']
                 unidad = "kg/ha N"
             elif nutriente == "FÓSFORO":
-                vmin, vmax = 0, 100
+                vmin, vmax = 0, 120
                 colores = PALETAS_GEE['FOSFORO']
                 unidad = "kg/ha P₂O₅"
             else:  # POTASIO
@@ -852,10 +852,10 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
                 # USAR EXACTAMENTE LOS MISMOS RANGOS QUE EL MAPA INTERACTIVO
                 if nutriente == "NITRÓGENO":
                     cmap = LinearSegmentedColormap.from_list('nitrogeno_gee', PALETAS_GEE['NITROGENO'])
-                    vmin, vmax = 0, 180
+                    vmin, vmax = 0, 250
                 elif nutriente == "FÓSFORO":
                     cmap = LinearSegmentedColormap.from_list('fosforo_gee', PALETAS_GEE['FOSFORO'])
-                    vmin, vmax = 0, 100
+                    vmin, vmax = 0, 120
                 else:  # POTASIO
                     cmap = LinearSegmentedColormap.from_list('potasio_gee', PALETAS_GEE['POTASIO'])
                     vmin, vmax = 0, 200
@@ -909,11 +909,11 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
                 cbar.set_label(f'Recomendación {nutriente} (kg/ha)', fontsize=10)
                 # Marcas específicas para recomendaciones
                 if nutriente == "NITRÓGENO":
-                    cbar.set_ticks([0, 30, 60, 90, 120, 150, 180])
-                    cbar.set_ticklabels(['0', '30', '60', '90', '120', '150', '180 kg/ha'])
+                    cbar.set_ticks([0, 50, 100, 150, 200, 250])
+                    cbar.set_ticklabels(['0', '50', '100', '150', '200', '250 kg/ha'])
                 elif nutriente == "FÓSFORO":
-                    cbar.set_ticks([0, 20, 40, 60, 80, 100])
-                    cbar.set_ticklabels(['0', '20', '40', '60', '80', '100 kg/ha'])
+                    cbar.set_ticks([0, 24, 48, 72, 96, 120])
+                    cbar.set_ticklabels(['0', '24', '48', '72', '96', '120 kg/ha'])
                 else:  # POTASIO
                     cbar.set_ticks([0, 40, 80, 120, 160, 200])
                     cbar.set_ticklabels(['0', '40', '80', '120', '160', '200 kg/ha'])
@@ -1137,9 +1137,9 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
         st.error(f"Error dividiendo parcela: {str(e)}")
         return gdf
 
-# FUNCIÓN MEJORADA PARA ANÁLISIS DE FERTILIDAD MÁS REALISTA
+# FUNCIÓN CORREGIDA PARA ANÁLISIS DE FERTILIDAD CON CÁLCULOS NPK PRECISOS
 def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
-    """Calcula índices GEE mejorados con análisis más realista"""
+    """Calcula índices GEE mejorados con cálculos NPK más precisos"""
     
     params = PARAMETROS_CULTIVOS[cultivo]
     zonas_gdf = gdf.copy()
@@ -1278,42 +1278,72 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
                 categoria = "MUY BAJA"
                 prioridad = "URGENTE"
             
-            # CÁLCULO MEJORADO DE RECOMENDACIONES NPK
+            # 🔧 **CÁLCULO CORREGIDO DE RECOMENDACIONES NPK - MÁS PRECISO**
             if analisis_tipo == "RECOMENDACIONES NPK":
                 if nutriente == "NITRÓGENO":
-                    deficit = max(0, n_optimo - nitrogeno)
-                    # Ajuste por eficiencia y pérdidas
-                    factor_eficiencia = 1.3  # 30% de pérdidas estimadas
-                    recomendacion = deficit * factor_eficiencia
-                    # Ajuste por materia orgánica (fuente natural de N)
-                    ajuste_mo = max(0.5, 1 - (materia_organica / 8.0) * 0.3)
-                    recomendacion *= ajuste_mo
+                    # Cálculo realista de recomendación de Nitrógeno
+                    deficit_nitrogeno = max(0, n_optimo - nitrogeno)
+                    
+                    # Factores de ajuste más precisos:
+                    factor_eficiencia = 1.4  # 40% de pérdidas por lixiviación/volatilización
+                    factor_crecimiento = 1.2  # 20% adicional para crecimiento óptimo
+                    factor_materia_organica = max(0.7, 1.0 - (materia_organica / 15.0))  # MO aporta N
+                    factor_ndvi = 1.0 + (0.5 - ndvi) * 0.4  # NDVI bajo = más necesidad
+                    
+                    recomendacion = (deficit_nitrogeno * factor_eficiencia * factor_crecimiento * 
+                                   factor_materia_organica * factor_ndvi)
+                    
+                    # Límites realistas para nitrógeno
+                    recomendacion = min(recomendacion, 250)  # Máximo 250 kg/ha
+                    recomendacion = max(20, recomendacion)   # Mínimo 20 kg/ha
+                    
+                    deficit = deficit_nitrogeno
                     
                 elif nutriente == "FÓSFORO":
-                    deficit = max(0, p_optimo - fosforo)
-                    factor_eficiencia = 1.2  # Menor eficiencia en P
-                    recomendacion = deficit * factor_eficiencia
-                    # Ajuste por pH (afecta disponibilidad de P)
-                    ajuste_ph = 1.5 - abs(ph - 6.5) * 0.2  # Óptimo alrededor de 6.5
-                    recomendacion *= max(0.7, ajuste_ph)
+                    # Cálculo realista de recomendación de Fósforo
+                    deficit_fosforo = max(0, p_optimo - fosforo)
+                    
+                    # Factores de ajuste para fósforo
+                    factor_eficiencia = 1.6  # Alta fijación en el suelo
+                    factor_ph = 1.0
+                    if ph < 5.5 or ph > 7.5:  # Fuera del rango óptimo de disponibilidad
+                        factor_ph = 1.3  # 30% más si el pH no es óptimo
+                    factor_materia_organica = 1.1  # MO ayuda a la disponibilidad de P
+                    
+                    recomendacion = (deficit_fosforo * factor_eficiencia * 
+                                   factor_ph * factor_materia_organica)
+                    
+                    # Límites realistas para fósforo
+                    recomendacion = min(recomendacion, 120)  # Máximo 120 kg/ha P2O5
+                    recomendacion = max(10, recomendacion)   # Mínimo 10 kg/ha
+                    
+                    deficit = deficit_fosforo
                     
                 else:  # POTASIO
-                    deficit = max(0, k_optimo - potasio)
-                    factor_eficiencia = 1.25
-                    recomendacion = deficit * factor_eficiencia
-                    # Ajuste por textura del suelo (afecta retención de K)
-                    ajuste_textura = 1.1 + (materia_organica / 8.0) * 0.3
-                    recomendacion *= ajuste_textura
+                    # Cálculo realista de recomendación de Potasio
+                    deficit_potasio = max(0, k_optimo - potasio)
+                    
+                    # Factores de ajuste para potasio
+                    factor_eficiencia = 1.3  # Moderada lixiviación
+                    factor_textura = 1.0
+                    if materia_organica < 2.0:  # Suelos arenosos
+                        factor_textura = 1.2  # 20% más en suelos ligeros
+                    factor_rendimiento = 1.0 + (0.5 - ndvi) * 0.3  # NDVI bajo = más necesidad
+                    
+                    recomendacion = (deficit_potasio * factor_eficiencia * 
+                                   factor_textura * factor_rendimiento)
+                    
+                    # Límites realistas para potasio
+                    recomendacion = min(recomendacion, 200)  # Máximo 200 kg/ha K2O
+                    recomendacion = max(15, recomendacion)   # Mínimo 15 kg/ha
+                    
+                    deficit = deficit_potasio
                 
-                # Asegurar recomendaciones realistas
-                if nutriente == "NITRÓGENO":
-                    recomendacion = min(recomendacion, 200)
-                elif nutriente == "FÓSFORO":
-                    recomendacion = min(recomendacion, 120)
-                else:
-                    recomendacion = min(recomendacion, 250)
-                
-                recomendacion = max(5, recomendacion)  # Mínimo aplicable
+                # Ajuste final basado en la categoría de fertilidad
+                if categoria in ["MUY BAJA", "BAJA"]:
+                    recomendacion *= 1.3  # 30% más en suelos de baja fertilidad
+                elif categoria in ["ALTA", "MUY ALTA", "EXCELENTE"]:
+                    recomendacion *= 0.8  # 20% menos en suelos fértiles
                 
             else:
                 recomendacion = 0
