@@ -1,3 +1,4 @@
+# analizador_cultivos_corregido.py
 import streamlit as st
 
 # --- session_state init for analysis control (injected) ---
@@ -3041,8 +3042,6 @@ def mostrar_interfaz_principal():
                             # Botón principal para ejecutar análisis
                             if st.button("▶️ Ejecutar Análisis Completo", type="primary", use_container_width=True, key="btn_ejecutar"):
                                 st.session_state.analisis_en_progreso = True
-else:
-        st.warning("⚠️ Esta funcionalidad está en desarrollo. Por favor, suba un archivo.")
 
 def cargar_datos_demo():
     """Carga datos de demostración para pruebas"""
