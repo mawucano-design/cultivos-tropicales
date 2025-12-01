@@ -3114,14 +3114,12 @@ def ejecutar_analisis_completo():
             if st.session_state.analisis_completado:
                 st.success("✅ Análisis completado exitosamente")
                 st.balloons()
-                # No usar st.rerun() - la aplicación se actualizará automáticamente
                 
     except Exception as e:
         st.error(f"❌ Error durante el análisis: {str(e)}")
         st.exception(e)
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL CORREGIDA - SIN st.rerun()
 # ============================================================================
 def main():
     """Función principal de la aplicación - VERSIÓN CORREGIDA SIN BUCLE"""
