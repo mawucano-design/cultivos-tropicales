@@ -407,6 +407,12 @@ if 'cultivo_seleccionado' not in st.session_state:
     st.session_state.cultivo_seleccionado = "PALMA_ACEITERA"
 if 'analisis_tipo_seleccionado' not in st.session_state:
     st.session_state.analisis_tipo_seleccionado = "FERTILIDAD ACTUAL"
+if 'mes_analisis' not in st.session_state:
+    st.session_state.mes_analisis = "ENERO"
+if 'fuente_satelital' not in st.session_state:
+    st.session_state.fuente_satelital = "PLANETSCOPE"
+if 'n_zonas' not in st.session_state:
+    st.session_state.n_zonas = 10
 
 # ============================================================================
 # FUNCIONES PARA TODOS LOS ANÁLISIS
@@ -2101,8 +2107,483 @@ def crear_resumen_agroecologico(cultivo):
     return markdown
 
 # ============================================================================
-# FUNCIONES DE VISUALIZACIÓN - CONTINUACIÓN
+# FUNCIONES DE VISUALIZACIÓN
 # ============================================================================
+
+def mostrar_analisis_fertilidad_real():
+    """Muestra el análisis de fertilidad real del suelo"""
+    
+    if st.session_state.analisis_fertilidad is None:
+        st.warning("No hay datos de análisis de fertilidad disponibles")
+        return
+    
+    gdf_fertilidad = st.session_state.analisis_fertilidad
+    area_total = st.session_state.area_total
+    cultivo = st.session_state.cultivo_seleccionado
+    
+    st.markdown("## 🌿 ANÁLISIS DE FERTILIDAD REAL DEL SUELO")
+    
+    # Botón para volver atrás
+    if st.button("⬅️ Volver a Configuración", key="volver_fertilidad"):
+        st.session_state.analisis_completado = False
+        st.rerun()
+    
+    # Información sobre la fuente satelital
+    fuente_satelital = st.session_state.get('fuente_satelital', 'PLANETSCOPE')
+    if fuente_satelital in FUENTES_SATELITALES:
+        st.info(f"📡 **Fuente de datos:** {fuente_satelital} - {FUENTES_SATELITALES[fuente_satelital]['resolucion']}")
+    else:
+        st.info(f"📡 **Fuente de datos:** {fuente_satelital}")
+    
+    # Estadísticas resumen
+    st.subheader("📊 ESTADÍSTICAS DE FERTILIDAD")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        avg_fertilidad = gdf_fertilidad['indice_fertilidad'].mean() if 'indice_fertilidad' in gdf_fertilidad.columns else 0
+        st.metric("🌱 Índice de Fertilidad", f"{avg_fertilidad:.3f}")
+    with col2:
+        if 'categoria_fertilidad' in gdf_fertilidad.columns:
+            categoria_pred = gdf_fertilidad['categoria_fertilidad'].mode()[0] if len(gdf_fertilidad) > 0 else "MEDIA"
+        else:
+            categoria_pred = "N/A"
+        st.metric("🏷️ Categoría Predominante", categoria_pred)
+    with col3:
+        avg_mo = gdf_fertilidad['materia_organica'].mean() if 'materia_organica' in gdf_fertilidad.columns else 0
+        st.metric("🍂 Materia Orgánica", f"{avg_mo:.1f}%")
+    with col4:
+        avg_ph = gdf_fertilidad['ph'].mean() if 'ph' in gdf_fertilidad.columns else 0
+        st.metric("🧪 pH Promedio", f"{avg_ph:.1f}")
+    
+    # Distribución de categorías de fertilidad
+    st.subheader("📋 DISTRIBUCIÓN DE CATEGORÍAS DE FERTILIDAD")
+    
+    col_dist1, col_dist2 = st.columns(2)
+    
+    with col_dist1:
+        # Gráfico de torta
+        fig, ax = plt.subplots(1, 1, figsize=(8, 6))
+        if 'categoria_fertilidad' in gdf_fertilidad.columns:
+            cat_dist = gdf_fertilidad['categoria_fertilidad'].value_counts()
+            
+            # Colores para categorías
+            colores_categoria = {
+                'MUY ALTA': '#1a9850',
+                'ALTA': '#66bd63',
+                'MEDIA': '#fee08b',
+                'MEDIA-BAJA': '#fdae61',
+                'BAJA': '#d73027'
+            }
+            
+            colors_pie = [colores_categoria.get(cat, '#999999') for cat in cat_dist.index]
+            
+            ax.pie(cat_dist.values, labels=cat_dist.index, autopct='%1.1f%%',
+                   colors=colors_pie, startangle=90)
+            ax.set_title('Distribución de Categorías de Fertilidad')
+        else:
+            ax.text(0.5, 0.5, 'Datos no disponibles', 
+                    ha='center', va='center', transform=ax.transAxes)
+        st.pyplot(fig)
+    
+    with col_dist2:
+        # Valores promedio de nutrientes
+        st.markdown("#### 💊 Macronutrientes Promedio")
+        
+        if all(col in gdf_fertilidad.columns for col in ['nitrogeno', 'fosforo', 'potasio']):
+            avg_n = gdf_fertilidad['nitrogeno'].mean()
+            avg_p = gdf_fertilidad['fosforo'].mean()
+            avg_k = gdf_fertilidad['potasio'].mean()
+            
+            fig_bar, ax_bar = plt.subplots(1, 1, figsize=(8, 6))
+            nutrientes = ['Nitrógeno', 'Fósforo', 'Potasio']
+            valores = [avg_n, avg_p, avg_k]
+            colores_bar = ['#8c510a', '#67001f', '#4d004b']
+            
+            bars = ax_bar.bar(nutrientes, valores, color=colores_bar, edgecolor='black')
+            ax_bar.set_ylabel('kg/ha')
+            ax_bar.set_title('Contenido Promedio de Macronutrientes')
+            
+            # Añadir valores en las barras
+            for bar, valor in zip(bars, valores):
+                height = bar.get_height()
+                ax_bar.text(bar.get_x() + bar.get_width()/2., height + 5,
+                           f'{valor:.0f} kg/ha', ha='center', va='bottom')
+            
+            st.pyplot(fig_bar)
+        else:
+            st.info("Datos de nutrientes no disponibles")
+    
+    # Mapa de fertilidad
+    st.subheader("🗺️ MAPA DE FERTILIDAD")
+    
+    if not gdf_fertilidad.empty and 'indice_fertilidad' in gdf_fertilidad.columns:
+        mapa_fertilidad = crear_mapa_interactivo_esri(
+            gdf_fertilidad,
+            f"Fertilidad del Suelo - {cultivo.replace('_', ' ').title()}",
+            'indice_fertilidad',
+            "FERTILIDAD ACTUAL"
+        )
+        if mapa_fertilidad:
+            st_folium(mapa_fertilidad, width=800, height=500, key=f"mapa_fertilidad_{datetime.now().timestamp()}")
+        else:
+            st.warning("No se pudo crear el mapa de fertilidad")
+    else:
+        st.warning("No hay datos de fertilidad disponibles para mostrar el mapa")
+    
+    # Tabla detallada
+    st.subheader("📊 TABLA DETALLADA DE FERTILIDAD")
+    
+    columnas_disponibles = [col for col in ['id_zona', 'area_ha', 'categoria_fertilidad', 'indice_fertilidad',
+                                           'materia_organica', 'ph', 'nitrogeno', 'fosforo', 'potasio', 'limitantes']
+                           if col in gdf_fertilidad.columns]
+    
+    if columnas_disponibles:
+        df_detalle = gdf_fertilidad[columnas_disponibles].copy()
+        
+        # Formatear columnas numéricas
+        if 'area_ha' in df_detalle.columns:
+            df_detalle['area_ha'] = df_detalle['area_ha'].round(3)
+        if 'indice_fertilidad' in df_detalle.columns:
+            df_detalle['indice_fertilidad'] = df_detalle['indice_fertilidad'].round(3)
+        if 'materia_organica' in df_detalle.columns:
+            df_detalle['materia_organica'] = df_detalle['materia_organica'].round(1)
+        if 'ph' in df_detalle.columns:
+            df_detalle['ph'] = df_detalle['ph'].round(1)
+        if 'nitrogeno' in df_detalle.columns:
+            df_detalle['nitrogeno'] = df_detalle['nitrogeno'].round(0)
+        if 'fosforo' in df_detalle.columns:
+            df_detalle['fosforo'] = df_detalle['fosforo'].round(0)
+        if 'potasio' in df_detalle.columns:
+            df_detalle['potasio'] = df_detalle['potasio'].round(0)
+        
+        st.dataframe(df_detalle, use_container_width=True)
+    else:
+        st.warning("No hay datos disponibles para mostrar en la tabla")
+    
+    # Descargar resultados
+    st.markdown("### 💾 DESCARGAR RESULTADOS")
+    
+    col_dl1, col_dl2, col_dl3 = st.columns(3)
+    
+    with col_dl1:
+        # Descargar CSV
+        if not gdf_fertilidad.empty:
+            csv_data = gdf_fertilidad.to_csv(index=False)
+            st.download_button(
+                label="📥 Descargar Datos CSV",
+                data=csv_data,
+                file_name=f"fertilidad_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
+    
+    with col_dl2:
+        # Descargar GeoJSON
+        if not gdf_fertilidad.empty:
+            geojson_data = gdf_fertilidad.to_json()
+            st.download_button(
+                label="🗺️ Descargar GeoJSON",
+                data=geojson_data,
+                file_name=f"fertilidad_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
+                mime="application/json"
+            )
+    
+    with col_dl3:
+        # Generar informe PDF
+        if st.button("📄 Generar Informe PDF", type="primary", key="pdf_fertilidad"):
+            with st.spinner("🔄 Generando informe..."):
+                st.success("Funcionalidad de PDF en desarrollo")
+                st.info("Por ahora, usa los formatos CSV y GeoJSON")
+
+def mostrar_recomendaciones_npk():
+    """Muestra las recomendaciones de NPK específicas"""
+    
+    if st.session_state.analisis_npk is None:
+        st.warning("No hay datos de recomendaciones NPK disponibles")
+        return
+    
+    gdf_npk = st.session_state.analisis_npk
+    area_total = st.session_state.area_total
+    cultivo = st.session_state.cultivo_seleccionado
+    analisis_tipo = st.session_state.analisis_tipo_seleccionado
+    
+    # Obtener nutriente del análisis
+    if analisis_tipo == "RECOMENDACIONES NPK":
+        # Buscar qué nutriente fue analizado
+        nutrientes_cols = [col for col in gdf_npk.columns if col.endswith('_actual')]
+        if nutrientes_cols:
+            nutriente_base = nutrientes_cols[0].replace('_actual', '')
+            if 'nitrogeno' in nutriente_base:
+                nutriente = "NITRÓGENO"
+            elif 'fosforo' in nutriente_base:
+                nutriente = "FÓSFORO"
+            elif 'potasio' in nutriente_base:
+                nutriente = "POTASIO"
+            else:
+                nutriente = "NITRÓGENO"  # Valor por defecto
+        else:
+            nutriente = "NITRÓGENO"  # Valor por defecto
+    else:
+        nutriente = "NITRÓGENO"  # Valor por defecto
+    
+    st.markdown(f"## 💊 RECOMENDACIONES DE {nutriente} - {cultivo.replace('_', ' ').title()}")
+    
+    # Botón para volver atrás
+    if st.button("⬅️ Volver a Configuración", key="volver_npk"):
+        st.session_state.analisis_completado = False
+        st.rerun()
+    
+    # Información general
+    fuente_satelital = st.session_state.get('fuente_satelital', 'PLANETSCOPE')
+    mes_analisis = st.session_state.get('mes_analisis', 'ENERO')
+    st.info(f"📅 **Mes de análisis:** {mes_analisis} | 📡 **Fuente:** {fuente_satelital}")
+    
+    # Estadísticas resumen
+    st.subheader("📊 ESTADÍSTICAS DE RECOMENDACIONES")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        col_recomendacion = f'recomendacion_{nutriente.lower()}_kg'
+        if col_recomendacion in gdf_npk.columns:
+            total_recomendado = gdf_npk[col_recomendacion].sum()
+            st.metric(f"📦 {nutriente} Total Recomendado", f"{total_recomendado:.0f} kg")
+        else:
+            st.metric(f"📦 {nutriente} Total Recomendado", "N/A")
+    
+    with col2:
+        if col_recomendacion in gdf_npk.columns:
+            promedio_recomendado = gdf_npk[col_recomendacion].mean()
+            st.metric(f"⚖️ {nutriente} Promedio por ha", f"{promedio_recomendado:.1f} kg/ha")
+        else:
+            st.metric(f"⚖️ {nutriente} Promedio por ha", "N/A")
+    
+    with col3:
+        col_deficit = f'deficit_{nutriente.lower()}'
+        if col_deficit in gdf_npk.columns:
+            zonas_deficit = len(gdf_npk[gdf_npk[col_deficit] > 0])
+            st.metric("🔴 Zonas con déficit", f"{zonas_deficit} / {len(gdf_npk)}")
+        else:
+            st.metric("🔴 Zonas con déficit", "N/A")
+    
+    with col4:
+        col_tipo = f'recomendacion_{nutriente.lower()}_tipo'
+        if col_tipo in gdf_npk.columns:
+            fertilizante_pred = gdf_npk[col_tipo].mode()[0] if len(gdf_npk) > 0 else "No requiere"
+            st.metric("🏭 Fertilizante Predominante", fertilizante_pred)
+        else:
+            st.metric("🏭 Fertilizante Predominante", "N/A")
+    
+    # Mapa de recomendaciones
+    st.subheader("🗺️ MAPA DE RECOMENDACIONES")
+    
+    if not gdf_npk.empty and col_recomendacion in gdf_npk.columns:
+        mapa_npk = crear_mapa_interactivo_esri(
+            gdf_npk,
+            f"Recomendaciones de {nutriente} - {cultivo.replace('_', ' ').title()}",
+            col_recomendacion,
+            "RECOMENDACIONES NPK",
+            nutriente
+        )
+        if mapa_npk:
+            st_folium(mapa_npk, width=800, height=500, key=f"mapa_npk_{datetime.now().timestamp()}")
+        else:
+            st.warning("No se pudo crear el mapa de recomendaciones")
+    else:
+        st.warning("No hay datos de recomendaciones disponibles para mostrar el mapa")
+    
+    # Tabla detallada
+    st.subheader("📊 TABLA DETALLADA DE RECOMENDACIONES")
+    
+    columnas_npk = [
+        'id_zona', 'area_ha', 
+        f'{nutriente.lower()}_actual' if f'{nutriente.lower()}_actual' in gdf_npk.columns else None,
+        f'deficit_{nutriente.lower()}' if f'deficit_{nutriente.lower()}' in gdf_npk.columns else None,
+        f'recomendacion_{nutriente.lower()}_kg' if f'recomendacion_{nutriente.lower()}_kg' in gdf_npk.columns else None,
+        f'recomendacion_{nutriente.lower()}_tipo' if f'recomendacion_{nutriente.lower()}_tipo' in gdf_npk.columns else None,
+        f'categoria_{nutriente.lower()}' if f'categoria_{nutriente.lower()}' in gdf_npk.columns else None,
+        f'programacion_aplicacion_{nutriente.lower()}' if f'programacion_aplicacion_{nutriente.lower()}' in gdf_npk.columns else None
+    ]
+    
+    columnas_npk = [col for col in columnas_npk if col is not None]
+    
+    if columnas_npk:
+        df_npk = gdf_npk[columnas_npk].copy()
+        
+        # Formatear columnas numéricas
+        if 'area_ha' in df_npk.columns:
+            df_npk['area_ha'] = df_npk['area_ha'].round(3)
+        if f'{nutriente.lower()}_actual' in df_npk.columns:
+            df_npk[f'{nutriente.lower()}_actual'] = df_npk[f'{nutriente.lower()}_actual'].round(1)
+        if f'deficit_{nutriente.lower()}' in df_npk.columns:
+            df_npk[f'deficit_{nutriente.lower()}'] = df_npk[f'deficit_{nutriente.lower()}'].round(1)
+        if f'recomendacion_{nutriente.lower()}_kg' in df_npk.columns:
+            df_npk[f'recomendacion_{nutriente.lower()}_kg'] = df_npk[f'recomendacion_{nutriente.lower()}_kg'].round(1)
+        
+        st.dataframe(df_npk, use_container_width=True)
+    else:
+        st.warning("No hay datos de recomendaciones disponibles para mostrar en la tabla")
+    
+    # Descargar resultados
+    st.markdown("### 💾 DESCARGAR RESULTADOS")
+    
+    col_dl1, col_dl2 = st.columns(2)
+    
+    with col_dl1:
+        # Descargar CSV
+        if not gdf_npk.empty:
+            csv_npk = gdf_npk.to_csv(index=False)
+            st.download_button(
+                label="📥 Descargar Datos CSV",
+                data=csv_npk,
+                file_name=f"recomendaciones_{nutriente}_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
+    
+    with col_dl2:
+        # Descargar GeoJSON
+        if not gdf_npk.empty:
+            geojson_npk = gdf_npk.to_json()
+            st.download_button(
+                label="🗺️ Descargar GeoJSON",
+                data=geojson_npk,
+                file_name=f"recomendaciones_{nutriente}_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
+                mime="application/json"
+            )
+
+def mostrar_analisis_textura_avanzado():
+    """Muestra el análisis avanzado de textura del suelo"""
+    
+    if st.session_state.analisis_textura is None:
+        st.warning("No hay datos de análisis de textura disponibles")
+        return
+    
+    gdf_textura = st.session_state.analisis_textura
+    cultivo = st.session_state.cultivo_seleccionado
+    
+    st.markdown("## 🌱 ANÁLISIS AVANZADO DE TEXTURA DEL SUELO")
+    
+    # Botón para volver atrás
+    if st.button("⬅️ Volver a Configuración", key="volver_textura"):
+        st.session_state.analisis_completado = False
+        st.rerun()
+    
+    # Información sobre metodologías
+    if cultivo in TEXTURA_SUELO_OPTIMA:
+        metodologias = TEXTURA_SUELO_OPTIMA[cultivo]['metodologias_recomendadas']
+        st.info(f"🔬 **Metodologías aplicadas:** {', '.join(metodologias)}")
+    
+    # Estadísticas resumen
+    st.subheader("📊 ESTADÍSTICAS DE TEXTURA")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if 'textura_suelo' in gdf_textura.columns:
+            textura_pred = gdf_textura['textura_suelo'].mode()[0] if len(gdf_textura) > 0 else "NO_DETERMINADA"
+            st.metric("🏜️ Textura Predominante", textura_pred)
+        else:
+            st.metric("🏜️ Textura Predominante", "N/A")
+    
+    with col2:
+        if 'categoria_adecuacion' in gdf_textura.columns:
+            adecuacion_pred = gdf_textura['categoria_adecuacion'].mode()[0] if len(gdf_textura) > 0 else "NO_DETERMINADA"
+            st.metric("📊 Adecuación Predominante", adecuacion_pred)
+        else:
+            st.metric("📊 Adecuación Predominante", "N/A")
+    
+    with col3:
+        if 'arena' in gdf_textura.columns:
+            avg_arena = gdf_textura['arena'].mean()
+            st.metric("🏖️ Arena Promedio", f"{avg_arena:.1f}%")
+        else:
+            st.metric("🏖️ Arena Promedio", "N/A")
+    
+    with col4:
+        if 'arcilla' in gdf_textura.columns:
+            avg_arcilla = gdf_textura['arcilla'].mean()
+            st.metric("🧱 Arcilla Promedio", f"{avg_arcilla:.1f}%")
+        else:
+            st.metric("🧱 Arcilla Promedio", "N/A")
+    
+    # Visualizaciones avanzadas
+    st.subheader("📈 VISUALIZACIONES AVANZADAS")
+    
+    # Triángulo de texturas
+    fig_textura = crear_visualizacion_textura_avanzado(gdf_textura, cultivo)
+    if fig_textura:
+        st.pyplot(fig_textura)
+    
+    # Mapa de textura
+    st.subheader("🗺️ MAPA DE TEXTURA")
+    
+    if not gdf_textura.empty and 'textura_suelo' in gdf_textura.columns:
+        mapa_textura = crear_mapa_interactivo_esri(
+            gdf_textura,
+            f"Textura del Suelo - {cultivo.replace('_', ' ').title()}",
+            'textura_suelo',
+            "ANÁLISIS DE TEXTURA"
+        )
+        if mapa_textura:
+            st_folium(mapa_textura, width=800, height=500, key=f"mapa_textura_{datetime.now().timestamp()}")
+        else:
+            st.warning("No se pudo crear el mapa de textura")
+    else:
+        st.warning("No hay datos de textura disponibles para mostrar el mapa")
+    
+    # Tabla detallada
+    st.subheader("📊 TABLA DETALLADA DE TEXTURA")
+    
+    columnas_textura = ['id_zona', 'area_ha', 'textura_suelo', 'arena', 'limo', 'arcilla',
+                       'categoria_adecuacion', 'adecuacion_textura', 'metodologia_analisis',
+                       'riesgo_erosion', 'agua_disponible']
+    
+    columnas_disponibles = [col for col in columnas_textura if col in gdf_textura.columns]
+    
+    if columnas_disponibles:
+        df_detalle = gdf_textura[columnas_disponibles].copy()
+        
+        # Formatear columnas numéricas
+        if 'area_ha' in df_detalle.columns:
+            df_detalle['area_ha'] = df_detalle['area_ha'].round(3)
+        if 'arena' in df_detalle.columns:
+            df_detalle['arena'] = df_detalle['arena'].round(1)
+        if 'limo' in df_detalle.columns:
+            df_detalle['limo'] = df_detalle['limo'].round(1)
+        if 'arcilla' in df_detalle.columns:
+            df_detalle['arcilla'] = df_detalle['arcilla'].round(1)
+        if 'adecuacion_textura' in df_detalle.columns:
+            df_detalle['adecuacion_textura'] = df_detalle['adecuacion_textura'].round(3)
+        if 'agua_disponible' in df_detalle.columns:
+            df_detalle['agua_disponible'] = df_detalle['agua_disponible'].round(1)
+        
+        st.dataframe(df_detalle, use_container_width=True)
+    else:
+        st.warning("No hay datos de textura disponibles para mostrar en la tabla")
+    
+    # Descargar resultados
+    st.markdown("### 💾 DESCARGAR RESULTADOS")
+    
+    col_dl1, col_dl2 = st.columns(2)
+    
+    with col_dl1:
+        # Descargar CSV
+        if not gdf_textura.empty:
+            csv_data = gdf_textura.to_csv(index=False)
+            st.download_button(
+                label="📥 Descargar Datos CSV",
+                data=csv_data,
+                file_name=f"textura_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
+    
+    with col_dl2:
+        # Descargar GeoJSON
+        if not gdf_textura.empty:
+            geojson_data = gdf_textura.to_json()
+            st.download_button(
+                label="🗺️ Descargar GeoJSON",
+                data=geojson_data,
+                file_name=f"textura_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
+                mime="application/json"
+            )
 
 def mostrar_analisis_ndwi():
     """Muestra el análisis NDWI (Índice de Agua)"""
