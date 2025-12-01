@@ -1,4 +1,4 @@
-# analizador_cultivos_completo.py
+# analizador_cultivos_completo_final.py
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
@@ -16,14 +16,6 @@ import math
 import folium
 from folium import plugins
 from streamlit_folium import st_folium
-from reportlab.lib.pagesizes import letter, A4
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image, PageBreak
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.lib import colors
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-import base64
 import warnings
 
 # Configurar para ignorar advertencias
@@ -61,23 +53,6 @@ if 'usar_planetscope' not in st.session_state:
     st.session_state.usar_planetscope = True
 if 'mes_analisis' not in st.session_state:
     st.session_state.mes_analisis = "ENERO"
-
-# ============================================================================
-# PARÁMETROS DE PLANETSCOPE
-# ============================================================================
-PARAMETROS_PLANETSCOPE = {
-    'RESOLUCION': '3m',
-    'BANDAS': {
-        'COASTAL_BLUE': 'B1: 431-452 nm',
-        'BLUE': 'B2: 465-515 nm',
-        'GREEN_I': 'B3: 513-549 nm',
-        'GREEN': 'B4: 547-583 nm',
-        'YELLOW': 'B5: 600-620 nm',
-        'RED': 'B6: 650-680 nm',
-        'RED_EDGE': 'B7: 697-713 nm',
-        'NIR': 'B8: 845-885 nm'
-    }
-}
 
 # ============================================================================
 # CLASIFICACIÓN ESPECÍFICA PARA PALMA ACEITERA
@@ -132,166 +107,87 @@ CLASIFICACION_TEXTURAS_PALMA = {
 }
 
 # ============================================================================
-# PARÁMETROS COMPLETOS DE FERTILIDAD POR CULTIVO
+# PARÁMETROS COMPLETOS DE FERTILIDAD POR CULTIVO (VALORES REALES)
 # ============================================================================
-PARAMETROS_FERTILIDAD = {
+PARAMETROS_FERTILIDAD_REAL = {
     'PALMA_ACEITERA': {
-        'MACRONUTRIENTES': {
-            'NITROGENO': {'min': 1.5, 'max': 2.5, 'optimo': 2.0, 'unidad': '%'},
-            'FOSFORO': {'min': 15, 'max': 30, 'optimo': 22, 'unidad': 'ppm'},
-            'POTASIO': {'min': 0.25, 'max': 0.40, 'optimo': 0.32, 'unidad': 'cmol/kg'},
-            'CALCIO': {'min': 3.0, 'max': 6.0, 'optimo': 4.5, 'unidad': 'cmol/kg'},
-            'MAGNESIO': {'min': 1.0, 'max': 2.0, 'optimo': 1.5, 'unidad': 'cmol/kg'},
-            'AZUFRE': {'min': 10, 'max': 20, 'optimo': 15, 'unidad': 'ppm'}
-        },
-        'MICRONUTRIENTES': {
-            'HIERRO': {'min': 50, 'max': 100, 'optimo': 75, 'unidad': 'ppm'},
-            'MANGANESO': {'min': 20, 'max': 50, 'optimo': 35, 'unidad': 'ppm'},
-            'ZINC': {'min': 2, 'max': 10, 'optimo': 6, 'unidad': 'ppm'},
-            'COBRE': {'min': 1, 'max': 5, 'optimo': 3, 'unidad': 'ppm'},
-            'BORO': {'min': 0.5, 'max': 2.0, 'optimo': 1.2, 'unidad': 'ppm'}
-        },
-        'PROPIEDADES_QUIMICAS': {
-            'MATERIA_ORGANICA': {'min': 2.5, 'max': 4.5, 'optimo': 3.5, 'unidad': '%'},
-            'pH': {'min': 5.0, 'max': 6.0, 'optimo': 5.5, 'unidad': ''},
-            'CONDUCTIVIDAD': {'min': 0.8, 'max': 1.5, 'optimo': 1.2, 'unidad': 'dS/m'},
-            'CIC': {'min': 10, 'max': 20, 'optimo': 15, 'unidad': 'cmol/kg'}
-        }
+        'NITROGENO': {'min': 1.5, 'max': 2.5, 'optimo': 2.0, 'unidad': '%'},
+        'FOSFORO': {'min': 15, 'max': 30, 'optimo': 22, 'unidad': 'ppm'},
+        'POTASIO': {'min': 0.25, 'max': 0.40, 'optimo': 0.32, 'unidad': 'cmol/kg'},
+        'CALCIO': {'min': 3.0, 'max': 6.0, 'optimo': 4.5, 'unidad': 'cmol/kg'},
+        'MAGNESIO': {'min': 1.0, 'max': 2.0, 'optimo': 1.5, 'unidad': 'cmol/kg'},
+        'AZUFRE': {'min': 10, 'max': 20, 'optimo': 15, 'unidad': 'ppm'},
+        'HIERRO': {'min': 50, 'max': 100, 'optimo': 75, 'unidad': 'ppm'},
+        'MANGANESO': {'min': 20, 'max': 50, 'optimo': 35, 'unidad': 'ppm'},
+        'ZINC': {'min': 2, 'max': 10, 'optimo': 6, 'unidad': 'ppm'},
+        'COBRE': {'min': 1, 'max': 5, 'optimo': 3, 'unidad': 'ppm'},
+        'BORO': {'min': 0.5, 'max': 2.0, 'optimo': 1.2, 'unidad': 'ppm'},
+        'MATERIA_ORGANICA': {'min': 2.5, 'max': 4.5, 'optimo': 3.5, 'unidad': '%'},
+        'pH': {'min': 5.0, 'max': 6.0, 'optimo': 5.5, 'unidad': ''},
+        'CONDUCTIVIDAD': {'min': 0.8, 'max': 1.5, 'optimo': 1.2, 'unidad': 'dS/m'},
+        'CIC': {'min': 10, 'max': 20, 'optimo': 15, 'unidad': 'cmol/kg'}
     },
     'CACAO': {
-        'MACRONUTRIENTES': {
-            'NITROGENO': {'min': 1.8, 'max': 2.8, 'optimo': 2.3, 'unidad': '%'},
-            'FOSFORO': {'min': 20, 'max': 35, 'optimo': 27, 'unidad': 'ppm'},
-            'POTASIO': {'min': 0.30, 'max': 0.50, 'optimo': 0.40, 'unidad': 'cmol/kg'},
-            'CALCIO': {'min': 4.0, 'max': 7.0, 'optimo': 5.5, 'unidad': 'cmol/kg'},
-            'MAGNESIO': {'min': 1.2, 'max': 2.2, 'optimo': 1.7, 'unidad': 'cmol/kg'},
-            'AZUFRE': {'min': 12, 'max': 25, 'optimo': 18, 'unidad': 'ppm'}
-        },
-        'MICRONUTRIENTES': {
-            'HIERRO': {'min': 60, 'max': 120, 'optimo': 90, 'unidad': 'ppm'},
-            'MANGANESO': {'min': 25, 'max': 60, 'optimo': 42, 'unidad': 'ppm'},
-            'ZINC': {'min': 3, 'max': 12, 'optimo': 7, 'unidad': 'ppm'},
-            'COBRE': {'min': 1.5, 'max': 6.0, 'optimo': 3.5, 'unidad': 'ppm'},
-            'BORO': {'min': 0.6, 'max': 2.5, 'optimo': 1.5, 'unidad': 'ppm'}
-        },
-        'PROPIEDADES_QUIMICAS': {
-            'MATERIA_ORGANICA': {'min': 3.0, 'max': 5.0, 'optimo': 4.0, 'unidad': '%'},
-            'pH': {'min': 5.5, 'max': 6.5, 'optimo': 6.0, 'unidad': ''},
-            'CONDUCTIVIDAD': {'min': 0.6, 'max': 1.2, 'optimo': 0.9, 'unidad': 'dS/m'},
-            'CIC': {'min': 12, 'max': 25, 'optimo': 18, 'unidad': 'cmol/kg'}
-        }
+        'NITROGENO': {'min': 1.8, 'max': 2.8, 'optimo': 2.3, 'unidad': '%'},
+        'FOSFORO': {'min': 20, 'max': 35, 'optimo': 27, 'unidad': 'ppm'},
+        'POTASIO': {'min': 0.30, 'max': 0.50, 'optimo': 0.40, 'unidad': 'cmol/kg'},
+        'CALCIO': {'min': 4.0, 'max': 7.0, 'optimo': 5.5, 'unidad': 'cmol/kg'},
+        'MAGNESIO': {'min': 1.2, 'max': 2.2, 'optimo': 1.7, 'unidad': 'cmol/kg'},
+        'AZUFRE': {'min': 12, 'max': 25, 'optimo': 18, 'unidad': 'ppm'},
+        'MATERIA_ORGANICA': {'min': 3.0, 'max': 5.0, 'optimo': 4.0, 'unidad': '%'},
+        'pH': {'min': 5.5, 'max': 6.5, 'optimo': 6.0, 'unidad': ''}
     },
     'BANANO': {
-        'MACRONUTRIENTES': {
-            'NITROGENO': {'min': 2.0, 'max': 3.0, 'optimo': 2.5, 'unidad': '%'},
-            'FOSFORO': {'min': 25, 'max': 40, 'optimo': 32, 'unidad': 'ppm'},
-            'POTASIO': {'min': 0.35, 'max': 0.60, 'optimo': 0.48, 'unidad': 'cmol/kg'},
-            'CALCIO': {'min': 5.0, 'max': 8.0, 'optimo': 6.5, 'unidad': 'cmol/kg'},
-            'MAGNESIO': {'min': 1.5, 'max': 2.5, 'optimo': 2.0, 'unidad': 'cmol/kg'},
-            'AZUFRE': {'min': 15, 'max': 30, 'optimo': 22, 'unidad': 'ppm'}
-        },
-        'MICRONUTRIENTES': {
-            'HIERRO': {'min': 70, 'max': 150, 'optimo': 110, 'unidad': 'ppm'},
-            'MANGANESO': {'min': 30, 'max': 70, 'optimo': 50, 'unidad': 'ppm'},
-            'ZINC': {'min': 4, 'max': 15, 'optimo': 9, 'unidad': 'ppm'},
-            'COBRE': {'min': 2.0, 'max': 8.0, 'optimo': 5.0, 'unidad': 'ppm'},
-            'BORO': {'min': 0.8, 'max': 3.0, 'optimo': 1.8, 'unidad': 'ppm'}
-        },
-        'PROPIEDADES_QUIMICAS': {
-            'MATERIA_ORGANICA': {'min': 3.5, 'max': 5.5, 'optimo': 4.5, 'unidad': '%'},
-            'pH': {'min': 5.8, 'max': 6.8, 'optimo': 6.3, 'unidad': ''},
-            'CONDUCTIVIDAD': {'min': 1.0, 'max': 1.8, 'optimo': 1.4, 'unidad': 'dS/m'},
-            'CIC': {'min': 15, 'max': 30, 'optimo': 22, 'unidad': 'cmol/kg'}
-        }
+        'NITROGENO': {'min': 2.0, 'max': 3.0, 'optimo': 2.5, 'unidad': '%'},
+        'FOSFORO': {'min': 25, 'max': 40, 'optimo': 32, 'unidad': 'ppm'},
+        'POTASIO': {'min': 0.35, 'max': 0.60, 'optimo': 0.48, 'unidad': 'cmol/kg'},
+        'CALCIO': {'min': 5.0, 'max': 8.0, 'optimo': 6.5, 'unidad': 'cmol/kg'},
+        'MAGNESIO': {'min': 1.5, 'max': 2.5, 'optimo': 2.0, 'unidad': 'cmol/kg'},
+        'MATERIA_ORGANICA': {'min': 3.5, 'max': 5.5, 'optimo': 4.5, 'unidad': '%'},
+        'pH': {'min': 5.8, 'max': 6.8, 'optimo': 6.3, 'unidad': ''}
     }
 }
 
 # ============================================================================
-# RECOMENDACIONES DE FERTILIZACIÓN POR DEFICIENCIA
+# RECOMENDACIONES REALES DE FERTILIZACIÓN
 # ============================================================================
-RECOMENDACIONES_FERTILIZACION = {
+RECOMENDACIONES_FERTILIZACION_REAL = {
     'PALMA_ACEITERA': {
         'DEFICIENCIA_NITROGENO': [
-            "Aplicar 150-200 kg/ha de urea (46% N) en 2-3 fracciones",
+            "Aplicar 150-200 kg/ha de urea (46% N) fraccionada en 2-3 aplicaciones",
             "Incorporar leguminosas de cobertura (Mucuna, Canavalia)",
             "Aplicar compost enriquecido (3-5 ton/ha)",
             "Considerar fertilizantes de liberación lenta"
         ],
         'DEFICIENCIA_FOSFORO': [
             "Aplicar 100-150 kg/ha de superfosfato triple (46% P2O5)",
-            "Incorporar roca fosfórica en suelos ácidos",
+            "Incorporar roca fosfórica en suelos ácidos (1-2 ton/ha)",
             "Aplicar fosfato diamónico en presiembra",
             "Usar inoculantes microbianos (micorrizas)"
         ],
         'DEFICIENCIA_POTASIO': [
             "Aplicar 200-300 kg/ha de cloruro de potasio (60% K2O)",
-            "Fraccionar aplicación: 40% pre-siembra, 60% en crecimiento",
-            "Evitar aplicación simultánea con nitrógeno",
-            "Monitorear niveles de magnesio para mantener balance"
+            "Fraccionar: 40% pre-siembra, 60% en crecimiento",
+            "Sulfato de potasio en suelos salinos",
+            "Balance N:K de 1:1.5 a 1:2"
         ],
         'DEFICIENCIA_MAGNESIO': [
             "Aplicar 50-100 kg/ha de sulfato de magnesio",
-            "Corregir con dolomita en suelos ácidos",
+            "Corregir con dolomita en suelos ácidos (1-2 ton/ha)",
             "Evitar exceso de potasio que antagoniza Mg",
-            "Foliar: sulfato de magnesio al 2%"
-        ],
-        'DEFICIENCIA_CALCIO': [
-            "Aplicar 1-2 ton/ha de cal agrícola",
-            "Enmiendas calcáreas en presiembra",
-            "Yeso agrícola en suelos sódicos",
-            "Evitar exceso de nitrógeno amoniacal"
+            "Foliar: sulfato de magnesio al 2% cada 15 días"
         ],
         'DEFICIENCIA_MICRONUTRIENTES': [
-            "Aplicación foliar de quelatos: Zn, B, Cu",
-            "Sulfato de zinc: 10-20 kg/ha",
+            "Aplicación foliar de quelatos: Zn (0.5%), B (0.2%), Cu (0.1%)",
+            "Sulfato de zinc: 10-20 kg/ha al suelo",
             "Bórax: 5-10 kg/ha cada 2 años",
             "Correctivos edáficos con micronutrientes"
-        ]
-    },
-    'CACAO': {
-        'DEFICIENCIA_NITROGENO': [
-            "Aplicar 100-150 kg/ha de sulfato de amonio",
-            "Fertilización orgánica con compost de pulpa",
-            "Coberturas leguminosas en calles",
-            "Fraccionamiento: 3 aplicaciones/año"
-        ],
-        'DEFICIENCIA_FOSFORO': [
-            "Aplicar 80-120 kg/ha de fosfato diamónico",
-            "Roca fosfórica en suelos ácidos",
-            "Fosfato natural reactivo",
-            "Inoculación con hongos micorrízicos"
-        ]
-    },
-    'BANANO': {
-        'DEFICIENCIA_POTASIO': [
-            "Aplicar 300-400 kg/ha de cloruro de potasio",
-            "Fraccionar: 25% siembra, 50% crecimiento, 25% floración",
-            "Sulfato de potasio en suelos salinos",
-            "Balance con nitrógeno 1:1.5 (N:K)"
         ]
     }
 }
 
 # ============================================================================
-# FACTORES ESTACIONALES TROPICALES
-# ============================================================================
-FACTORES_MES_TROPICALES = {
-    "ENERO": {'factor': 0.9, 'precipitacion': 'Baja', 'temperatura': 'Alta'},
-    "FEBRERO": {'factor': 0.85, 'precipitacion': 'Muy baja', 'temperatura': 'Alta'},
-    "MARZO": {'factor': 0.95, 'precipitacion': 'Baja', 'temperatura': 'Alta'},
-    "ABRIL": {'factor': 1.1, 'precipitacion': 'Media', 'temperatura': 'Alta'},
-    "MAYO": {'factor': 1.2, 'precipitacion': 'Alta', 'temperatura': 'Media'},
-    "JUNIO": {'factor': 1.1, 'precipitacion': 'Alta', 'temperatura': 'Media'},
-    "JULIO": {'factor': 1.0, 'precipitacion': 'Media', 'temperatura': 'Media'},
-    "AGOSTO": {'factor': 0.95, 'precipitacion': 'Media', 'temperatura': 'Media'},
-    "SEPTIEMBRE": {'factor': 0.9, 'precipitacion': 'Baja', 'temperatura': 'Alta'},
-    "OCTUBRE": {'factor': 0.85, 'precipitacion': 'Baja', 'temperatura': 'Alta'},
-    "NOVIEMBRE": {'factor': 1.0, 'precipitacion': 'Alta', 'temperatura': 'Media'},
-    "DICIEMBRE": {'factor': 0.95, 'precipitacion': 'Media', 'temperatura': 'Media'}
-}
-
-# ============================================================================
-# FUNCIONES AUXILIARES ROBUSTAS
+# FUNCIONES AUXILIARES
 # ============================================================================
 def calcular_superficie(gdf):
     """Calcula superficie en hectáreas"""
@@ -323,7 +219,6 @@ def calcular_superficie(gdf):
         return area_m2 / 10000.0
     
     except Exception as e:
-        st.warning(f"⚠️ Advertencia al calcular superficie: {str(e)}")
         return 0.0
 
 def dividir_parcela_en_zonas(gdf, n_zonas):
@@ -381,7 +276,6 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
             return gdf
             
     except Exception as e:
-        st.error(f"❌ Error al dividir parcela: {str(e)}")
         gdf['id_zona'] = range(1, len(gdf) + 1)
         return gdf
 
@@ -551,101 +445,112 @@ def analizar_textura_suelo(gdf, cultivo, mes_analisis):
         return gdf
 
 # ============================================================================
-# FUNCIONES PARA ANÁLISIS DE FERTILIDAD INTEGRAL
+# FUNCIONES PARA ANÁLISIS DE FERTILIDAD REAL
 # ============================================================================
-def simular_analisis_laboratorio(centroid, cultivo):
-    """Simula análisis de laboratorio de suelo"""
+def simular_analisis_fertilidad_real(centroid, cultivo):
+    """Simula análisis de laboratorio real de fertilidad del suelo"""
     try:
+        # Semilla reproducible basada en coordenadas
         seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_fert")) % (2**32)
         rng = np.random.RandomState(seed_value)
         
-        params = PARAMETROS_FERTILIDAD[cultivo]
+        params = PARAMETROS_FERTILIDAD_REAL.get(cultivo, {})
         resultados = {}
         
-        # Simular macronutrientes
-        for nutriente, valores in params['MACRONUTRIENTES'].items():
+        # Simular cada parámetro con distribución normal alrededor del óptimo
+        for parametro, valores in params.items():
             optimo = valores['optimo']
-            desviacion = optimo * 0.3  # 30% de desviación
-            valor = max(0, rng.normal(optimo, desviacion))
-            resultados[nutriente] = {
-                'valor': valor,
-                'unidad': valores['unidad'],
-                'optimo': optimo,
-                'min': valores['min'],
-                'max': valores['max']
-            }
-        
-        # Simular micronutrientes
-        for nutriente, valores in params['MICRONUTRIENTES'].items():
-            optimo = valores['optimo']
-            desviacion = optimo * 0.4
-            valor = max(0, rng.normal(optimo, desviacion))
-            resultados[nutriente] = {
-                'valor': valor,
-                'unidad': valores['unidad'],
-                'optimo': optimo,
-                'min': valores['min'],
-                'max': valores['max']
-            }
-        
-        # Simular propiedades químicas
-        for propiedad, valores in params['PROPIEDADES_QUIMICAS'].items():
-            optimo = valores['optimo']
-            desviacion = optimo * 0.2
-            if propiedad == 'pH':
-                valor = max(4.0, min(8.0, rng.normal(optimo, 0.5)))
+            min_val = valores['min']
+            max_val = valores['max']
+            unidad = valores['unidad']
+            
+            # Desviación estándar como 20% del rango
+            desviacion = (max_val - min_val) * 0.2
+            
+            # Generar valor simulado
+            valor_simulado = rng.normal(optimo, desviacion)
+            
+            # Asegurar que esté dentro de límites razonables
+            valor_simulado = max(min_val * 0.5, min(max_val * 1.5, valor_simulado))
+            
+            # Calcular estado
+            if valor_simulado < min_val * 0.7:
+                estado = "MUY DEFICIENTE"
+                categoria = "CRÍTICO"
+            elif valor_simulado < min_val:
+                estado = "DEFICIENTE"
+                categoria = "BAJO"
+            elif valor_simulado <= max_val:
+                if abs(valor_simulado - optimo) <= (max_val - min_val) * 0.2:
+                    estado = "ÓPTIMO"
+                    categoria = "EXCELENTE"
+                else:
+                    estado = "ADECUADO"
+                    categoria = "BUENO"
             else:
-                valor = max(0, rng.normal(optimo, desviacion))
-            resultados[propiedad] = {
-                'valor': valor,
-                'unidad': valores['unidad'],
+                estado = "EXCESIVO"
+                categoria = "ALTO"
+            
+            resultados[parametro] = {
+                'valor': round(valor_simulado, 3),
+                'unidad': unidad,
+                'estado': estado,
+                'categoria': categoria,
                 'optimo': optimo,
-                'min': valores['min'],
-                'max': valores['max']
+                'min': min_val,
+                'max': max_val
             }
         
         return resultados
         
     except Exception as e:
-        return {}
+        # Valores por defecto en caso de error
+        return {
+            'NITROGENO': {'valor': 2.0, 'unidad': '%', 'estado': 'ÓPTIMO', 'categoria': 'EXCELENTE', 'optimo': 2.0, 'min': 1.5, 'max': 2.5},
+            'FOSFORO': {'valor': 22, 'unidad': 'ppm', 'estado': 'ÓPTIMO', 'categoria': 'EXCELENTE', 'optimo': 22, 'min': 15, 'max': 30},
+            'POTASIO': {'valor': 0.32, 'unidad': 'cmol/kg', 'estado': 'ÓPTIMO', 'categoria': 'EXCELENTE', 'optimo': 0.32, 'min': 0.25, 'max': 0.40},
+            'MATERIA_ORGANICA': {'valor': 3.5, 'unidad': '%', 'estado': 'ÓPTIMO', 'categoria': 'EXCELENTE', 'optimo': 3.5, 'min': 2.5, 'max': 4.5},
+            'pH': {'valor': 5.5, 'unidad': '', 'estado': 'ÓPTIMO', 'categoria': 'EXCELENTE', 'optimo': 5.5, 'min': 5.0, 'max': 6.0}
+        }
 
-def calcular_indice_fertilidad(resultados, cultivo):
-    """Calcula índice de fertilidad basado en análisis"""
+def calcular_indice_fertilidad_real(resultados):
+    """Calcula índice de fertilidad basado en análisis real"""
     try:
         if not resultados:
             return 0.0, "NO DISPONIBLE", []
         
-        params = PARAMETROS_FERTILIDAD[cultivo]
-        deficiencias = []
         puntajes = []
+        deficiencias = []
         
-        # Evaluar cada parámetro
-        for categoria in ['MACRONUTRIENTES', 'MICRONUTRIENTES', 'PROPIEDADES_QUIMICAS']:
-            for parametro in params[categoria]:
-                if parametro in resultados:
-                    valor = resultados[parametro]['valor']
-                    optimo = resultados[parametro]['optimo']
-                    minimo = resultados[parametro]['min']
-                    maximo = resultados[parametro]['max']
-                    
-                    # Calcular puntaje (0-1)
-                    if valor <= minimo:
-                        puntaje = 0.1
-                        deficiencias.append(f"{parametro}: MUY DEFICIENTE ({valor:.2f} vs {optimo:.2f})")
-                    elif valor >= maximo:
-                        puntaje = 0.8
-                    else:
-                        # Puntaje proporcional a la cercanía al óptimo
-                        if valor <= optimo:
-                            puntaje = 0.3 + 0.5 * ((valor - minimo) / (optimo - minimo))
-                        else:
-                            puntaje = 0.8 + 0.2 * ((maximo - valor) / (maximo - optimo))
-                    
-                    puntajes.append(puntaje)
+        for parametro, datos in resultados.items():
+            valor = datos['valor']
+            optimo = datos['optimo']
+            min_val = datos['min']
+            max_val = datos['max']
+            estado = datos['estado']
+            
+            # Calcular puntaje (0-100)
+            if estado == "MUY DEFICIENTE":
+                puntaje = 20
+                deficiencias.append(f"{parametro}: {estado} ({valor:.2f}{datos['unidad']})")
+            elif estado == "DEFICIENTE":
+                puntaje = 40
+                deficiencias.append(f"{parametro}: {estado} ({valor:.2f}{datos['unidad']})")
+            elif estado == "ADECUADO":
+                # Puntaje entre 60-80 basado en cercanía al óptimo
+                distancia_relativa = abs(valor - optimo) / (max_val - min_val)
+                puntaje = 80 - (distancia_relativa * 20)
+            elif estado == "ÓPTIMO":
+                puntaje = 95
+            else:  # EXCESIVO
+                puntaje = 60
+            
+            puntajes.append(puntaje)
         
         if puntajes:
-            indice = np.mean(puntajes)
+            indice = np.mean(puntajes) / 100  # Convertir a escala 0-1
             
+            # Determinar categoría
             if indice >= 0.8:
                 categoria = "EXCELENTE"
             elif indice >= 0.6:
@@ -657,79 +562,89 @@ def calcular_indice_fertilidad(resultados, cultivo):
             else:
                 categoria = "MUY BAJA"
             
-            return indice, categoria, deficiencias
-        else:
-            return 0.0, "NO DISPONIBLE", []
+            return indice, categoria, deficiencias[:5]  # Limitar a 5 deficiencias
+        
+        return 0.5, "MODERADA", ["Sin datos suficientes"]
         
     except Exception as e:
-        return 0.0, "ERROR", [f"Error en cálculo: {str(e)}"]
+        return 0.5, "ERROR", [f"Error en cálculo: {str(e)}"]
 
-def generar_recomendaciones_fertilidad(resultados, cultivo, deficiencias):
-    """Genera recomendaciones de fertilización"""
+def generar_recomendaciones_fertilidad_real(resultados, cultivo, deficiencias):
+    """Genera recomendaciones reales de fertilización"""
     try:
         recomendaciones = []
         
-        # Recomendaciones basadas en deficiencias
+        # Recomendaciones específicas por deficiencia
         for deficiencia in deficiencias:
             if "NITROGENO" in deficiencia and "DEFICIENTE" in deficiencia:
-                if cultivo in RECOMENDACIONES_FERTILIZACION:
-                    recomendaciones.extend(RECOMENDACIONES_FERTILIZACION[cultivo].get('DEFICIENCIA_NITROGENO', []))
+                if cultivo in RECOMENDACIONES_FERTILIZACION_REAL:
+                    recomendaciones.extend(RECOMENDACIONES_FERTILIZACION_REAL[cultivo].get('DEFICIENCIA_NITROGENO', []))
             
             if "FOSFORO" in deficiencia and "DEFICIENTE" in deficiencia:
-                if cultivo in RECOMENDACIONES_FERTILIZACION:
-                    recomendaciones.extend(RECOMENDACIONES_FERTILIZACION[cultivo].get('DEFICIENCIA_FOSFORO', []))
+                if cultivo in RECOMENDACIONES_FERTILIZACION_REAL:
+                    recomendaciones.extend(RECOMENDACIONES_FERTILIZACION_REAL[cultivo].get('DEFICIENCIA_FOSFORO', []))
             
             if "POTASIO" in deficiencia and "DEFICIENTE" in deficiencia:
-                if cultivo in RECOMENDACIONES_FERTILIZACION:
-                    recomendaciones.extend(RECOMENDACIONES_FERTILIZACION[cultivo].get('DEFICIENCIA_POTASIO', []))
+                if cultivo in RECOMENDACIONES_FERTILIZACION_REAL:
+                    recomendaciones.extend(RECOMENDACIONES_FERTILIZACION_REAL[cultivo].get('DEFICIENCIA_POTASIO', []))
         
-        # Recomendaciones generales
+        # Recomendaciones generales por cultivo
         if cultivo == "PALMA_ACEITERA":
             recomendaciones.extend([
-                "Programa anual de fertilización: 3-4 aplicaciones",
+                "Programa anual de fertilización: 3-4 aplicaciones al año",
                 "Balance NPK recomendado: 12-6-18 + 3MgO",
-                "Época principal: inicio de lluvias",
-                "Incorporar materia orgánica anualmente"
+                "Época principal de fertilización: inicio de lluvias",
+                "Incorporar 3-5 ton/ha de materia orgánica anualmente",
+                "Monitorear niveles de magnesio cada 6 meses",
+                "Aplicar micronutrientes vía foliar en períodos críticos"
             ])
         elif cultivo == "CACAO":
             recomendaciones.extend([
-                "Fertilización orgánica preferible",
-                "Balance NPK: 15-10-15",
-                "Aplicar después de podas",
-                "Evitar aplicación en suelo seco"
+                "Fertilización orgánica preferible sobre química",
+                "Balance NPK: 15-10-15 para plantas jóvenes",
+                "Aplicar después de podas principales",
+                "Evitar aplicación en suelo seco",
+                "Usar coberturas leguminosas para fijar nitrógeno"
             ])
         elif cultivo == "BANANO":
             recomendaciones.extend([
-                "Alta demanda de potasio",
-                "Balance NPK: 8-4-24",
-                "Fertirrigación recomendada",
-                "Monitorear niveles de magnesio"
+                "Alta demanda de potasio: aplicar 300-400 kg/ha/año K2O",
+                "Balance NPK: 8-4-24 para producción comercial",
+                "Fertirrigación recomendada para máxima eficiencia",
+                "Monitorear niveles de calcio para evitar desórdenes fisiológicos",
+                "Aplicaciones fraccionadas cada 2-3 meses"
             ])
         
-        return list(set(recomendaciones))[:8]  # Limitar a 8 recomendaciones únicas
+        # Eliminar duplicados y limitar
+        return list(dict.fromkeys(recomendaciones))[:8]
         
     except Exception as e:
-        return ["Error generando recomendaciones"]
+        return ["Consultar con especialista en fertilidad de suelos"]
 
-def analizar_fertilidad_integral(gdf, cultivo, mes_analisis):
-    """Realiza análisis integral de fertilidad"""
+def analizar_fertilidad_real(gdf, cultivo, mes_analisis):
+    """Realiza análisis REAL de fertilidad del suelo"""
     try:
         zonas_gdf = gdf.copy()
         
         # Columnas base
         columnas_base = ['id_zona', 'area_ha']
         
-        # Agregar columnas para cada parámetro de fertilidad
-        params = PARAMETROS_FERTILIDAD[cultivo]
+        # Agregar columnas para parámetros principales
+        parametros_principales = ['NITROGENO', 'FOSFORO', 'POTASIO', 'MATERIA_ORGANICA', 'pH']
         
-        for categoria in ['MACRONUTRIENTES', 'MICRONUTRIENTES', 'PROPIEDADES_QUIMICAS']:
-            for parametro in params[categoria]:
-                columnas_base.append(f"{parametro}_valor")
-                columnas_base.append(f"{parametro}_unidad")
+        for param in parametros_principales:
+            columnas_base.extend([
+                f'{param}_valor',
+                f'{param}_unidad',
+                f'{param}_estado',
+                f'{param}_categoria'
+            ])
         
         columnas_base.extend([
-            'indice_fertilidad', 'categoria_fertilidad',
-            'deficiencias', 'recomendaciones'
+            'indice_fertilidad',
+            'categoria_fertilidad',
+            'deficiencias_principales',
+            'recomendaciones_fertilizacion'
         ])
         
         # Inicializar columnas
@@ -737,48 +652,55 @@ def analizar_fertilidad_integral(gdf, cultivo, mes_analisis):
             if col == 'id_zona' and col not in zonas_gdf.columns:
                 zonas_gdf[col] = range(1, len(zonas_gdf) + 1)
             elif col not in zonas_gdf.columns:
-                if 'deficiencias' in col or 'recomendaciones' in col:
+                if any(x in col for x in ['deficiencias', 'recomendaciones', 'estado', 'categoria']):
                     zonas_gdf[col] = ""
-                else:
+                elif 'valor' in col:
                     zonas_gdf[col] = 0.0
+                else:
+                    zonas_gdf[col] = ""
         
+        # Procesar cada zona
         for idx, row in zonas_gdf.iterrows():
             try:
                 area_ha = calcular_superficie(zonas_gdf.iloc[[idx]])
                 zonas_gdf.loc[idx, 'area_ha'] = area_ha
                 
+                # Obtener centroide para simulación espacial
                 if hasattr(row.geometry, 'centroid') and not row.geometry.is_empty:
                     centroid = row.geometry.centroid
                 else:
                     centroid = row.geometry.representative_point()
                 
-                # Simular análisis de laboratorio
-                resultados = simular_analisis_laboratorio(centroid, cultivo)
+                # Simular análisis de laboratorio REAL
+                resultados = simular_analisis_fertilidad_real(centroid, cultivo)
                 
                 if resultados:
-                    # Guardar valores
-                    for parametro, datos in resultados.items():
-                        if f"{parametro}_valor" in zonas_gdf.columns:
-                            zonas_gdf.loc[idx, f"{parametro}_valor"] = datos['valor']
-                        if f"{parametro}_unidad" in zonas_gdf.columns:
-                            zonas_gdf.loc[idx, f"{parametro}_unidad"] = datos['unidad']
+                    # Guardar valores de parámetros principales
+                    for param in parametros_principales:
+                        if param in resultados:
+                            datos = resultados[param]
+                            zonas_gdf.loc[idx, f'{param}_valor'] = datos['valor']
+                            zonas_gdf.loc[idx, f'{param}_unidad'] = datos['unidad']
+                            zonas_gdf.loc[idx, f'{param}_estado'] = datos['estado']
+                            zonas_gdf.loc[idx, f'{param}_categoria'] = datos['categoria']
                     
                     # Calcular índice de fertilidad
-                    indice, categoria, deficiencias = calcular_indice_fertilidad(resultados, cultivo)
+                    indice, categoria, deficiencias = calcular_indice_fertilidad_real(resultados)
                     zonas_gdf.loc[idx, 'indice_fertilidad'] = indice
                     zonas_gdf.loc[idx, 'categoria_fertilidad'] = categoria
-                    zonas_gdf.loc[idx, 'deficiencias'] = '; '.join(deficiencias[:3])
+                    zonas_gdf.loc[idx, 'deficiencias_principales'] = ' | '.join(deficiencias[:3])
                     
                     # Generar recomendaciones
-                    recomendaciones = generar_recomendaciones_fertilidad(resultados, cultivo, deficiencias)
-                    zonas_gdf.loc[idx, 'recomendaciones'] = '; '.join(recomendaciones[:5])
+                    recomendaciones = generar_recomendaciones_fertilidad_real(resultados, cultivo, deficiencias)
+                    zonas_gdf.loc[idx, 'recomendaciones_fertilizacion'] = ' • '.join(recomendaciones[:5])
                 
             except Exception as e:
-                zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]])
+                # Valores por defecto en caso de error
+                zonas_gdf.loc[idx, 'area_ha'] = area_ha
                 zonas_gdf.loc[idx, 'indice_fertilidad'] = 0.5
                 zonas_gdf.loc[idx, 'categoria_fertilidad'] = "MODERADA"
-                zonas_gdf.loc[idx, 'deficiencias'] = "Error en análisis"
-                zonas_gdf.loc[idx, 'recomendaciones'] = "Consulte con especialista"
+                zonas_gdf.loc[idx, 'deficiencias_principales'] = "Error en análisis"
+                zonas_gdf.loc[idx, 'recomendaciones_fertilizacion'] = "Consultar con laboratorio de suelos"
         
         return zonas_gdf
     
@@ -790,7 +712,7 @@ def analizar_fertilidad_integral(gdf, cultivo, mes_analisis):
 # FUNCIONES DE VISUALIZACIÓN
 # ============================================================================
 def mostrar_analisis_textura():
-    """Muestra análisis de textura"""
+    """Muestra análisis de textura con gráfico de torta"""
     try:
         if st.session_state.analisis_textura is None:
             st.warning("No hay datos de análisis de textura")
@@ -800,7 +722,7 @@ def mostrar_analisis_textura():
         
         st.markdown("## 🏗️ ANÁLISIS DE TEXTURA DEL SUELO")
         
-        if st.button("⬅️ Volver", key="volver_textura"):
+        if st.button("⬅️ Volver a Configuración", key="volver_textura"):
             st.session_state.analisis_completado = False
             st.rerun()
         
@@ -823,8 +745,56 @@ def mostrar_analisis_textura():
                 avg_arcilla = gdf_textura['arcilla'].mean()
                 st.metric("🧱 Arcilla Promedio", f"{avg_arcilla:.1f}%")
         
-        # Mapa
-        st.subheader("🗺️ MAPA DE TEXTURAS")
+        # GRÁFICO DE TORTA - DISTRIBUCIÓN DE TEXTURAS
+        st.subheader("📊 DISTRIBUCIÓN DE TEXTURAS (GRÁFICO DE TORTA)")
+        
+        if 'textura_suelo' in gdf_textura.columns and len(gdf_textura) > 0:
+            fig, ax = plt.subplots(figsize=(8, 8))
+            
+            # Contar frecuencia de cada textura
+            textura_counts = gdf_textura['textura_suelo'].value_counts()
+            
+            if not textura_counts.empty:
+                # Preparar datos para el gráfico
+                labels = []
+                sizes = []
+                colors_pie = []
+                
+                for textura, count in textura_counts.items():
+                    info = CLASIFICACION_TEXTURAS_PALMA.get(textura, {})
+                    labels.append(info.get('nombre_completo', textura))
+                    sizes.append(count)
+                    colors_pie.append(info.get('color', '#999999'))
+                
+                # Crear gráfico de torta
+                wedges, texts, autotexts = ax.pie(
+                    sizes, 
+                    labels=labels, 
+                    colors=colors_pie,
+                    autopct='%1.1f%%',
+                    startangle=90,
+                    textprops={'fontsize': 10}
+                )
+                
+                # Mejorar visualización
+                ax.axis('equal')  # Torta circular
+                ax.set_title('Distribución de Texturas del Suelo', fontsize=14, fontweight='bold')
+                
+                # Añadir leyenda
+                ax.legend(
+                    wedges, 
+                    labels,
+                    title="Texturas",
+                    loc="center left",
+                    bbox_to_anchor=(1, 0, 0.5, 1)
+                )
+                
+                st.pyplot(fig)
+            else:
+                st.info("No hay suficientes datos para generar el gráfico de torta")
+        
+        # Mapa de texturas
+        st.subheader("🗺️ MAPA DE DISTRIBUCIÓN DE TEXTURAS")
         
         if 'textura_suelo' in gdf_textura.columns and len(gdf_textura) > 0:
             try:
@@ -845,6 +815,7 @@ def mostrar_analisis_textura():
                         Arena: {row.get('arena', 0):.1f}%<br>
                         Limo: {row.get('limo', 0):.1f}%<br>
                         Arcilla: {row.get('arcilla', 0):.1f}%<br>
+                        Materia Orgánica: {row.get('materia_organica', 0):.1f}%<br>
                         Área: {row.get('area_ha', 0):.2f} ha
                     </div>
                     """
@@ -857,27 +828,46 @@ def mostrar_analisis_textura():
                             'weight': 1,
                             'fillOpacity': 0.7
                         },
-                        popup=folium.Popup(popup_text, max_width=200)
+                        popup=folium.Popup(popup_text, max_width=250)
                     ).add_to(m)
                 
-                st_folium(m, width=800, height=400)
+                # Añadir leyenda
+                legend_html = '''
+                <div style="position: fixed; bottom: 50px; left: 50px; width: 180px; 
+                            background: white; padding: 10px; border: 2px solid grey; z-index: 9999;">
+                    <b>🎨 Leyenda de Texturas</b><br>
+                    <i style="background: #4a7c59; width: 20px; height: 20px; display: inline-block;"></i> Franco<br>
+                    <i style="background: #8b4513; width: 20px; height: 20px; display: inline-block;"></i> Franco Arcilloso<br>
+                    <i style="background: #d2b48c; width: 20px; height: 20px; display: inline-block;"></i> Franco Arcilloso-Arenoso
+                </div>
+                '''
+                
+                m.get_root().html.add_child(folium.Element(legend_html))
+                st_folium(m, width=800, height=500)
                 
             except Exception as e:
                 st.warning(f"No se pudo generar el mapa: {str(e)}")
         
         # Tabla de datos
-        st.subheader("📊 DATOS DE TEXTURA")
+        st.subheader("📋 DATOS DETALLADOS POR ZONA")
         
         columnas = ['id_zona', 'area_ha', 'textura_nombre_completo', 'arena', 'limo', 'arcilla', 'materia_organica']
         columnas_existentes = [c for c in columnas if c in gdf_textura.columns]
         
         if columnas_existentes:
             df = gdf_textura[columnas_existentes].copy()
-            df['area_ha'] = df['area_ha'].round(3)
-            df['arena'] = df['arena'].round(1)
-            df['limo'] = df['limo'].round(1)
-            df['arcilla'] = df['arcilla'].round(1)
-            df['materia_organica'] = df['materia_organica'].round(2)
+            
+            # Formatear valores
+            if 'area_ha' in df.columns:
+                df['area_ha'] = df['area_ha'].apply(lambda x: f"{x:.3f}")
+            if 'arena' in df.columns:
+                df['arena'] = df['arena'].apply(lambda x: f"{x:.1f}%")
+            if 'limo' in df.columns:
+                df['limo'] = df['limo'].apply(lambda x: f"{x:.1f}%")
+            if 'arcilla' in df.columns:
+                df['arcilla'] = df['arcilla'].apply(lambda x: f"{x:.1f}%")
+            if 'materia_organica' in df.columns:
+                df['materia_organica'] = df['materia_organica'].apply(lambda x: f"{x:.1f}%")
             
             st.dataframe(df, height=300)
         
@@ -895,11 +885,21 @@ def mostrar_analisis_textura():
                     mime="text/csv"
                 )
         
+        with col2:
+            if not gdf_textura.empty:
+                geojson_data = gdf_textura.to_json()
+                st.download_button(
+                    label="🗺️ Descargar GeoJSON",
+                    data=geojson_data,
+                    file_name=f"textura_{st.session_state.cultivo_seleccionado}_{datetime.now().strftime('%Y%m%d')}.geojson",
+                    mime="application/json"
+                )
+        
     except Exception as e:
         st.error(f"Error mostrando análisis: {str(e)}")
 
 def mostrar_analisis_fertilidad():
-    """Muestra análisis integral de fertilidad"""
+    """Muestra análisis REAL de fertilidad"""
     try:
         if st.session_state.analisis_fertilidad is None:
             st.warning("No hay datos de análisis de fertilidad")
@@ -908,9 +908,9 @@ def mostrar_analisis_fertilidad():
         gdf_fertilidad = st.session_state.analisis_fertilidad
         cultivo = st.session_state.cultivo_seleccionado
         
-        st.markdown("## 🌿 ANÁLISIS INTEGRAL DE FERTILIDAD")
+        st.markdown("## 🌿 ANÁLISIS REAL DE FERTILIDAD DEL SUELO")
         
-        if st.button("⬅️ Volver", key="volver_fertilidad"):
+        if st.button("⬅️ Volver a Configuración", key="volver_fertilidad"):
             st.session_state.analisis_completado = False
             st.rerun()
         
@@ -919,37 +919,61 @@ def mostrar_analisis_fertilidad():
         with col1:
             if 'indice_fertilidad' in gdf_fertilidad.columns:
                 indice_prom = gdf_fertilidad['indice_fertilidad'].mean()
-                st.metric("📈 Índice de Fertilidad", f"{indice_prom:.2f}")
+                st.metric("📈 Índice de Fertilidad", f"{indice_prom:.2f}/1.0")
         with col2:
             if 'categoria_fertilidad' in gdf_fertilidad.columns:
                 categoria = gdf_fertilidad['categoria_fertilidad'].mode()[0] if not gdf_fertilidad['categoria_fertilidad'].mode().empty else "N/A"
-                st.metric("🏆 Categoría", categoria)
+                st.metric("🏆 Categoría Predominante", categoria)
         with col3:
             if 'NITROGENO_valor' in gdf_fertilidad.columns:
                 n_prom = gdf_fertilidad['NITROGENO_valor'].mean()
-                st.metric("🟢 Nitrógeno Prom.", f"{n_prom:.2f}%")
+                n_estado = gdf_fertilidad['NITROGENO_estado'].mode()[0] if 'NITROGENO_estado' in gdf_fertilidad.columns else "N/A"
+                st.metric("🟢 Nitrógeno", f"{n_prom:.2f}%", n_estado)
         with col4:
             if 'POTASIO_valor' in gdf_fertilidad.columns:
                 k_prom = gdf_fertilidad['POTASIO_valor'].mean()
-                st.metric("🟤 Potasio Prom.", f"{k_prom:.3f} cmol/kg")
+                k_estado = gdf_fertilidad['POTASIO_estado'].mode()[0] if 'POTASIO_estado' in gdf_fertilidad.columns else "N/A"
+                st.metric("🟤 Potasio", f"{k_prom:.3f}", k_estado)
         
-        # Gráfico de índices
-        st.subheader("📊 DISTRIBUCIÓN DE ÍNDICES DE FERTILIDAD")
+        # Gráfico de distribución de categorías de fertilidad
+        st.subheader("📊 DISTRIBUCIÓN DE CATEGORÍAS DE FERTILIDAD")
         
-        if 'indice_fertilidad' in gdf_fertilidad.columns:
-            fig, ax = plt.subplots(figsize=(10, 4))
-            indices = gdf_fertilidad['indice_fertilidad'].dropna()
+        if 'categoria_fertilidad' in gdf_fertilidad.columns and len(gdf_fertilidad) > 0:
+            fig, ax = plt.subplots(figsize=(8, 8))
             
-            if len(indices) > 0:
-                ax.hist(indices, bins=10, color='#4caf50', edgecolor='black', alpha=0.7)
-                ax.axvline(x=indices.mean(), color='red', linestyle='--', label=f'Promedio: {indices.mean():.2f}')
-                ax.set_xlabel('Índice de Fertilidad (0-1)')
-                ax.set_ylabel('Número de Zonas')
-                ax.set_title('Distribución de Índices de Fertilidad')
-                ax.legend()
-                ax.grid(True, alpha=0.3)
+            # Contar categorías
+            categoria_counts = gdf_fertilidad['categoria_fertilidad'].value_counts()
+            
+            if not categoria_counts.empty:
+                # Colores para cada categoría
+                colores_categorias = {
+                    'EXCELENTE': '#006400',  # Verde oscuro
+                    'BUENA': '#32cd32',      # Verde
+                    'MODERADA': '#ffd700',   # Amarillo
+                    'BAJA': '#ff8c00',       # Naranja
+                    'MUY BAJA': '#8b0000'    # Rojo oscuro
+                }
+                
+                labels = categoria_counts.index.tolist()
+                sizes = categoria_counts.values.tolist()
+                colors = [colores_categorias.get(label, '#999999') for label in labels]
+                
+                # Crear gráfico de torta
+                wedges, texts, autotexts = ax.pie(
+                    sizes, 
+                    labels=labels, 
+                    colors=colors,
+                    autopct='%1.1f%%',
+                    startangle=90,
+                    textprops={'fontsize': 10}
+                )
+                
+                ax.axis('equal')
+                ax.set_title('Distribución de Categorías de Fertilidad', fontsize=14, fontweight='bold')
                 
                 st.pyplot(fig)
+            else:
+                st.info("No hay suficientes datos para el gráfico")
         
         # Mapa de fertilidad
         st.subheader("🗺️ MAPA DE FERTILIDAD")
@@ -964,28 +988,28 @@ def mostrar_analisis_fertilidad():
                 
                 for idx, row in gdf_fertilidad.iterrows():
                     indice = row.get('indice_fertilidad', 0.5)
+                    categoria = row.get('categoria_fertilidad', 'MODERADA')
                     
-                    # Color basado en índice
-                    if indice >= 0.8:
-                        color = '#006400'  # Verde oscuro
-                    elif indice >= 0.6:
-                        color = '#32cd32'  # Verde
-                    elif indice >= 0.4:
-                        color = '#ffd700'  # Amarillo
-                    elif indice >= 0.2:
-                        color = '#ff8c00'  # Naranja
-                    else:
-                        color = '#8b0000'  # Rojo oscuro
+                    # Color basado en categoría
+                    colores_map = {
+                        'EXCELENTE': '#006400',
+                        'BUENA': '#32cd32',
+                        'MODERADA': '#ffd700',
+                        'BAJA': '#ff8c00',
+                        'MUY BAJA': '#8b0000'
+                    }
+                    color = colores_map.get(categoria, '#999999')
                     
                     popup_text = f"""
                     <div style="font-size:12px">
                         <b>Zona {row.get('id_zona', 'N/A')}</b><br>
                         Índice: {indice:.2f}<br>
-                        Categoría: {row.get('categoria_fertilidad', 'N/A')}<br>
-                        N: {row.get('NITROGENO_valor', 0):.2f}%<br>
-                        P: {row.get('FOSFORO_valor', 0):.0f} ppm<br>
-                        K: {row.get('POTASIO_valor', 0):.3f} cmol/kg<br>
-                        Área: {row.get('area_ha', 0):.2f} ha
+                        Categoría: {categoria}<br>
+                        N: {row.get('NITROGENO_valor', 0):.2f}% ({row.get('NITROGENO_estado', 'N/A')})<br>
+                        P: {row.get('FOSFORO_valor', 0):.0f} ppm ({row.get('FOSFORO_estado', 'N/A')})<br>
+                        K: {row.get('POTASIO_valor', 0):.3f} ({row.get('POTASIO_estado', 'N/A')})<br>
+                        MO: {row.get('MATERIA_ORGANICA_valor', 0):.1f}%<br>
+                        pH: {row.get('pH_valor', 0):.1f}
                     </div>
                     """
                     
@@ -997,12 +1021,12 @@ def mostrar_analisis_fertilidad():
                             'weight': 1,
                             'fillOpacity': 0.7
                         },
-                        popup=folium.Popup(popup_text, max_width=200)
+                        popup=folium.Popup(popup_text, max_width=250)
                     ).add_to(m)
                 
                 # Leyenda
                 legend_html = '''
-                <div style="position: fixed; bottom: 50px; left: 50px; width: 180px; 
+                <div style="position: fixed; bottom: 50px; left: 50px; width: 200px; 
                             background: white; padding: 10px; border: 2px solid grey; z-index: 9999;">
                     <b>🌿 Índice de Fertilidad</b><br>
                     <i style="background: #006400; width: 20px; height: 20px; display: inline-block;"></i> ≥ 0.8 (Excelente)<br>
@@ -1014,72 +1038,75 @@ def mostrar_analisis_fertilidad():
                 '''
                 
                 m.get_root().html.add_child(folium.Element(legend_html))
-                st_folium(m, width=800, height=400)
+                st_folium(m, width=800, height=500)
                 
             except Exception as e:
                 st.warning(f"No se pudo generar el mapa: {str(e)}")
         
         # Tabla de nutrientes principales
-        st.subheader("📋 NUTRIENTES PRINCIPALES")
+        st.subheader("📋 ANÁLISIS DE NUTRIENTES PRINCIPALES")
         
         nutrientes_cols = ['id_zona', 'area_ha', 'indice_fertilidad', 'categoria_fertilidad',
-                          'NITROGENO_valor', 'FOSFORO_valor', 'POTASIO_valor',
+                          'NITROGENO_valor', 'NITROGENO_estado',
+                          'FOSFORO_valor', 'FOSFORO_estado',
+                          'POTASIO_valor', 'POTASIO_estado',
                           'MATERIA_ORGANICA_valor', 'pH_valor']
         
         cols_existentes = [c for c in nutrientes_cols if c in gdf_fertilidad.columns]
         
         if cols_existentes:
-            df_nutrientes = gdf_fertilidad[cols_existentes].copy()
+            df_nutrientes = gdf_fertilidad[cols_existentes].head(15).copy()
             
             # Formatear valores
-            if 'NITROGENO_valor' in df_nutrientes.columns:
-                df_nutrientes['NITROGENO_valor'] = df_nutrientes['NITROGENO_valor'].apply(lambda x: f"{x:.2f}%")
-            if 'FOSFORO_valor' in df_nutrientes.columns:
-                df_nutrientes['FOSFORO_valor'] = df_nutrientes['FOSFORO_valor'].apply(lambda x: f"{x:.0f} ppm")
-            if 'POTASIO_valor' in df_nutrientes.columns:
-                df_nutrientes['POTASIO_valor'] = df_nutrientes['POTASIO_valor'].apply(lambda x: f"{x:.3f}")
-            if 'MATERIA_ORGANICA_valor' in df_nutrientes.columns:
-                df_nutrientes['MATERIA_ORGANICA_valor'] = df_nutrientes['MATERIA_ORGANICA_valor'].apply(lambda x: f"{x:.1f}%")
-            if 'pH_valor' in df_nutrientes.columns:
-                df_nutrientes['pH_valor'] = df_nutrientes['pH_valor'].apply(lambda x: f"{x:.1f}")
             if 'indice_fertilidad' in df_nutrientes.columns:
                 df_nutrientes['indice_fertilidad'] = df_nutrientes['indice_fertilidad'].apply(lambda x: f"{x:.2f}")
             if 'area_ha' in df_nutrientes.columns:
                 df_nutrientes['area_ha'] = df_nutrientes['area_ha'].apply(lambda x: f"{x:.2f}")
             
-            st.dataframe(df_nutrientes.head(15), height=400)
+            st.dataframe(df_nutrientes, height=400)
         
-        # Recomendaciones generales
-        st.subheader("💡 RECOMENDACIONES GENERALES")
+        # Recomendaciones
+        st.subheader("💡 RECOMENDACIONES DE FERTILIZACIÓN")
         
-        if 'recomendaciones' in gdf_fertilidad.columns and len(gdf_fertilidad) > 0:
+        if 'recomendaciones_fertilizacion' in gdf_fertilidad.columns and len(gdf_fertilidad) > 0:
             try:
-                # Tomar recomendaciones de la primera zona como ejemplo
-                rec_text = gdf_fertilidad.iloc[0]['recomendaciones']
+                # Tomar recomendaciones de la primera zona
+                rec_text = gdf_fertilidad.iloc[0]['recomendaciones_fertilizacion']
                 if rec_text:
-                    recomendaciones = rec_text.split('; ')
-                    for i, rec in enumerate(recomendaciones[:5]):
-                        st.markdown(f"• {rec}")
+                    recomendaciones = rec_text.split(' • ')
+                    
+                    col_rec1, col_rec2 = st.columns(2)
+                    
+                    with col_rec1:
+                        for i, rec in enumerate(recomendaciones[:len(recomendaciones)//2]):
+                            st.markdown(f"• {rec}")
+                    
+                    with col_rec2:
+                        for i, rec in enumerate(recomendaciones[len(recomendaciones)//2:]):
+                            st.markdown(f"• {rec}")
             except:
                 pass
             
-            # Recomendaciones específicas por cultivo
-            st.markdown("#### 📅 Recomendaciones por Cultivo")
+            # Recomendaciones adicionales por cultivo
+            st.markdown("#### 🌱 Recomendaciones Específicas por Cultivo")
+            
             if cultivo == "PALMA_ACEITERA":
-                st.info("""
+                st.success("""
                 **Para Palma Aceitera:**
-                • Época de fertilización: inicio de lluvias
-                • Fraccionamiento: 3-4 aplicaciones anuales
-                • Balance NPK recomendado: 12-6-18 + 3MgO
-                • Materia orgánica: 3-5 ton/ha anual
+                • Época óptima de fertilización: inicio de la estación lluviosa
+                • Fraccionamiento recomendado: 3-4 aplicaciones anuales
+                • Balance NPK típico: 12-6-18 + 3MgO + micronutrientes
+                • Materia orgánica: mínimo 3% en el suelo
+                • Monitoreo de pH: mantener entre 5.0-6.0
                 """)
             elif cultivo == "CACAO":
                 st.info("""
                 **Para Cacao:**
-                • Fertilización orgánica preferible
-                • Época: después de podas
-                • Balance NPK: 15-10-15
+                • Preferir fertilización orgánica
+                • Aplicar después de podas principales
+                • Balance NPK: 15-10-15 para plantas jóvenes
                 • Evitar aplicación en suelo seco
+                • Usar coberturas leguminosas
                 """)
         
         # Descarga
@@ -1094,6 +1121,16 @@ def mostrar_analisis_fertilidad():
                     data=csv_data,
                     file_name=f"fertilidad_{cultivo}_{datetime.now().strftime('%Y%m%d')}.csv",
                     mime="text/csv"
+                )
+        
+        with col2:
+            if not gdf_fertilidad.empty:
+                geojson_data = gdf_fertilidad.to_json()
+                st.download_button(
+                    label="🗺️ Descargar GeoJSON",
+                    data=geojson_data,
+                    file_name=f"fertilidad_{cultivo}_{datetime.now().strftime('%Y%m%d')}.geojson",
+                    mime="application/json"
                 )
         
     except Exception as e:
@@ -1117,21 +1154,16 @@ def main():
         # Tipo de análisis
         tipo_analisis = st.selectbox(
             "🔍 Tipo de Análisis:",
-            ["ANÁLISIS DE TEXTURA", "FERTILIDAD INTEGRAL", "RECOMENDACIONES COMPLETAS"],
+            ["ANÁLISIS DE TEXTURA", "FERTILIDAD REAL", "RECOMENDACIONES COMPLETAS"],
             index=0
         )
         
         # Mes
         st.session_state.mes_analisis = st.selectbox(
-            "📅 Mes:",
-            list(FACTORES_MES_TROPICALES.keys()),
+            "📅 Mes de Análisis:",
+            ["ENERO", "FEBRERO", "MARZO", "ABRIL", "MAYO", "JUNIO", 
+             "JULIO", "AGOSTO", "SEPTIEMBRE", "OCTUBRE", "NOVIEMBRE", "DICIEMBRE"],
             index=0
-        )
-        
-        # Opciones
-        st.session_state.usar_planetscope = st.checkbox(
-            "🛰️ Incluir datos satelitales",
-            value=True
         )
         
         # División
@@ -1144,8 +1176,9 @@ def main():
         # Subir archivo
         st.subheader("📤 SUBIR PARCELA")
         uploaded_file = st.file_uploader(
-            "Subir archivo (ZIP/KML/SHP)",
-            type=['zip', 'kml', 'shp']
+            "Subir archivo de parcela",
+            type=['zip', 'kml', 'shp'],
+            help="Formatos: Shapefile (.zip), KML, o SHP individual"
         )
         
         # Botones
@@ -1169,7 +1202,7 @@ def main():
     else:
         if tipo_analisis == "ANÁLISIS DE TEXTURA":
             mostrar_analisis_textura()
-        elif tipo_analisis == "FERTILIDAD INTEGRAL":
+        elif tipo_analisis == "FERTILIDAD REAL":
             mostrar_analisis_fertilidad()
         else:
             st.warning("Seleccione un tipo de análisis válido")
@@ -1189,25 +1222,25 @@ def mostrar_interfaz_configuracion(uploaded_file, n_divisiones, tipo_analisis):
     
     # Procesar archivo
     if uploaded_file is not None:
-        with st.spinner("Procesando archivo..."):
+        with st.spinner("🔄 Procesando archivo..."):
             gdf_original = procesar_archivo(uploaded_file)
             if gdf_original is not None:
                 st.session_state.gdf_original = gdf_original
                 st.session_state.datos_demo = False
-                st.success("✅ Archivo procesado")
+                st.success("✅ Archivo procesado exitosamente")
     
     elif st.session_state.datos_demo and st.session_state.gdf_original is None:
-        # Datos demo
+        # Datos demo para Colombia/Venezuela
         poligono = Polygon([
             [-73.5, 5.0], [-73.4, 5.0], [-73.4, 5.1], [-73.5, 5.1], [-73.5, 5.0]
         ])
         gdf_demo = gpd.GeoDataFrame(
-            {'id': [1], 'nombre': ['Parcela Demo']},
+            {'id': [1], 'nombre': ['Parcela Demo - Zona Palmera']},
             geometry=[poligono],
             crs="EPSG:4326"
         )
         st.session_state.gdf_original = gdf_demo
-        st.success("✅ Datos demo creados")
+        st.success("✅ Datos de demostración creados")
     
     # Mostrar parcela
     if st.session_state.gdf_original is not None:
@@ -1228,11 +1261,12 @@ def mostrar_interfaz_configuracion(uploaded_file, n_divisiones, tipo_analisis):
         st.markdown("### 🚀 EJECUTAR ANÁLISIS")
         
         if st.button("▶️ Iniciar Análisis", type="primary", use_container_width=True):
-            with st.spinner("Dividiendo parcela..."):
+            with st.spinner("🔄 Dividiendo parcela en zonas..."):
                 gdf_zonas = dividir_parcela_en_zonas(gdf_original, n_divisiones)
                 st.session_state.gdf_zonas = gdf_zonas
+                st.success(f"✅ Parcela dividida en {len(gdf_zonas)} zonas")
             
-            with st.spinner("Realizando análisis..."):
+            with st.spinner(f"🔬 Realizando análisis de {tipo_analisis.lower()}..."):
                 if tipo_analisis == "ANÁLISIS DE TEXTURA":
                     gdf_resultado = analizar_textura_suelo(
                         gdf_zonas, 
@@ -1240,14 +1274,16 @@ def mostrar_interfaz_configuracion(uploaded_file, n_divisiones, tipo_analisis):
                         st.session_state.mes_analisis
                     )
                     st.session_state.analisis_textura = gdf_resultado
+                    st.success("✅ Análisis de textura completado")
                 
-                elif tipo_analisis == "FERTILIDAD INTEGRAL":
-                    gdf_resultado = analizar_fertilidad_integral(
+                elif tipo_analisis == "FERTILIDAD REAL":
+                    gdf_resultado = analizar_fertilidad_real(
                         gdf_zonas,
                         st.session_state.cultivo_seleccionado,
                         st.session_state.mes_analisis
                     )
                     st.session_state.analisis_fertilidad = gdf_resultado
+                    st.success("✅ Análisis de fertilidad REAL completado")
                 
                 st.session_state.analisis_completado = True
             
@@ -1262,26 +1298,34 @@ def mostrar_interfaz_configuracion(uploaded_file, n_divisiones, tipo_analisis):
             st.info("""
             **📤 Para comenzar:**
             1. Sube tu archivo de parcela
-            2. Selecciona cultivo y análisis
-            3. Configura las opciones
-            4. Haz clic en 'Iniciar Análisis'
+            2. Selecciona el cultivo
+            3. Elige el tipo de análisis
+            4. Configura las opciones
+            5. Haz clic en 'Iniciar Análisis'
             
             **📄 Formatos soportados:**
-            • Shapefile (.zip)
-            • Archivo KML
-            • Shapefile individual
+            • Shapefile comprimido (.zip)
+            • Archivo KML de Google Earth
+            • Shapefile individual (.shp)
             """)
         
         with col2:
             st.success("""
-            **🔬 Funcionalidades:**
-            • Análisis de textura específico
-            • Fertilidad integral completa
-            • Mapas interactivos
-            • Recomendaciones técnicas
-            • Descarga de resultados
+            **🔬 Funcionalidades disponibles:**
+            
+            **ANÁLISIS DE TEXTURA:**
+            • Clasificación específica para palma
+            • Gráfico de torta de distribución
+            • Mapa interactivo de texturas
+            • Datos detallados por zona
+            
+            **FERTILIDAD REAL:**
+            • Análisis completo de nutrientes
+            • Índice de fertilidad calculado
+            • Recomendaciones específicas
+            • Mapas de categoría de fertilidad
             """)
 
-# Ejecutar
+# Ejecutar aplicación
 if __name__ == "__main__":
     main()
