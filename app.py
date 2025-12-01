@@ -24,14 +24,11 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import base64
 import fiona
-
 st.set_page_config(page_title="🌴 Analizador Cultivos", layout="wide")
 st.title("🌱 ANALIZADOR CULTIVOS - METODOLOGÍA GEE COMPLETA CON AGROECOLOGÍA")
 st.markdown("---")
-
 # Configurar para restaurar .shx automáticamente
 os.environ['SHAPE_RESTORE_SHX'] = 'YES'
-
 # ============================================================================
 # METODOLOGÍAS AVANZADAS DE ANÁLISIS DE TEXTURA (Sciencedirect, 2021; Frontiers, 2024)
 # ============================================================================
@@ -64,7 +61,6 @@ METODOLOGIAS_AVANZADAS = {
         ]
     }
 }
-
 # PARÁMETROS MEJORADOS Y MÁS REALISTAS PARA DIFERENTES CULTIVOS
 PARAMETROS_CULTIVOS = {
     'PALMA_ACEITERA': {
@@ -98,7 +94,6 @@ PARAMETROS_CULTIVOS = {
         'NDWI_OPTIMO': {'min': 0.0, 'max': 0.5, 'optimo': 0.3}
     }
 }
-
 # PARÁMETROS DE ALTIMETRÍA POR CULTIVO
 ALTIMETRIA_OPTIMA = {
     'PALMA_ACEITERA': {
@@ -120,7 +115,6 @@ ALTIMETRIA_OPTIMA = {
         'orientacion_optima': ['N', 'NE', 'NW']
     }
 }
-
 # ============================================================================
 # PARÁMETROS DE TEXTURA CON NOMENCLATURA ACTUALIZADA Y METODOLOGÍAS AVANZADAS
 # ============================================================================
@@ -159,7 +153,6 @@ TEXTURA_SUELO_OPTIMA = {
         'sensores_recomendados': ['Sensores de humedad volumétrica', 'TDR', 'FDR']
     }
 }
-
 # CLASIFICACIÓN DE TEXTURAS DEL SUELO - NOMBRES ACTUALIZADOS
 CLASIFICACION_TEXTURAS = {
     'Arenoso': {'arena_min': 85, 'arena_max': 100, 'limo_max': 15, 'arcilla_max': 15},
@@ -168,7 +161,6 @@ CLASIFICACION_TEXTURAS = {
     'Franco Arcilloso': {'arena_min': 20, 'arena_max': 45, 'limo_min': 15, 'limo_max': 53, 'arcilla_min': 27, 'arcilla_max': 40},
     'Arcilloso': {'arena_max': 45, 'limo_max': 40, 'arcilla_min': 40}
 }
-
 # FACTORES EDÁFICOS MÁS REALISTAS - NOMBRES ACTUALIZADOS
 FACTORES_SUELO = {
     'Arcilloso': {'retention': 1.3, 'drainage': 0.7, 'aeration': 0.6, 'workability': 0.5, 'riesgo': 'Alto', 'intervencion': 'Media-Alta'},
@@ -177,7 +169,6 @@ FACTORES_SUELO = {
     'Franco Arcilloso-Arenoso': {'retention': 0.8, 'drainage': 1.2, 'aeration': 1.3, 'workability': 1.2, 'riesgo': 'Moderado', 'intervencion': 'Media'},
     'Arenoso': {'retention': 0.6, 'drainage': 1.4, 'aeration': 1.5, 'workability': 1.4, 'riesgo': 'Alto', 'intervencion': 'Alta'}
 }
-
 # ============================================================================
 # RECOMENDACIONES MEJORADAS CON METODOLOGÍAS AVANZADAS - NOMBRES ACTUALIZADOS
 # ============================================================================
@@ -228,7 +219,6 @@ RECOMENDACIONES_TEXTURA = {
         "Monitoreo intensivo con sensores de humedad y conductividad eléctrica"
     ]
 }
-
 # PRINCIPIOS AGROECOLÓGICOS - RECOMENDACIONES ESPECÍFICAS
 RECOMENDACIONES_AGROECOLOGICAS = {
     'PALMA_ACEITERA': {
@@ -313,32 +303,27 @@ RECOMENDACIONES_AGROECOLOGICAS = {
         ]
     }
 }
-
 # FACTORES ESTACIONALES
 FACTORES_MES = {
     "ENERO": 0.9, "FEBRERO": 0.95, "MARZO": 1.0, "ABRIL": 1.05,
     "MAYO": 1.1, "JUNIO": 1.0, "JULIO": 0.95, "AGOSTO": 0.9,
     "SEPTIEMBRE": 0.95, "OCTUBRE": 1.0, "NOVIEMBRE": 1.05, "DICIEMBRE": 1.0
 }
-
 FACTORES_N_MES = {
     "ENERO": 1.0, "FEBRERO": 1.05, "MARZO": 1.1, "ABRIL": 1.15,
     "MAYO": 1.2, "JUNIO": 1.1, "JULIO": 1.0, "AGOSTO": 0.9,
     "SEPTIEMBRE": 0.95, "OCTUBRE": 1.0, "NOVIEMBRE": 1.05, "DICIEMBRE": 1.0
 }
-
 FACTORES_P_MES = {
     "ENERO": 1.0, "FEBRERO": 1.0, "MARZO": 1.05, "ABRIL": 1.1,
     "MAYO": 1.15, "JUNIO": 1.1, "JULIO": 1.05, "AGOSTO": 1.0,
     "SEPTIEMBRE": 1.0, "OCTUBRE": 1.05, "NOVIEMBRE": 1.1, "DICIEMBRE": 1.05
 }
-
 FACTORES_K_MES = {
     "ENERO": 1.0, "FEBRERO": 1.0, "MARZO": 1.0, "ABRIL": 1.05,
     "MAYO": 1.1, "JUNIO": 1.15, "JULIO": 1.2, "AGOSTO": 1.15,
     "SEPTIEMBRE": 1.1, "OCTUBRE": 1.05, "NOVIEMBRE": 1.0, "DICIEMBRE": 1.0
 }
-
 # PALETAS GEE MEJORADAS
 PALETAS_GEE = {
     'FERTILIDAD': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837'],
@@ -349,7 +334,6 @@ PALETAS_GEE = {
     'NDWI': ['#313695', '#4575b4', '#74add1', '#abd9e9', '#e0f3f8', '#ffffbf', '#fee090', '#fdae61', '#f46d43', '#d73027'],
     'ALTIMETRIA': ['#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#ffffbf', '#fee08b', '#fdae61', '#f46d43', '#d73027']
 }
-
 # FUENTES DE DATOS SATELITALES DISPONIBLES
 FUENTES_SATELITALES = {
     'PLANETSCOPE': {
@@ -371,11 +355,9 @@ FUENTES_SATELITALES = {
         'ventajas': 'Largo histórico de datos'
     }
 }
-
 # ============================================================================
 # INICIALIZACIÓN DE SESSION STATE
 # ============================================================================
-
 # Inicializar session_state
 if 'analisis_completado' not in st.session_state:
     st.session_state.analisis_completado = False
@@ -413,11 +395,13 @@ if 'fuente_satelital' not in st.session_state:
     st.session_state.fuente_satelital = "PLANETSCOPE"
 if 'n_zonas' not in st.session_state:
     st.session_state.n_zonas = 10
+if 'nutriente_npk' not in st.session_state:
+    st.session_state.nutriente_npk = "NITRÓGENO"  # <-- NUEVO
+
 
 # ============================================================================
 # FUNCIONES PARA TODOS LOS ANÁLISIS
 # ============================================================================
-
 def clasificar_textura_suelo(arena, limo, arcilla):
     """Clasifica la textura del suelo según el triángulo de texturas USDA con nomenclatura actualizada"""
     try:
@@ -425,11 +409,9 @@ def clasificar_textura_suelo(arena, limo, arcilla):
         total = arena + limo + arcilla
         if total <= 0:
             return "NO_DETERMINADA"
-        
         arena_norm = (arena / total) * 100
         limo_norm = (limo / total) * 100
         arcilla_norm = (arcilla / total) * 100
-        
         # Clasificación según USDA - NOMBRES ACTUALIZADOS
         if arcilla_norm >= 40:
             return "Arcilloso"
@@ -455,10 +437,8 @@ def clasificar_textura_suelo(arena, limo, arcilla):
                     return "Franco Arenoso"
             else:
                 return "Franco"
-        
     except Exception as e:
         return "NO_DETERMINADA"
-
 def calcular_propiedades_fisicas_suelo(textura, materia_organica, metodologia="SENSORES_PROXIMALES"):
     """Calcula propiedades físicas del suelo basadas en textura, MO y metodología avanzada"""
     propiedades = {
@@ -472,7 +452,6 @@ def calcular_propiedades_fisicas_suelo(textura, materia_organica, metodologia="S
         'indice_estructura': 0.0,
         'capacidad_intercambio_cationico': 0.0
     }
-    
     # Valores base según textura (mm/m) - NOMBRES ACTUALIZADOS
     base_propiedades = {
         'Arcilloso': {'cc': 350, 'pm': 200, 'da': 1.3, 'porosidad': 0.5, 'kh': 0.1, 'rp': 3.5, 'ie': 0.6, 'cic': 25},
@@ -481,13 +460,10 @@ def calcular_propiedades_fisicas_suelo(textura, materia_organica, metodologia="S
         'Franco Arcilloso-Arenoso': {'cc': 180, 'pm': 80, 'da': 1.35, 'porosidad': 0.49, 'kh': 5.0, 'rp': 1.5, 'ie': 1.2, 'cic': 12},
         'Arenoso': {'cc': 120, 'pm': 50, 'da': 1.5, 'porosidad': 0.43, 'kh': 15.0, 'rp': 1.0, 'ie': 1.4, 'cic': 8}
     }
-    
     if textura in base_propiedades:
         base = base_propiedades[textura]
-        
         # Ajustar por materia orgánica (cada 1% de MO mejora propiedades)
         factor_mo = 1.0 + (materia_organica * 0.05)
-        
         # Ajustar según metodología de análisis
         if metodologia == "SENSORES_PROXIMALES":
             factor_metodologia = 1.1  # Mayor precisión
@@ -495,7 +471,6 @@ def calcular_propiedades_fisicas_suelo(textura, materia_organica, metodologia="S
             factor_metodologia = 1.05  # Precisión media-alta
         else:
             factor_metodologia = 1.0  # Modelado estándar
-        
         propiedades['capacidad_campo'] = base['cc'] * factor_mo * factor_metodologia
         propiedades['punto_marchitez'] = base['pm'] * factor_mo * factor_metodologia
         propiedades['agua_disponible'] = (base['cc'] - base['pm']) * factor_mo * factor_metodologia
@@ -505,13 +480,10 @@ def calcular_propiedades_fisicas_suelo(textura, materia_organica, metodologia="S
         propiedades['resistencia_penetracion'] = base['rp'] / factor_mo
         propiedades['indice_estructura'] = min(2.0, base['ie'] * factor_mo)
         propiedades['capacidad_intercambio_cationico'] = base['cic'] * factor_mo
-    
     return propiedades
-
 def evaluar_adecuacion_textura(textura_actual, cultivo, metodologia="TRADICIONAL"):
     """Evalúa qué tan adecuada es la textura para el cultivo específico"""
     textura_optima = TEXTURA_SUELO_OPTIMA[cultivo]['textura_optima']
-    
     # Jerarquía de adecuación - NOMBRES ACTUALIZADOS
     jerarquia_texturas = {
         'Arenoso': 1,
@@ -523,15 +495,11 @@ def evaluar_adecuacion_textura(textura_actual, cultivo, metodologia="TRADICIONAL
         'Arcilloso': 7,
         'NO_DETERMINADA': 0
     }
-    
     if textura_actual not in jerarquia_texturas:
         return "NO_DETERMINADA", 0, "Sin datos suficientes"
-    
     actual_idx = jerarquia_texturas[textura_actual]
     optima_idx = jerarquia_texturas.get(textura_optima, 4)  # Franco por defecto
-    
     diferencia = abs(actual_idx - optima_idx)
-    
     # Evaluación con metodología avanzada
     if metodologia in ["SENSORES_PROXIMALES", "TELEDETECCION_ALTA_RES"]:
         # Mayor precisión en la evaluación
@@ -557,14 +525,11 @@ def evaluar_adecuacion_textura(textura_actual, cultivo, metodologia="TRADICIONAL
             return "LIMITANTE", 0.4, "Textura con limitaciones para el cultivo"
         else:
             return "MUY LIMITANTE", 0.2, "Textura muy limitante para el cultivo"
-
 def simular_datos_sensores(centroid, textura, cultivo):
     """Simula datos de sensores proximales y teledetección para análisis avanzado"""
-    
     # Semilla basada en coordenadas para reproducibilidad
     seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_sensor")) % (2**32)
     rng = np.random.RandomState(seed_value)
-    
     datos_sensores = {
         'conductividad_electrica': 0.0,
         'reflectancia_nir': 0.0,
@@ -574,7 +539,6 @@ def simular_datos_sensores(centroid, textura, cultivo):
         'ndwi': 0.0,
         'indice_compactacion': 0.0
     }
-    
     # Valores base según textura
     if textura == "Arcilloso":
         datos_sensores['conductividad_electrica'] = rng.normal(1.5, 0.3)
@@ -601,38 +565,29 @@ def simular_datos_sensores(centroid, textura, cultivo):
         datos_sensores['reflectancia_nir'] = rng.normal(0.65, 0.05)
         datos_sensores['humedad_volumetrica'] = rng.normal(0.15, 0.05)
         datos_sensores['indice_compactacion'] = rng.normal(0.1, 0.05)
-    
     # Datos adicionales
     datos_sensores['temperatura_superficie'] = rng.normal(25.0, 3.0)
     datos_sensores['ndvi'] = rng.normal(0.6, 0.1)
     datos_sensores['ndwi'] = rng.normal(0.2, 0.1)
-    
     return datos_sensores
-
 def generar_recomendaciones_avanzadas(textura, cultivo, datos_sensores, adecuacion):
     """Genera recomendaciones específicas basadas en metodologías avanzadas"""
-    
     recomendaciones = {
         'monitoreo': [],
         'manejo': [],
         'tecnologia': [],
         'alerta': []
     }
-    
     # Recomendaciones generales por textura
     if textura in RECOMENDACIONES_TEXTURA:
         recomendaciones['manejo'] = RECOMENDACIONES_TEXTURA[textura][:4]
-    
     # Recomendaciones específicas basadas en sensores
     if datos_sensores['conductividad_electrica'] < 0.8:
         recomendaciones['alerta'].append("⚠️ Conductividad eléctrica baja: considerar aplicación de enmiendas orgánicas")
-    
     if datos_sensores['humedad_volumetrica'] < 0.15:
         recomendaciones['alerta'].append("💧 Humedad volumétrica crítica: implementar riego de emergencia")
-    
     if datos_sensores['indice_compactacion'] > 0.6:
         recomendaciones['alerta'].append("🚜 Índice de compactación alto: considerar labranza vertical o subsolado")
-    
     # Recomendaciones tecnológicas
     if adecuacion[1] < 0.5:  # Baja adecuación
         recomendaciones['tecnologia'].extend([
@@ -646,7 +601,6 @@ def generar_recomendaciones_avanzadas(textura, cultivo, datos_sensores, adecuaci
             "🗺️ Actualización anual de mapas de textura",
             "📈 Análisis estacional de variabilidad"
         ])
-    
     # Recomendaciones de monitoreo según cultivo
     metodologias = TEXTURA_SUELO_OPTIMA[cultivo]['metodologias_recomendadas']
     for metodologia in metodologias:
@@ -654,15 +608,11 @@ def generar_recomendaciones_avanzadas(textura, cultivo, datos_sensores, adecuaci
             recomendaciones['monitoreo'].append(
                 f"🔬 {metodologia.replace('_', ' ').title()}: {METODOLOGIAS_AVANZADAS[metodologia]['descripcion']}"
             )
-    
     return recomendaciones
-
 def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANETSCOPE"):
     """Realiza análisis de fertilidad real del suelo"""
-    
     params_cultivo = PARAMETROS_CULTIVOS[cultivo]
     zonas_gdf = gdf.copy()
-    
     # Inicializar columnas para fertilidad
     zonas_gdf['area_ha'] = 0.0
     zonas_gdf['materia_organica'] = 0.0
@@ -675,22 +625,18 @@ def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANE
     zonas_gdf['categoria_fertilidad'] = "BAJA"
     zonas_gdf['limitantes'] = ""
     zonas_gdf['recomendaciones_fertilidad'] = ""
-    
     for idx, row in zonas_gdf.iterrows():
         try:
             # Calcular área
             area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
-            
             # Obtener centroide
             if hasattr(row.geometry, 'centroid'):
                 centroid = row.geometry.centroid
             else:
                 centroid = row.geometry.representative_point()
-            
             # Semilla para reproducibilidad
             seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_fertilidad_{fuente_satelital}")) % (2**32)
             rng = np.random.RandomState(seed_value)
-            
             # Simular parámetros de fertilidad basados en fuente satelital
             if fuente_satelital == "PLANETSCOPE":
                 # Alta precisión con PlanetScope
@@ -699,41 +645,34 @@ def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANE
                 precision = 0.75
             else:
                 precision = 0.65
-            
             # Materia orgánica (0-10%)
             materia_organica = max(0.5, min(8.0, rng.normal(
                 params_cultivo['MATERIA_ORGANICA_OPTIMA'],
                 params_cultivo['MATERIA_ORGANICA_OPTIMA'] * 0.3
             )))
-            
             # pH (4.5-8.5)
             ph = max(4.5, min(8.5, rng.normal(
                 params_cultivo['pH_OPTIMO'],
                 0.5
             )))
-            
             # Conductividad eléctrica (dS/m)
             conductividad = max(0.2, min(3.0, rng.normal(
                 params_cultivo['CONDUCTIVIDAD_OPTIMA'],
                 params_cultivo['CONDUCTIVIDAD_OPTIMA'] * 0.4
             )))
-            
             # Macronutrientes (kg/ha)
             nitrogeno = max(50, min(300, rng.normal(
                 params_cultivo['NITROGENO']['optimo'],
                 params_cultivo['NITROGENO']['optimo'] * 0.3
             )))
-            
             fosforo = max(20, min(150, rng.normal(
                 params_cultivo['FOSFORO']['optimo'],
                 params_cultivo['FOSFORO']['optimo'] * 0.4
             )))
-            
             potasio = max(80, min(400, rng.normal(
                 params_cultivo['POTASIO']['optimo'],
                 params_cultivo['POTASIO']['optimo'] * 0.3
             )))
-            
             # Calcular índice de fertilidad (0-1)
             indice_mo = min(1.0, materia_organica / params_cultivo['MATERIA_ORGANICA_OPTIMA'])
             indice_ph = 1.0 - abs(ph - params_cultivo['pH_OPTIMO']) / 2.0
@@ -741,10 +680,8 @@ def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANE
             indice_n = min(1.0, nitrogeno / params_cultivo['NITROGENO']['optimo'])
             indice_p = min(1.0, fosforo / params_cultivo['FOSFORO']['optimo'])
             indice_k = min(1.0, potasio / params_cultivo['POTASIO']['optimo'])
-            
             indice_fertilidad = (indice_mo * 0.2 + indice_ph * 0.15 + indice_ce * 0.1 +
                                indice_n * 0.2 + indice_p * 0.15 + indice_k * 0.2) * precision
-            
             # Clasificar fertilidad
             if indice_fertilidad >= 0.8:
                 categoria = "MUY ALTA"
@@ -756,7 +693,6 @@ def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANE
                 categoria = "MEDIA-BAJA"
             else:
                 categoria = "BAJA"
-            
             # Identificar limitantes
             limitantes = []
             if materia_organica < params_cultivo['MATERIA_ORGANICA_OPTIMA'] * 0.8:
@@ -769,7 +705,6 @@ def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANE
                 limitantes.append(f"Fósforo bajo ({fosforo:.0f} kg/ha)")
             if potasio < params_cultivo['POTASIO']['min']:
                 limitantes.append(f"Potasio bajo ({potasio:.0f} kg/ha)")
-            
             # Generar recomendaciones
             recomendaciones = []
             if len(limitantes) > 0:
@@ -778,22 +713,18 @@ def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANE
                     recomendaciones.append(f"Aplicar cal para subir pH de {ph:.1f} a {params_cultivo['pH_OPTIMO']}")
                 elif ph > params_cultivo['pH_OPTIMO'] + 0.3:
                     recomendaciones.append(f"Aplicar azufre para bajar pH de {ph:.1f} a {params_cultivo['pH_OPTIMO']}")
-                
                 if nitrogeno < params_cultivo['NITROGENO']['min']:
                     deficit_n = params_cultivo['NITROGENO']['optimo'] - nitrogeno
                     recomendaciones.append(f"Aplicar {deficit_n:.0f} kg/ha de N (urea o sulfato de amonio)")
-                
                 if fosforo < params_cultivo['FOSFORO']['min']:
                     deficit_p = params_cultivo['FOSFORO']['optimo'] - fosforo
                     recomendaciones.append(f"Aplicar {deficit_p:.0f} kg/ha de P₂O₅ (superfosfato o roca fosfórica)")
-                
                 if potasio < params_cultivo['POTASIO']['min']:
                     deficit_k = params_cultivo['POTASIO']['optimo'] - potasio
                     recomendaciones.append(f"Aplicar {deficit_k:.0f} kg/ha de K₂O (cloruro o sulfato de potasio)")
             else:
                 recomendaciones.append("Fertilidad óptima - mantener prácticas actuales")
                 recomendaciones.append("Realizar análisis de suelo cada 6 meses para monitoreo")
-            
             # Asignar valores al GeoDataFrame
             zonas_gdf.loc[idx, 'area_ha'] = area_ha
             zonas_gdf.loc[idx, 'materia_organica'] = materia_organica
@@ -806,7 +737,6 @@ def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANE
             zonas_gdf.loc[idx, 'categoria_fertilidad'] = categoria
             zonas_gdf.loc[idx, 'limitantes'] = " | ".join(limitantes[:3]) if limitantes else "Ninguna detectada"
             zonas_gdf.loc[idx, 'recomendaciones_fertilidad'] = " | ".join(recomendaciones[:3])
-            
         except Exception as e:
             # Valores por defecto
             zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
@@ -820,15 +750,11 @@ def analizar_fertilidad_real(gdf, cultivo, mes_analisis, fuente_satelital="PLANE
             zonas_gdf.loc[idx, 'categoria_fertilidad'] = "MEDIA-ALTA"
             zonas_gdf.loc[idx, 'limitantes'] = "Ninguna detectada"
             zonas_gdf.loc[idx, 'recomendaciones_fertilidad'] = "Mantener prácticas actuales"
-    
     return zonas_gdf
-
 def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_satelital="PLANETSCOPE"):
     """Genera recomendaciones específicas de NPK basadas en análisis de suelo"""
-    
     params_cultivo = PARAMETROS_CULTIVOS[cultivo]
     zonas_gdf = gdf.copy()
-    
     # Obtener factor estacional
     if nutriente == "NITRÓGENO":
         factor_mes = FACTORES_N_MES[mes_analisis]
@@ -842,7 +768,6 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
         factor_mes = FACTORES_K_MES[mes_analisis]
         param_nutriente = params_cultivo['POTASIO']
         unidad = "kg/ha K₂O"
-    
     # Inicializar columnas para recomendaciones NPK
     zonas_gdf['area_ha'] = 0.0
     zonas_gdf[f'{nutriente.lower()}_actual'] = 0.0
@@ -852,22 +777,18 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
     zonas_gdf[f'recomendacion_{nutriente.lower()}_tipo'] = ""
     zonas_gdf[f'categoria_{nutriente.lower()}'] = "ÓPTIMO"
     zonas_gdf[f'programacion_aplicacion_{nutriente.lower()}'] = ""
-    
     for idx, row in zonas_gdf.iterrows():
         try:
             # Calcular área
             area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
-            
             # Obtener centroide
             if hasattr(row.geometry, 'centroid'):
                 centroid = row.geometry.centroid
             else:
                 centroid = row.geometry.representative_point()
-            
             # Semilla para reproducibilidad
             seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_{nutriente}_{mes_analisis}")) % (2**32)
             rng = np.random.RandomState(seed_value)
-            
             # Simular contenido actual del nutriente
             if fuente_satelital == "PLANETSCOPE":
                 # Alta precisión
@@ -876,7 +797,6 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
                 variabilidad = 0.20
             else:
                 variabilidad = 0.25
-            
             nutriente_actual = max(
                 param_nutriente['min'] * 0.5,
                 min(
@@ -887,13 +807,10 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
                     )
                 )
             )
-            
             # Calcular déficit
             deficit = max(0, param_nutriente['optimo'] * factor_mes - nutriente_actual)
-            
             # Recomendación en kg/ha
             recomendacion_kg = deficit * 1.2  # Aplicar 20% extra para compensar pérdidas
-            
             # Determinar tipo de fertilizante recomendado
             if nutriente == "NITRÓGENO":
                 if recomendacion_kg < 30:
@@ -912,10 +829,8 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
                     tipo_fertilizante = "Cloruro de potasio (60% K₂O)"
                 else:
                     tipo_fertilizante = "Sulfato de potasio (50% K₂O)"
-            
             # Categorizar estado del nutriente
             porcentaje_optimo = (nutriente_actual / (param_nutriente['optimo'] * factor_mes)) * 100
-            
             if porcentaje_optimo >= 90:
                 categoria = "ÓPTIMO"
             elif porcentaje_optimo >= 70:
@@ -926,7 +841,6 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
                 categoria = "DEFICIENTE"
             else:
                 categoria = "MUY DEFICIENTE"
-            
             # Programación de aplicación
             if deficit > 0:
                 if nutriente == "NITRÓGENO":
@@ -943,7 +857,6 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
                     programacion = "2 aplicaciones (60% al inicio, 40% a los 90 días)"
             else:
                 programacion = "No requiere aplicación adicional"
-            
             # Asignar valores al GeoDataFrame
             zonas_gdf.loc[idx, 'area_ha'] = area_ha
             zonas_gdf.loc[idx, f'{nutriente.lower()}_actual'] = nutriente_actual
@@ -952,7 +865,6 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
             zonas_gdf.loc[idx, f'recomendacion_{nutriente.lower()}_tipo'] = tipo_fertilizante
             zonas_gdf.loc[idx, f'categoria_{nutriente.lower()}'] = categoria
             zonas_gdf.loc[idx, f'programacion_aplicacion_{nutriente.lower()}'] = programacion
-            
         except Exception as e:
             # Valores por defecto
             zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
@@ -962,15 +874,11 @@ def generar_recomendaciones_npk(gdf, cultivo, nutriente, mes_analisis, fuente_sa
             zonas_gdf.loc[idx, f'recomendacion_{nutriente.lower()}_tipo'] = "No requiere"
             zonas_gdf.loc[idx, f'categoria_{nutriente.lower()}'] = "ÓPTIMO"
             zonas_gdf.loc[idx, f'programacion_aplicacion_{nutriente.lower()}'] = "Mantener niveles actuales"
-    
     return zonas_gdf
-
 def analizar_ndwi(gdf, cultivo, mes_analisis, fuente_satelital="PLANETSCOPE"):
     """Realiza análisis NDWI (Normalized Difference Water Index)"""
-    
     params_cultivo = PARAMETROS_CULTIVOS[cultivo]
     zonas_gdf = gdf.copy()
-    
     # Inicializar columnas para NDWI
     zonas_gdf['area_ha'] = 0.0
     zonas_gdf['ndwi'] = 0.0
@@ -978,22 +886,18 @@ def analizar_ndwi(gdf, cultivo, mes_analisis, fuente_satelital="PLANETSCOPE"):
     zonas_gdf['estres_hidrico'] = 0.0
     zonas_gdf['recomendacion_riego'] = ""
     zonas_gdf['humedad_suelo'] = 0.0
-    
     for idx, row in zonas_gdf.iterrows():
         try:
             # Calcular área
             area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
-            
             # Obtener centroide
             if hasattr(row.geometry, 'centroid'):
                 centroid = row.geometry.centroid
             else:
                 centroid = row.geometry.representative_point()
-            
             # Semilla para reproducibilidad
             seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_ndwi_{fuente_satelital}")) % (2**32)
             rng = np.random.RandomState(seed_value)
-            
             # Simular NDWI basado en fuente satelital
             if fuente_satelital == "PLANETSCOPE":
                 # Mayor precisión espectral
@@ -1002,30 +906,23 @@ def analizar_ndwi(gdf, cultivo, mes_analisis, fuente_satelital="PLANETSCOPE"):
                 desviacion = 0.10
             else:
                 desviacion = 0.12
-            
             # NDWI varía según el mes (estacionalidad)
             mes_idx = list(FACTORES_MES.keys()).index(mes_analisis)
             factor_estacional = 0.8 + (0.4 * np.sin((mes_idx / 12) * 2 * np.pi))
-            
             # Generar NDWI con patrón espacial
             lat_norm = (centroid.y + 90) / 180 if centroid.y else 0.5
             lon_norm = (centroid.x + 180) / 360 if centroid.x else 0.5
-            
             # Patrón de humedad espacial
             patron_espacial = 0.3 + 0.7 * np.sin(lat_norm * np.pi * 2) * np.cos(lon_norm * np.pi * 2)
-            
             # Valor base NDWI para el cultivo
             ndwi_base = params_cultivo['NDWI_OPTIMO']['optimo']
-            
             # Calcular NDWI simulado
             ndwi = max(-0.5, min(0.8, rng.normal(
                 ndwi_base * factor_estacional * patron_espacial,
                 desviacion
             )))
-            
             # Calcular humedad del suelo estimada
             humedad_suelo = max(0.05, min(0.45, 0.15 + (ndwi + 0.3) * 0.5))
-            
             # Categorizar condición hídrica
             if ndwi > params_cultivo['NDWI_OPTIMO']['max']:
                 categoria = "EXCESO HÍDRICO"
@@ -1047,13 +944,11 @@ def analizar_ndwi(gdf, cultivo, mes_analisis, fuente_satelital="PLANETSCOPE"):
                 categoria = "SEVERO ESTRÉS"
                 estres_hidrico = 0.9
                 recomendacion = "Riego de emergencia, revisar fuente de agua"
-            
             # Calcular estrés hídrico (0-1)
             estres_hidrico = max(0, min(1, 
                 (params_cultivo['NDWI_OPTIMO']['optimo'] - ndwi) / 
                 (params_cultivo['NDWI_OPTIMO']['optimo'] - (-0.5))
             ))
-            
             # Asignar valores al GeoDataFrame
             zonas_gdf.loc[idx, 'area_ha'] = area_ha
             zonas_gdf.loc[idx, 'ndwi'] = ndwi
@@ -1061,7 +956,6 @@ def analizar_ndwi(gdf, cultivo, mes_analisis, fuente_satelital="PLANETSCOPE"):
             zonas_gdf.loc[idx, 'estres_hidrico'] = estres_hidrico
             zonas_gdf.loc[idx, 'recomendacion_riego'] = recomendacion
             zonas_gdf.loc[idx, 'humedad_suelo'] = humedad_suelo
-            
         except Exception as e:
             # Valores por defecto
             zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
@@ -1070,15 +964,11 @@ def analizar_ndwi(gdf, cultivo, mes_analisis, fuente_satelital="PLANETSCOPE"):
             zonas_gdf.loc[idx, 'estres_hidrico'] = 0.0
             zonas_gdf.loc[idx, 'recomendacion_riego'] = "Mantener programa actual"
             zonas_gdf.loc[idx, 'humedad_suelo'] = params_cultivo['HUMEDAD_OPTIMA']
-    
     return zonas_gdf
-
 def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
     """Realiza análisis altimétrico (elevación, pendiente, orientación)"""
-    
     params_alt = ALTIMETRIA_OPTIMA[cultivo]
     zonas_gdf = gdf.copy()
-    
     # Inicializar columnas para altimetría
     zonas_gdf['area_ha'] = 0.0
     zonas_gdf['elevacion'] = 0.0
@@ -1088,44 +978,36 @@ def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
     zonas_gdf['categoria_altimetria'] = "ÓPTIMA"
     zonas_gdf['riesgo_erosivo'] = "BAJO"
     zonas_gdf['recomendaciones_altimetria'] = ""
-    
     for idx, row in zonas_gdf.iterrows():
         try:
             # Calcular área
             area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
-            
             # Obtener centroide
             if hasattr(row.geometry, 'centroid'):
                 centroid = row.geometry.centroid
             else:
                 centroid = row.geometry.representative_point()
-            
             # Semilla para reproducibilidad
             seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_altimetria")) % (2**32)
             rng = np.random.RandomState(seed_value)
-            
             # Simular elevación basada en ubicación
             lat = centroid.y if centroid.y else 4.0  # Colombia por defecto
             lon = centroid.x if centroid.x else -74.0
-            
             # Elevación basada en latitud (simulación de montañas)
             elevacion_base = abs(lat * 100) + abs(lon) * 10
             elevacion = max(0, min(3000, rng.normal(
                 elevacion_base % 1000,
                 200
             )))
-            
             # Pendiente basada en elevación y ubicación
             pendiente = max(0, min(45, rng.normal(
                 min(15, elevacion / 50),
                 5
             )))
-            
             # Orientación (aspect) basada en coordenadas
             orientaciones = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW']
             orient_idx = int((lon + 180) / 45) % 8
             orientacion = orientaciones[orient_idx]
-            
             # Calcular adecuación altimétrica
             # 1. Adecuación de elevación (0-1)
             if params_alt['elevacion_min'] <= elevacion <= params_alt['elevacion_max']:
@@ -1134,15 +1016,12 @@ def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
                 adecuacion_elevacion = 1.0 - (params_alt['elevacion_min'] - elevacion) / 100
             else:
                 adecuacion_elevacion = 1.0 - (elevacion - params_alt['elevacion_max']) / 200
-            
             adecuacion_elevacion = max(0, min(1, adecuacion_elevacion))
-            
             # 2. Adecuación de pendiente (0-1)
             if pendiente <= params_alt['pendiente_max']:
                 adecuacion_pendiente = 1.0 - (pendiente / params_alt['pendiente_max']) * 0.3
             else:
                 adecuacion_pendiente = max(0, 1.0 - (pendiente - params_alt['pendiente_max']) / 10)
-            
             # 3. Adecuación de orientación (0-1)
             if orientacion in params_alt['orientacion_optima']:
                 adecuacion_orientacion = 1.0
@@ -1152,12 +1031,10 @@ def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
                 dist_angular = min(abs(orient_idx - orient_optima_idx),
                                 8 - abs(orient_idx - orient_optima_idx))
                 adecuacion_orientacion = 1.0 - (dist_angular / 4) * 0.5
-            
             # Adecuación total
             adecuacion_total = (adecuacion_elevacion * 0.4 + 
                               adecuacion_pendiente * 0.4 + 
                               adecuacion_orientacion * 0.2)
-            
             # Categorizar adecuación altimétrica
             if adecuacion_total >= 0.9:
                 categoria = "ÓPTIMA"
@@ -1169,7 +1046,6 @@ def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
                 categoria = "LIMITANTE"
             else:
                 categoria = "MUY LIMITANTE"
-            
             # Evaluar riesgo erosivo
             if pendiente > 15:
                 riesgo = "ALTO"
@@ -1177,28 +1053,22 @@ def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
                 riesgo = "MEDIO"
             else:
                 riesgo = "BAJO"
-            
             # Generar recomendaciones
             recomendaciones = []
             if elevacion < params_alt['elevacion_min']:
                 recomendaciones.append(f"Elevación baja ({elevacion:.0f}m), considerar drenaje adicional")
             elif elevacion > params_alt['elevacion_max']:
                 recomendaciones.append(f"Elevación alta ({elevacion:.0f}m), considerar riego por goteo")
-            
             if pendiente > params_alt['pendiente_max']:
                 recomendaciones.append(f"Pendiente alta ({pendiente:.1f}%), implementar terrazas o curvas a nivel")
-            
             if orientacion not in params_alt['orientacion_optima']:
                 recomendaciones.append(f"Orientación {orientacion}, considerar cortavientos o sombras")
-            
             if riesgo == "ALTO":
                 recomendaciones.append("Alto riesgo erosivo - implementar barreras vivas y coberturas")
             elif riesgo == "MEDIO":
                 recomendaciones.append("Riesgo erosivo moderado - mantener cobertura vegetal")
-            
             if not recomendaciones:
                 recomendaciones.append("Condiciones altimétricas adecuadas - mantener prácticas actuales")
-            
             # Asignar valores al GeoDataFrame
             zonas_gdf.loc[idx, 'area_ha'] = area_ha
             zonas_gdf.loc[idx, 'elevacion'] = elevacion
@@ -1208,7 +1078,6 @@ def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
             zonas_gdf.loc[idx, 'categoria_altimetria'] = categoria
             zonas_gdf.loc[idx, 'riesgo_erosivo'] = riesgo
             zonas_gdf.loc[idx, 'recomendaciones_altimetria'] = " | ".join(recomendaciones[:3])
-            
         except Exception as e:
             # Valores por defecto
             zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
@@ -1219,15 +1088,11 @@ def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
             zonas_gdf.loc[idx, 'categoria_altimetria'] = "ÓPTIMA"
             zonas_gdf.loc[idx, 'riesgo_erosivo'] = "BAJO"
             zonas_gdf.loc[idx, 'recomendaciones_altimetria'] = "Condiciones óptimas"
-    
     return zonas_gdf
-
 def analizar_textura_suelo_avanzado(gdf, cultivo, mes_analisis):
     """Realiza análisis avanzado de textura del suelo con metodologías modernas"""
-    
     params_textura = TEXTURA_SUELO_OPTIMA[cultivo]
     zonas_gdf = gdf.copy()
-    
     # Inicializar columnas para textura avanzada
     zonas_gdf['area_ha'] = 0.0
     zonas_gdf['arena'] = 0.0
@@ -1248,38 +1113,30 @@ def analizar_textura_suelo_avanzado(gdf, cultivo, mes_analisis):
     zonas_gdf['recomendaciones_monitoreo'] = ""
     zonas_gdf['recomendaciones_manejo'] = ""
     zonas_gdf['alertas'] = ""
-    
     for idx, row in zonas_gdf.iterrows():
         try:
             # Calcular área
             area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
-            
             # Obtener centroide
             if hasattr(row.geometry, 'centroid'):
                 centroid = row.geometry.centroid
             else:
                 centroid = row.geometry.representative_point()
-            
             # Semilla para reproducibilidad
             seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_textura_avanzado")) % (2**32)
             rng = np.random.RandomState(seed_value)
-            
             # Seleccionar metodología de análisis
             metodologias = params_textura['metodologias_recomendadas']
             metodologia_seleccionada = rng.choice(metodologias)
-            
             # SIMULAR COMPOSICIÓN GRANULOMÉTRICA CON VARIABILIDAD ESPACIAL
             lat_norm = (centroid.y + 90) / 180 if centroid.y else 0.5
             lon_norm = (centroid.x + 180) / 360 if centroid.x else 0.5
-            
             # Patrón espacial más complejo
             variabilidad_espacial = 0.2 + 0.6 * np.sin(lat_norm * np.pi) * np.cos(lon_norm * np.pi)
-            
             # Valores óptimos para el cultivo
             arena_optima = params_textura['arena_optima']
             limo_optima = params_textura['limo_optima']
             arcilla_optima = params_textura['arcilla_optima']
-            
             # Simular con distribución normal ajustada por metodología
             if metodologia_seleccionada == "SENSORES_PROXIMALES":
                 desviacion = 0.15  # Mayor precisión
@@ -1287,60 +1144,48 @@ def analizar_textura_suelo_avanzado(gdf, cultivo, mes_analisis):
                 desviacion = 0.20  # Precisión media
             else:
                 desviacion = 0.25  # Modelado estándar
-            
             arena = max(5, min(95, rng.normal(
                 arena_optima * (0.8 + 0.4 * variabilidad_espacial),
                 arena_optima * desviacion
             )))
-            
             limo = max(5, min(95, rng.normal(
                 limo_optima * (0.7 + 0.6 * variabilidad_espacial),
                 limo_optima * desviacion
             )))
-            
             arcilla = max(5, min(95, rng.normal(
                 arcilla_optima * (0.75 + 0.5 * variabilidad_espacial),
                 arcilla_optima * desviacion
             )))
-            
             # Normalizar a 100%
             total = arena + limo + arcilla
             arena = (arena / total) * 100
             limo = (limo / total) * 100
             arcilla = (arcilla / total) * 100
-            
             # Clasificar textura
             textura = clasificar_textura_suelo(arena, limo, arcilla)
-            
             # Evaluar adecuación con metodología avanzada
             categoria_adecuacion, puntaje_adecuacion, justificacion = evaluar_adecuacion_textura(
                 textura, cultivo, metodologia_seleccionada
             )
-            
             # Simular materia orgánica
             materia_organica = max(1.0, min(8.0, rng.normal(3.0, 1.0)))
-            
             # Calcular propiedades físicas con metodología específica
             propiedades_fisicas = calcular_propiedades_fisicas_suelo(
                 textura, materia_organica, metodologia_seleccionada
             )
-            
             # Simular datos de sensores
             datos_sensores = simular_datos_sensores(centroid, textura, cultivo)
-            
             # Generar recomendaciones avanzadas
             recomendaciones = generar_recomendaciones_avanzadas(
                 textura, cultivo, datos_sensores, 
                 (categoria_adecuacion, puntaje_adecuacion, justificacion)
             )
-            
             # Evaluar riesgo de erosión
             riesgo_erosion = "BAJO"
             if textura in ["Arenoso", "Franco Arcilloso-Arenoso"] and datos_sensores['indice_compactacion'] < 0.3:
                 riesgo_erosion = "ALTO"
             elif textura in ["Franco"] and datos_sensores['humedad_volumetrica'] < 0.2:
                 riesgo_erosion = "MODERADO"
-            
             # Asignar valores al GeoDataFrame
             zonas_gdf.loc[idx, 'area_ha'] = area_ha
             zonas_gdf.loc[idx, 'arena'] = arena
@@ -1352,7 +1197,6 @@ def analizar_textura_suelo_avanzado(gdf, cultivo, mes_analisis):
             zonas_gdf.loc[idx, 'categoria_adecuacion'] = categoria_adecuacion
             zonas_gdf.loc[idx, 'justificacion_adecuacion'] = justificacion
             zonas_gdf.loc[idx, 'riesgo_erosion'] = riesgo_erosion
-            
             # Propiedades físicas
             zonas_gdf.loc[idx, 'capacidad_campo'] = propiedades_fisicas['capacidad_campo']
             zonas_gdf.loc[idx, 'punto_marchitez'] = propiedades_fisicas['punto_marchitez']
@@ -1360,17 +1204,14 @@ def analizar_textura_suelo_avanzado(gdf, cultivo, mes_analisis):
             zonas_gdf.loc[idx, 'densidad_aparente'] = propiedades_fisicas['densidad_aparente']
             zonas_gdf.loc[idx, 'porosidad'] = propiedades_fisicas['porosidad']
             zonas_gdf.loc[idx, 'conductividad_hidraulica'] = propiedades_fisicas['conductividad_hidraulica']
-            
             # Datos de sensores
             zonas_gdf.loc[idx, 'conductividad_electrica'] = datos_sensores['conductividad_electrica']
             zonas_gdf.loc[idx, 'humedad_volumetrica'] = datos_sensores['humedad_volumetrica']
             zonas_gdf.loc[idx, 'indice_compactacion'] = datos_sensores['indice_compactacion']
-            
             # Recomendaciones y alertas
             zonas_gdf.loc[idx, 'recomendaciones_monitoreo'] = " | ".join(recomendaciones['monitoreo'][:2])
             zonas_gdf.loc[idx, 'recomendaciones_manejo'] = " | ".join(recomendaciones['manejo'][:3])
             zonas_gdf.loc[idx, 'alertas'] = " | ".join(recomendaciones['alerta'])
-            
         except Exception as e:
             # Valores por defecto en caso de error
             zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
@@ -1382,19 +1223,68 @@ def analizar_textura_suelo_avanzado(gdf, cultivo, mes_analisis):
             zonas_gdf.loc[idx, 'categoria_adecuacion'] = "ÓPTIMA"
             zonas_gdf.loc[idx, 'justificacion_adecuacion'] = "Textura óptima para el cultivo"
             zonas_gdf.loc[idx, 'riesgo_erosion'] = "BAJO"
-    
     return zonas_gdf
+
+# ============================================================================
+# NUEVA FUNCIÓN: CURVAS DE NIVEL
+# ============================================================================
+def generar_curvas_nivel(gdf_altimetria, intervalo=50):
+    """Genera líneas de contorno (curvas de nivel) simuladas a partir de elevaciones por zona"""
+    try:
+        # Crear una malla regular sobre el bounding box
+        bounds = gdf_altimetria.total_bounds
+        minx, miny, maxx, maxy = bounds
+        if minx >= maxx or miny >= maxy:
+            return None
+        resolucion = max((maxx - minx) / 20, (maxy - miny) / 20)  # Ajustar resolución
+        x = np.arange(minx, maxx, resolucion)
+        y = np.arange(miny, maxy, resolucion)
+        X, Y = np.meshgrid(x, y)
+        
+        # Interpolar elevación en la malla usando valores promedio por zona
+        Z = np.full_like(X, np.nan)
+        for i in range(X.shape[0]):
+            for j in range(X.shape[1]):
+                punto = gpd.points_from_xy([X[i, j]], [Y[i, j]], crs=gdf_altimetria.crs)
+                # Encontrar zona más cercana
+                distancias = gdf_altimetria.distance(punto[0])
+                if not distancias.empty and distancias.min() < resolucion * 2:
+                    idx_cercano = distancias.idxmin()
+                    Z[i, j] = gdf_altimetria.loc[idx_cercano, 'elevacion']
+        
+        # Generar contornos
+        fig, ax = plt.subplots(figsize=(10, 6))
+        niveles = np.arange(
+            np.nanmin(Z) // intervalo * intervalo,
+            np.nanmax(Z) + intervalo,
+            intervalo
+        )
+        CS = ax.contour(X, Y, Z, levels=niveles, colors='black', linewidths=0.8)
+        ax.clabel(CS, inline=True, fontsize=8, fmt='%1.0f m')
+        ax.set_title("Curvas de Nivel Simuladas")
+        ax.axis('equal')
+        ax.set_xlabel("Longitud")
+        ax.set_ylabel("Latitud")
+        
+        # Convertir a imagen base64 para mostrar en Streamlit
+        buf = io.BytesToBytesIO()
+        plt.savefig(buf, format="png", dpi=150, bbox_inches='tight')
+        buf.seek(0)
+        img_base64 = base64.b64encode(buf.read()).decode()
+        plt.close(fig)
+        return img_base64
+    except Exception as e:
+        st.warning(f"No se pudieron generar curvas de nivel: {str(e)}")
+        return None
 
 # ============================================================================
 # FUNCIONES AUXILIARES
 # ============================================================================
-
 def calcular_superficie(gdf):
     """Calcula superficie en hectáreas con manejo robusto de CRS"""
     try:
         if gdf.empty or gdf.geometry.isnull().all():
             return 0.0
-            
         # Verificar si el CRS es geográfico (grados)
         if gdf.crs and gdf.crs.is_geographic:
             # Convertir a un CRS proyectado para cálculo de área precisa
@@ -1408,51 +1298,39 @@ def calcular_superficie(gdf):
         else:
             # Asumir que ya está en metros
             area_m2 = gdf.geometry.area
-            
         return area_m2 / 10000  # Convertir a hectáreas
-        
     except Exception as e:
         # Fallback simple
         try:
             return gdf.geometry.area.mean() / 10000
         except:
             return 1.0  # Valor por defecto
-
 def dividir_parcela_en_zonas(gdf, n_zonas):
     """Divide la parcela en zonas de manejo con manejo robusto de errores"""
     try:
         if len(gdf) == 0:
             st.error("El GeoDataFrame está vacío")
             return None
-        
         # Usar el primer polígono como parcela principal
         parcela_principal = gdf.iloc[0].geometry
-        
         # Verificar que la geometría sea válida
         if not parcela_principal.is_valid:
             parcela_principal = parcela_principal.buffer(0)  # Reparar geometría
-        
         bounds = parcela_principal.bounds
         if len(bounds) < 4:
             st.error("No se pueden obtener los límites de la parcela")
             return None
-            
         minx, miny, maxx, maxy = bounds
-        
         # Verificar que los bounds sean válidos
         if minx >= maxx or miny >= maxy:
             st.error("Límites de parcela inválidos")
             return None
-        
         sub_poligonos = []
-        
         # Cuadrícula regular
         n_cols = math.ceil(math.sqrt(n_zonas))
         n_rows = math.ceil(n_zonas / n_cols)
-        
         width = (maxx - minx) / n_cols
         height = (maxy - miny) / n_rows
-        
         # Asegurar un tamaño mínimo de celda
         if width < 0.0001 or height < 0.0001:  # ~11m en grados decimales
             st.warning("Las celdas son muy pequeñas, ajustando número de zonas")
@@ -1461,17 +1339,14 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
             n_rows = math.ceil(n_zonas / n_cols)
             width = (maxx - minx) / n_cols
             height = (maxy - miny) / n_rows
-        
         for i in range(n_rows):
             for j in range(n_cols):
                 if len(sub_poligonos) >= n_zonas:
                     break
-                    
                 cell_minx = minx + (j * width)
                 cell_maxx = minx + ((j + 1) * width)
                 cell_miny = miny + (i * height)
                 cell_maxy = miny + ((i + 1) * height)
-                
                 # Crear celda con verificación de validez
                 try:
                     cell_poly = Polygon([
@@ -1480,7 +1355,6 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
                         (cell_maxx, cell_maxy),
                         (cell_minx, cell_maxy)
                     ])
-                    
                     if cell_poly.is_valid:
                         intersection = parcela_principal.intersection(cell_poly)
                         if not intersection.is_empty and intersection.area > 0:
@@ -1493,7 +1367,6 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
                                 sub_poligonos.append(intersection)
                 except Exception as e:
                     continue  # Saltar celdas problemáticas
-        
         if sub_poligonos:
             nuevo_gdf = gpd.GeoDataFrame({
                 'id_zona': range(1, len(sub_poligonos) + 1),
@@ -1507,7 +1380,6 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
                 'id_zona': [1],
                 'geometry': [gdf.iloc[0].geometry]
             }, crs=gdf.crs)
-            
     except Exception as e:
         st.error(f"Error dividiendo parcela: {str(e)}")
         # En caso de error, retornar la parcela original como una sola zona
@@ -1515,7 +1387,6 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
             'id_zona': [1],
             'geometry': [gdf.iloc[0].geometry]
         }, crs=gdf.crs)
-
 def procesar_archivo(uploaded_file):
     """Procesa el archivo ZIP con shapefile o archivo KML"""
     try:
@@ -1524,7 +1395,6 @@ def procesar_archivo(uploaded_file):
             file_path = os.path.join(tmp_dir, uploaded_file.name)
             with open(file_path, "wb") as f:
                 f.write(uploaded_file.getvalue())
-            
             # Verificar tipo de archivo
             if uploaded_file.name.lower().endswith(('.kml', '.kmz')):
                 # Cargar archivo KML
@@ -1533,11 +1403,9 @@ def procesar_archivo(uploaded_file):
                 # Procesar como ZIP con shapefile
                 with zipfile.ZipFile(file_path, 'r') as zip_ref:
                     zip_ref.extractall(tmp_dir)
-                
                 # Buscar archivos shapefile o KML
                 shp_files = [f for f in os.listdir(tmp_dir) if f.endswith('.shp')]
                 kml_files = [f for f in os.listdir(tmp_dir) if f.endswith('.kml')]
-                
                 if shp_files:
                     # Cargar shapefile
                     shp_path = os.path.join(tmp_dir, shp_files[0])
@@ -1549,29 +1417,22 @@ def procesar_archivo(uploaded_file):
                 else:
                     st.error("❌ No se encontró archivo .shp o .kml en el ZIP")
                     return None
-            
             # Verificar y reparar geometrías
             if not gdf.is_valid.all():
                 gdf = gdf.make_valid()
-            
             return gdf
-            
     except Exception as e:
         st.error(f"❌ Error procesando archivo: {str(e)}")
         return None
-
 def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=None, nutriente=None):
     """Crea mapa interactivo con base ESRI Satélite - VERSIÓN CORREGIDA"""
-    
     try:
         # Obtener centro y bounds del GeoDataFrame
         if gdf.empty:
             st.warning("El GeoDataFrame está vacío, no se puede crear el mapa")
             return None
-            
         centroid = gdf.geometry.centroid.iloc[0]
         bounds = gdf.total_bounds
-        
         # Crear mapa centrado con ESRI Satélite por defecto
         m = folium.Map(
             location=[centroid.y, centroid.x],
@@ -1580,7 +1441,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             attr='Esri',
             name='Esri Satélite'
         )
-        
         # Añadir otras bases como opciones
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
@@ -1588,18 +1448,15 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             name='Esri Calles',
             overlay=False
         ).add_to(m)
-        
         folium.TileLayer(
             tiles='OpenStreetMap',
             name='OpenStreetMap',
             overlay=False
         ).add_to(m)
-        
         # Verificar que la columna existe si se especificó
         if columna_valor and columna_valor not in gdf.columns:
             st.warning(f"⚠️ La columna '{columna_valor}' no existe en los datos. Mostrando mapa básico.")
             columna_valor = None
-        
         # CONFIGURAR RANGOS MEJORADOS
         colores_textura = {
             'Arenoso': '#d8b365',
@@ -1609,7 +1466,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             'Arcilloso': '#01665e',
             'NO_DETERMINADA': '#999999'
         }
-        
         colores_categoria = {
             'ÓPTIMA': '#1a9850', 'MUY ADECUADA': '#66bd63',
             'ADECUADA': '#a6d96a', 'MODERADAMENTE ADECUADA': '#fee08b',
@@ -1617,7 +1473,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             'POCO ADECUADA': '#d73027', 'MUY LIMITANTE': '#a50026',
             'NO_DETERMINADA': '#999999'
         }
-        
         if columna_valor and analisis_tipo:
             if analisis_tipo == "FERTILIDAD ACTUAL":
                 vmin, vmax = 0, 1
@@ -1660,7 +1515,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                 vmin, vmax = 0, 1
                 colores = PALETAS_GEE['FERTILIDAD']
                 unidad = "Índice"
-            
             # Función para obtener color
             def obtener_color(valor, vmin, vmax, colores):
                 if vmax == vmin:
@@ -1669,7 +1523,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                 valor_norm = max(0, min(1, valor_norm))
                 idx = int(valor_norm * (len(colores) - 1))
                 return colores[idx]
-            
             # Añadir cada polígono con estilo mejorado
             for idx, row in gdf.iterrows():
                 try:
@@ -1687,7 +1540,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                         # Manejo para valores numéricos
                         valor = float(row[columna_valor]) if pd.notna(row[columna_valor]) else 0
                         color = obtener_color(valor, vmin, vmax, colores)
-                        
                         if analisis_tipo == "FERTILIDAD ACTUAL":
                             valor_display = f"{valor:.3f}"
                         elif analisis_tipo == "ANÁLISIS NDWI":
@@ -1703,7 +1555,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                             valor_display = f"{valor:.1f} {unidad}"
                         else:
                             valor_display = f"{valor:.2f}"
-                    
                     # Popup informativo
                     popup_text = f"""
                     <div style="font-family: Arial; font-size: 12px;">
@@ -1711,7 +1562,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                         <b>Valor:</b> {valor_display}<br>
                         <b>Área:</b> {row.get('area_ha', 0):.2f} ha<br>
                     """
-                    
                     # Información específica por tipo de análisis
                     if analisis_tipo == "ANÁLISIS DE TEXTURA" and columna_valor == 'textura_suelo':
                         popup_text += f"""
@@ -1750,16 +1600,13 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                             nutriente_col = 'fosforo_actual'
                         else:
                             nutriente_col = 'potasio_actual'
-                        
                         popup_text += f"""
                         <b>Categoría:</b> {row.get(f'categoria_{nutriente.lower()}', 'N/A')}<br>
                         <b>Recomendación:</b> {row.get(f'recomendacion_{nutriente.lower()}_kg', 0):.1f} {unidad}<br>
                         <b>Fertilizante:</b> {row.get(f'recomendacion_{nutriente.lower()}_tipo', 'N/A')}<br>
                         <b>Programación:</b> {row.get(f'programacion_aplicacion_{nutriente.lower()}', 'N/A')}
                         """
-                    
                     popup_text += "</div>"
-                    
                     # Estilo mejorado para los polígonos
                     folium.GeoJson(
                         row.geometry.__geo_interface__,
@@ -1773,7 +1620,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                         popup=folium.Popup(popup_text, max_width=300),
                         tooltip=f"Zona {row['id_zona']}: {valor_display}"
                     ).add_to(m)
-                    
                     # Marcador con número de zona
                     try:
                         centroid = row.geometry.centroid
@@ -1800,7 +1646,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                         ).add_to(m)
                     except:
                         pass
-                        
                 except Exception as e:
                     continue  # Continuar con la siguiente zona si hay error
         else:
@@ -1823,19 +1668,16 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                     ).add_to(m)
                 except:
                     pass
-        
         # Ajustar bounds del mapa
         try:
             m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
         except:
             pass
-        
         # Añadir controles mejorados
         folium.LayerControl().add_to(m)
         plugins.MeasureControl(position='bottomleft', primary_length_unit='meters').add_to(m)
         plugins.MiniMap(toggle_display=True, position='bottomright').add_to(m)
         plugins.Fullscreen(position='topright').add_to(m)
-        
         # Añadir leyenda mejorada
         if columna_valor and analisis_tipo:
             legend_html = f'''
@@ -1860,7 +1702,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                     <strong>Escala de Valores ({unidad}):</strong>
                 </div>
             '''
-            
             if analisis_tipo == "ANÁLISIS DE TEXTURA" and columna_valor in ['textura_suelo']:
                 # Leyenda categórica para texturas
                 for textura, color in colores_textura.items():
@@ -1877,7 +1718,6 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                         color_idx = int((i / (steps - 1)) * (len(colores) - 1))
                         color = colores[color_idx]
                         legend_html += f'<div style="margin:2px 0;"><span style="background:{color}; width:20px; height:15px; display:inline-block; margin-right:5px; border:1px solid #000;"></span> ≥{value:.1f}</div>'
-            
             legend_html += '''
                 <div style="margin-top: 10px; font-size: 10px; color: #666;">
                     💡 Click en las zonas para detalles<br>
@@ -1886,21 +1726,16 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             </div>
             '''
             m.get_root().html.add_child(folium.Element(legend_html))
-        
         return m
-        
     except Exception as e:
         st.error(f"Error creando mapa: {str(e)}")
         return None
-
 def crear_mapa_visualizador_parcela(gdf):
     """Crea mapa interactivo para visualizar la parcela original con ESRI Satélite"""
-    
     try:
         # Obtener centro y bounds
         centroid = gdf.geometry.centroid.iloc[0]
         bounds = gdf.total_bounds
-        
         # Crear mapa con ESRI Satélite por defecto
         m = folium.Map(
             location=[centroid.y, centroid.x],
@@ -1909,7 +1744,6 @@ def crear_mapa_visualizador_parcela(gdf):
             attr='Esri',
             name='Esri Satélite'
         )
-        
         # Añadir otras bases
         folium.TileLayer(
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
@@ -1917,17 +1751,14 @@ def crear_mapa_visualizador_parcela(gdf):
             name='Esri Calles',
             overlay=False
         ).add_to(m)
-        
         folium.TileLayer(
             tiles='OpenStreetMap',
             name='OpenStreetMap',
             overlay=False
         ).add_to(m)
-        
         # Añadir polígonos de la parcela
         for idx, row in gdf.iterrows():
             area_ha = calcular_superficie(gdf.iloc[[idx]]).iloc[0]
-            
             folium.GeoJson(
                 row.geometry.__geo_interface__,
                 style_function=lambda x: {
@@ -1945,16 +1776,13 @@ def crear_mapa_visualizador_parcela(gdf):
                 ),
                 tooltip=f"Parcela {idx + 1} - {area_ha:.2f} ha"
             ).add_to(m)
-        
         # Ajustar bounds
         m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
-        
         # Añadir controles
         folium.LayerControl().add_to(m)
         plugins.MeasureControl(position='bottomleft').add_to(m)
         plugins.MiniMap(toggle_display=True).add_to(m)
         plugins.Fullscreen(position='topright').add_to(m)
-        
         # Añadir leyenda
         legend_html = '''
         <div style="position: fixed; 
@@ -1968,19 +1796,15 @@ def crear_mapa_visualizador_parcela(gdf):
         </div>
         '''
         m.get_root().html.add_child(folium.Element(legend_html))
-        
         return m
     except Exception as e:
         st.error(f"Error creando mapa de visualización: {str(e)}")
         return None
-
 def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
     """Crea visualizaciones avanzadas para análisis de textura"""
-    
     try:
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
         fig.suptitle(f'Análisis Avanzado de Textura - {cultivo.replace("_", " ").title()}', fontsize=16)
-        
         # 1. Triángulo de texturas
         ax1 = axes[0, 0]
         # Puntos para el triángulo de texturas
@@ -1989,7 +1813,6 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
                 arena = row['arena']
                 arcilla = row['arcilla']
                 limo = 100 - arena - arcilla
-                
                 # Color basado en adecuación
                 if row['categoria_adecuacion'] == 'ÓPTIMA':
                     color = '#1a9850'
@@ -2001,14 +1824,11 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
                     color = '#fdae61'
                 else:
                     color = '#d73027'
-                
                 ax1.scatter(arena, arcilla, c=color, s=100, alpha=0.7, edgecolors='black')
-        
         ax1.set_xlabel('Arena (%)', fontsize=12)
         ax1.set_ylabel('Arcilla (%)', fontsize=12)
         ax1.set_title('Triángulo de Texturas', fontsize=14)
         ax1.grid(True, alpha=0.3)
-        
         # 2. Distribución de texturas
         ax2 = axes[0, 1]
         if 'textura_suelo' in gdf_textura.columns:
@@ -2022,7 +1842,6 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
         else:
             ax2.text(0.5, 0.5, 'Datos de textura no disponibles', 
                     ha='center', va='center', transform=ax2.transAxes)
-        
         # 3. Adecuación por zona
         ax3 = axes[1, 0]
         if 'id_zona' in gdf_textura.columns and 'adecuacion_textura' in gdf_textura.columns:
@@ -2040,7 +1859,6 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
                     colors_adecuacion.append('#fdae61')
                 else:
                     colors_adecuacion.append('#d73027')
-            
             bars = ax3.bar(zonas, adecuacion, color=colors_adecuacion, edgecolor='black')
             ax3.set_title('Adecuación de Textura por Zona', fontsize=14)
             ax3.set_xlabel('Zona')
@@ -2049,7 +1867,6 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
         else:
             ax3.text(0.5, 0.5, 'Datos de adecuación no disponibles', 
                     ha='center', va='center', transform=ax3.transAxes)
-        
         # 4. Propiedades físicas
         ax4 = axes[1, 1]
         if all(col in gdf_textura.columns for col in ['capacidad_campo', 'punto_marchitez', 'agua_disponible']):
@@ -2059,12 +1876,10 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
                 gdf_textura['punto_marchitez'].mean(),
                 gdf_textura['agua_disponible'].mean()
             ]
-            
             colors_prop = ['#4575b4', '#74add1', '#abd9e9']
             bars_prop = ax4.bar(propiedades, valores_promedio, color=colors_prop, edgecolor='black')
             ax4.set_title('Propiedades Hídricas Promedio', fontsize=14)
             ax4.set_ylabel('mm/m')
-            
             # Añadir valores en las barras
             for bar, valor in zip(bars_prop, valores_promedio):
                 height = bar.get_height()
@@ -2073,7 +1888,6 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
         else:
             ax4.text(0.5, 0.5, 'Datos de propiedades físicas no disponibles', 
                     ha='center', va='center', transform=ax4.transAxes)
-        
         plt.tight_layout()
         return fig
     except Exception as e:
@@ -2083,61 +1897,50 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
         ax.text(0.5, 0.5, f'Error al crear visualizaciones: {str(e)}', 
                 ha='center', va='center', transform=ax.transAxes)
         return fig
-
 def crear_resumen_agroecologico(cultivo):
     """Crea un resumen de recomendaciones agroecológicas para el cultivo"""
-    
     recomendaciones = RECOMENDACIONES_AGROECOLOGICAS.get(cultivo, {})
-    
     markdown = f"""
 ### 🌿 RECOMENDACIONES AGROECOLÓGICAS - {cultivo.replace('_', ' ').title()}
-
 **Descripción general:** Recomendaciones basadas en principios agroecológicos para el cultivo de {cultivo.replace('_', ' ')}.
 """
-    
     for categoria, items in recomendaciones.items():
         categoria_formateada = categoria.replace('_', ' ').title()
-        markdown += f"\n**{categoria_formateada}:**\n"
+        markdown += f"
+**{categoria_formateada}:**
+"
         for item in items[:3]:  # Mostrar solo las 3 primeras recomendaciones
-            markdown += f"• {item}\n"
-    
+            markdown += f"• {item}
+"
     if not recomendaciones:
-        markdown += "\n**No hay recomendaciones agroecológicas específicas disponibles para este cultivo.**\n"
-    
+        markdown += "
+**No hay recomendaciones agroecológicas específicas disponibles para este cultivo.**
+"
     return markdown
-
 # ============================================================================
 # FUNCIONES DE VISUALIZACIÓN
 # ============================================================================
-
 def mostrar_analisis_fertilidad_real():
     """Muestra el análisis de fertilidad real del suelo"""
-    
     if st.session_state.analisis_fertilidad is None:
         st.warning("No hay datos de análisis de fertilidad disponibles")
         return
-    
     gdf_fertilidad = st.session_state.analisis_fertilidad
     area_total = st.session_state.area_total
     cultivo = st.session_state.cultivo_seleccionado
-    
     st.markdown("## 🌿 ANÁLISIS DE FERTILIDAD REAL DEL SUELO")
-    
     # Botón para volver atrás
     if st.button("⬅️ Volver a Configuración", key="volver_fertilidad"):
         st.session_state.analisis_completado = False
         st.rerun()
-    
     # Información sobre la fuente satelital
     fuente_satelital = st.session_state.get('fuente_satelital', 'PLANETSCOPE')
     if fuente_satelital in FUENTES_SATELITALES:
         st.info(f"📡 **Fuente de datos:** {fuente_satelital} - {FUENTES_SATELITALES[fuente_satelital]['resolucion']}")
     else:
         st.info(f"📡 **Fuente de datos:** {fuente_satelital}")
-    
     # Estadísticas resumen
     st.subheader("📊 ESTADÍSTICAS DE FERTILIDAD")
-    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         avg_fertilidad = gdf_fertilidad['indice_fertilidad'].mean() if 'indice_fertilidad' in gdf_fertilidad.columns else 0
@@ -2154,18 +1957,14 @@ def mostrar_analisis_fertilidad_real():
     with col4:
         avg_ph = gdf_fertilidad['ph'].mean() if 'ph' in gdf_fertilidad.columns else 0
         st.metric("🧪 pH Promedio", f"{avg_ph:.1f}")
-    
     # Distribución de categorías de fertilidad
     st.subheader("📋 DISTRIBUCIÓN DE CATEGORÍAS DE FERTILIDAD")
-    
     col_dist1, col_dist2 = st.columns(2)
-    
     with col_dist1:
         # Gráfico de torta
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
         if 'categoria_fertilidad' in gdf_fertilidad.columns:
             cat_dist = gdf_fertilidad['categoria_fertilidad'].value_counts()
-            
             # Colores para categorías
             colores_categoria = {
                 'MUY ALTA': '#1a9850',
@@ -2174,9 +1973,7 @@ def mostrar_analisis_fertilidad_real():
                 'MEDIA-BAJA': '#fdae61',
                 'BAJA': '#d73027'
             }
-            
             colors_pie = [colores_categoria.get(cat, '#999999') for cat in cat_dist.index]
-            
             ax.pie(cat_dist.values, labels=cat_dist.index, autopct='%1.1f%%',
                    colors=colors_pie, startangle=90)
             ax.set_title('Distribución de Categorías de Fertilidad')
@@ -2184,38 +1981,30 @@ def mostrar_analisis_fertilidad_real():
             ax.text(0.5, 0.5, 'Datos no disponibles', 
                     ha='center', va='center', transform=ax.transAxes)
         st.pyplot(fig)
-    
     with col_dist2:
         # Valores promedio de nutrientes
         st.markdown("#### 💊 Macronutrientes Promedio")
-        
         if all(col in gdf_fertilidad.columns for col in ['nitrogeno', 'fosforo', 'potasio']):
             avg_n = gdf_fertilidad['nitrogeno'].mean()
             avg_p = gdf_fertilidad['fosforo'].mean()
             avg_k = gdf_fertilidad['potasio'].mean()
-            
             fig_bar, ax_bar = plt.subplots(1, 1, figsize=(8, 6))
             nutrientes = ['Nitrógeno', 'Fósforo', 'Potasio']
             valores = [avg_n, avg_p, avg_k]
             colores_bar = ['#8c510a', '#67001f', '#4d004b']
-            
             bars = ax_bar.bar(nutrientes, valores, color=colores_bar, edgecolor='black')
             ax_bar.set_ylabel('kg/ha')
             ax_bar.set_title('Contenido Promedio de Macronutrientes')
-            
             # Añadir valores en las barras
             for bar, valor in zip(bars, valores):
                 height = bar.get_height()
                 ax_bar.text(bar.get_x() + bar.get_width()/2., height + 5,
                            f'{valor:.0f} kg/ha', ha='center', va='bottom')
-            
             st.pyplot(fig_bar)
         else:
             st.info("Datos de nutrientes no disponibles")
-    
     # Mapa de fertilidad
     st.subheader("🗺️ MAPA DE FERTILIDAD")
-    
     if not gdf_fertilidad.empty and 'indice_fertilidad' in gdf_fertilidad.columns:
         mapa_fertilidad = crear_mapa_interactivo_esri(
             gdf_fertilidad,
@@ -2229,17 +2018,13 @@ def mostrar_analisis_fertilidad_real():
             st.warning("No se pudo crear el mapa de fertilidad")
     else:
         st.warning("No hay datos de fertilidad disponibles para mostrar el mapa")
-    
     # Tabla detallada
     st.subheader("📊 TABLA DETALLADA DE FERTILIDAD")
-    
     columnas_disponibles = [col for col in ['id_zona', 'area_ha', 'categoria_fertilidad', 'indice_fertilidad',
                                            'materia_organica', 'ph', 'nitrogeno', 'fosforo', 'potasio', 'limitantes']
                            if col in gdf_fertilidad.columns]
-    
     if columnas_disponibles:
         df_detalle = gdf_fertilidad[columnas_disponibles].copy()
-        
         # Formatear columnas numéricas
         if 'area_ha' in df_detalle.columns:
             df_detalle['area_ha'] = df_detalle['area_ha'].round(3)
@@ -2255,16 +2040,12 @@ def mostrar_analisis_fertilidad_real():
             df_detalle['fosforo'] = df_detalle['fosforo'].round(0)
         if 'potasio' in df_detalle.columns:
             df_detalle['potasio'] = df_detalle['potasio'].round(0)
-        
         st.dataframe(df_detalle, use_container_width=True)
     else:
         st.warning("No hay datos disponibles para mostrar en la tabla")
-    
     # Descargar resultados
     st.markdown("### 💾 DESCARGAR RESULTADOS")
-    
     col_dl1, col_dl2, col_dl3 = st.columns(3)
-    
     with col_dl1:
         # Descargar CSV
         if not gdf_fertilidad.empty:
@@ -2275,7 +2056,6 @@ def mostrar_analisis_fertilidad_real():
                 file_name=f"fertilidad_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv"
             )
-    
     with col_dl2:
         # Descargar GeoJSON
         if not gdf_fertilidad.empty:
@@ -2286,60 +2066,37 @@ def mostrar_analisis_fertilidad_real():
                 file_name=f"fertilidad_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
                 mime="application/json"
             )
-    
     with col_dl3:
         # Generar informe PDF
         if st.button("📄 Generar Informe PDF", type="primary", key="pdf_fertilidad"):
             with st.spinner("🔄 Generando informe..."):
                 st.success("Funcionalidad de PDF en desarrollo")
                 st.info("Por ahora, usa los formatos CSV y GeoJSON")
-
 def mostrar_recomendaciones_npk():
     """Muestra las recomendaciones de NPK específicas"""
-    
     if st.session_state.analisis_npk is None:
         st.warning("No hay datos de recomendaciones NPK disponibles")
         return
-    
     gdf_npk = st.session_state.analisis_npk
     area_total = st.session_state.area_total
     cultivo = st.session_state.cultivo_seleccionado
     analisis_tipo = st.session_state.analisis_tipo_seleccionado
-    
     # Obtener nutriente del análisis
     if analisis_tipo == "RECOMENDACIONES NPK":
-        # Buscar qué nutriente fue analizado
-        nutrientes_cols = [col for col in gdf_npk.columns if col.endswith('_actual')]
-        if nutrientes_cols:
-            nutriente_base = nutrientes_cols[0].replace('_actual', '')
-            if 'nitrogeno' in nutriente_base:
-                nutriente = "NITRÓGENO"
-            elif 'fosforo' in nutriente_base:
-                nutriente = "FÓSFORO"
-            elif 'potasio' in nutriente_base:
-                nutriente = "POTASIO"
-            else:
-                nutriente = "NITRÓGENO"  # Valor por defecto
-        else:
-            nutriente = "NITRÓGENO"  # Valor por defecto
+        nutriente = st.session_state.get('nutriente_npk', 'NITRÓGENO')
     else:
         nutriente = "NITRÓGENO"  # Valor por defecto
-    
     st.markdown(f"## 💊 RECOMENDACIONES DE {nutriente} - {cultivo.replace('_', ' ').title()}")
-    
     # Botón para volver atrás
     if st.button("⬅️ Volver a Configuración", key="volver_npk"):
         st.session_state.analisis_completado = False
         st.rerun()
-    
     # Información general
     fuente_satelital = st.session_state.get('fuente_satelital', 'PLANETSCOPE')
     mes_analisis = st.session_state.get('mes_analisis', 'ENERO')
     st.info(f"📅 **Mes de análisis:** {mes_analisis} | 📡 **Fuente:** {fuente_satelital}")
-    
     # Estadísticas resumen
     st.subheader("📊 ESTADÍSTICAS DE RECOMENDACIONES")
-    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         col_recomendacion = f'recomendacion_{nutriente.lower()}_kg'
@@ -2348,14 +2105,12 @@ def mostrar_recomendaciones_npk():
             st.metric(f"📦 {nutriente} Total Recomendado", f"{total_recomendado:.0f} kg")
         else:
             st.metric(f"📦 {nutriente} Total Recomendado", "N/A")
-    
     with col2:
         if col_recomendacion in gdf_npk.columns:
             promedio_recomendado = gdf_npk[col_recomendacion].mean()
             st.metric(f"⚖️ {nutriente} Promedio por ha", f"{promedio_recomendado:.1f} kg/ha")
         else:
             st.metric(f"⚖️ {nutriente} Promedio por ha", "N/A")
-    
     with col3:
         col_deficit = f'deficit_{nutriente.lower()}'
         if col_deficit in gdf_npk.columns:
@@ -2363,7 +2118,6 @@ def mostrar_recomendaciones_npk():
             st.metric("🔴 Zonas con déficit", f"{zonas_deficit} / {len(gdf_npk)}")
         else:
             st.metric("🔴 Zonas con déficit", "N/A")
-    
     with col4:
         col_tipo = f'recomendacion_{nutriente.lower()}_tipo'
         if col_tipo in gdf_npk.columns:
@@ -2371,10 +2125,8 @@ def mostrar_recomendaciones_npk():
             st.metric("🏭 Fertilizante Predominante", fertilizante_pred)
         else:
             st.metric("🏭 Fertilizante Predominante", "N/A")
-    
     # Mapa de recomendaciones
     st.subheader("🗺️ MAPA DE RECOMENDACIONES")
-    
     if not gdf_npk.empty and col_recomendacion in gdf_npk.columns:
         mapa_npk = crear_mapa_interactivo_esri(
             gdf_npk,
@@ -2389,10 +2141,8 @@ def mostrar_recomendaciones_npk():
             st.warning("No se pudo crear el mapa de recomendaciones")
     else:
         st.warning("No hay datos de recomendaciones disponibles para mostrar el mapa")
-    
     # Tabla detallada
     st.subheader("📊 TABLA DETALLADA DE RECOMENDACIONES")
-    
     columnas_npk = [
         'id_zona', 'area_ha', 
         f'{nutriente.lower()}_actual' if f'{nutriente.lower()}_actual' in gdf_npk.columns else None,
@@ -2402,12 +2152,9 @@ def mostrar_recomendaciones_npk():
         f'categoria_{nutriente.lower()}' if f'categoria_{nutriente.lower()}' in gdf_npk.columns else None,
         f'programacion_aplicacion_{nutriente.lower()}' if f'programacion_aplicacion_{nutriente.lower()}' in gdf_npk.columns else None
     ]
-    
     columnas_npk = [col for col in columnas_npk if col is not None]
-    
     if columnas_npk:
         df_npk = gdf_npk[columnas_npk].copy()
-        
         # Formatear columnas numéricas
         if 'area_ha' in df_npk.columns:
             df_npk['area_ha'] = df_npk['area_ha'].round(3)
@@ -2417,16 +2164,12 @@ def mostrar_recomendaciones_npk():
             df_npk[f'deficit_{nutriente.lower()}'] = df_npk[f'deficit_{nutriente.lower()}'].round(1)
         if f'recomendacion_{nutriente.lower()}_kg' in df_npk.columns:
             df_npk[f'recomendacion_{nutriente.lower()}_kg'] = df_npk[f'recomendacion_{nutriente.lower()}_kg'].round(1)
-        
         st.dataframe(df_npk, use_container_width=True)
     else:
         st.warning("No hay datos de recomendaciones disponibles para mostrar en la tabla")
-    
     # Descargar resultados
     st.markdown("### 💾 DESCARGAR RESULTADOS")
-    
     col_dl1, col_dl2 = st.columns(2)
-    
     with col_dl1:
         # Descargar CSV
         if not gdf_npk.empty:
@@ -2437,7 +2180,6 @@ def mostrar_recomendaciones_npk():
                 file_name=f"recomendaciones_{nutriente}_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv"
             )
-    
     with col_dl2:
         # Descargar GeoJSON
         if not gdf_npk.empty:
@@ -2448,32 +2190,24 @@ def mostrar_recomendaciones_npk():
                 file_name=f"recomendaciones_{nutriente}_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
                 mime="application/json"
             )
-
 def mostrar_analisis_textura_avanzado():
     """Muestra el análisis avanzado de textura del suelo"""
-    
     if st.session_state.analisis_textura is None:
         st.warning("No hay datos de análisis de textura disponibles")
         return
-    
     gdf_textura = st.session_state.analisis_textura
     cultivo = st.session_state.cultivo_seleccionado
-    
     st.markdown("## 🌱 ANÁLISIS AVANZADO DE TEXTURA DEL SUELO")
-    
     # Botón para volver atrás
     if st.button("⬅️ Volver a Configuración", key="volver_textura"):
         st.session_state.analisis_completado = False
         st.rerun()
-    
     # Información sobre metodologías
     if cultivo in TEXTURA_SUELO_OPTIMA:
         metodologias = TEXTURA_SUELO_OPTIMA[cultivo]['metodologias_recomendadas']
         st.info(f"🔬 **Metodologías aplicadas:** {', '.join(metodologias)}")
-    
     # Estadísticas resumen
     st.subheader("📊 ESTADÍSTICAS DE TEXTURA")
-    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         if 'textura_suelo' in gdf_textura.columns:
@@ -2481,39 +2215,32 @@ def mostrar_analisis_textura_avanzado():
             st.metric("🏜️ Textura Predominante", textura_pred)
         else:
             st.metric("🏜️ Textura Predominante", "N/A")
-    
     with col2:
         if 'categoria_adecuacion' in gdf_textura.columns:
             adecuacion_pred = gdf_textura['categoria_adecuacion'].mode()[0] if len(gdf_textura) > 0 else "NO_DETERMINADA"
             st.metric("📊 Adecuación Predominante", adecuacion_pred)
         else:
             st.metric("📊 Adecuación Predominante", "N/A")
-    
     with col3:
         if 'arena' in gdf_textura.columns:
             avg_arena = gdf_textura['arena'].mean()
             st.metric("🏖️ Arena Promedio", f"{avg_arena:.1f}%")
         else:
             st.metric("🏖️ Arena Promedio", "N/A")
-    
     with col4:
         if 'arcilla' in gdf_textura.columns:
             avg_arcilla = gdf_textura['arcilla'].mean()
             st.metric("🧱 Arcilla Promedio", f"{avg_arcilla:.1f}%")
         else:
             st.metric("🧱 Arcilla Promedio", "N/A")
-    
     # Visualizaciones avanzadas
     st.subheader("📈 VISUALIZACIONES AVANZADAS")
-    
     # Triángulo de texturas
     fig_textura = crear_visualizacion_textura_avanzado(gdf_textura, cultivo)
     if fig_textura:
         st.pyplot(fig_textura)
-    
     # Mapa de textura
     st.subheader("🗺️ MAPA DE TEXTURA")
-    
     if not gdf_textura.empty and 'textura_suelo' in gdf_textura.columns:
         mapa_textura = crear_mapa_interactivo_esri(
             gdf_textura,
@@ -2527,19 +2254,14 @@ def mostrar_analisis_textura_avanzado():
             st.warning("No se pudo crear el mapa de textura")
     else:
         st.warning("No hay datos de textura disponibles para mostrar el mapa")
-    
     # Tabla detallada
     st.subheader("📊 TABLA DETALLADA DE TEXTURA")
-    
     columnas_textura = ['id_zona', 'area_ha', 'textura_suelo', 'arena', 'limo', 'arcilla',
                        'categoria_adecuacion', 'adecuacion_textura', 'metodologia_analisis',
                        'riesgo_erosion', 'agua_disponible']
-    
     columnas_disponibles = [col for col in columnas_textura if col in gdf_textura.columns]
-    
     if columnas_disponibles:
         df_detalle = gdf_textura[columnas_disponibles].copy()
-        
         # Formatear columnas numéricas
         if 'area_ha' in df_detalle.columns:
             df_detalle['area_ha'] = df_detalle['area_ha'].round(3)
@@ -2553,16 +2275,12 @@ def mostrar_analisis_textura_avanzado():
             df_detalle['adecuacion_textura'] = df_detalle['adecuacion_textura'].round(3)
         if 'agua_disponible' in df_detalle.columns:
             df_detalle['agua_disponible'] = df_detalle['agua_disponible'].round(1)
-        
         st.dataframe(df_detalle, use_container_width=True)
     else:
         st.warning("No hay datos de textura disponibles para mostrar en la tabla")
-    
     # Descargar resultados
     st.markdown("### 💾 DESCARGAR RESULTADOS")
-    
     col_dl1, col_dl2 = st.columns(2)
-    
     with col_dl1:
         # Descargar CSV
         if not gdf_textura.empty:
@@ -2573,7 +2291,6 @@ def mostrar_analisis_textura_avanzado():
                 file_name=f"textura_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv"
             )
-    
     with col_dl2:
         # Descargar GeoJSON
         if not gdf_textura.empty:
@@ -2584,33 +2301,25 @@ def mostrar_analisis_textura_avanzado():
                 file_name=f"textura_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
                 mime="application/json"
             )
-
 def mostrar_analisis_ndwi():
     """Muestra el análisis NDWI (Índice de Agua)"""
-    
     if st.session_state.analisis_ndwi is None:
         st.warning("No hay datos de análisis NDWI disponibles")
         return
-    
     gdf_ndwi = st.session_state.analisis_ndwi
     area_total = st.session_state.area_total
     cultivo = st.session_state.cultivo_seleccionado
-    
     st.markdown("## 💧 ANÁLISIS NDWI (ÍNDICE DE AGUA)")
-    
     # Botón para volver atrás
     if st.button("⬅️ Volver a Configuración", key="volver_ndwi"):
         st.session_state.analisis_completado = False
         st.rerun()
-    
     # Información sobre la fuente satelital
     fuente_satelital = st.session_state.get('fuente_satelital', 'PLANETSCOPE')
     mes_analisis = st.session_state.get('mes_analisis', 'ENERO')
     st.info(f"📅 **Mes de análisis:** {mes_analisis} | 📡 **Fuente:** {fuente_satelital}")
-    
     # Estadísticas resumen
     st.subheader("📊 ESTADÍSTICAS NDWI")
-    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         avg_ndwi = gdf_ndwi['ndwi'].mean() if 'ndwi' in gdf_ndwi.columns else 0
@@ -2630,18 +2339,14 @@ def mostrar_analisis_ndwi():
     with col4:
         avg_humedad = gdf_ndwi['humedad_suelo'].mean() if 'humedad_suelo' in gdf_ndwi.columns else 0
         st.metric("💦 Humedad Suelo", f"{avg_humedad:.2f} m³/m³")
-    
     # Distribución de categorías hídricas
     st.subheader("📋 DISTRIBUCIÓN DE CONDICIONES HÍDRICAS")
-    
     col_dist1, col_dist2 = st.columns(2)
-    
     with col_dist1:
         # Gráfico de torta
         fig, ax = plt.subplots(1, 1, figsize=(8, 6))
         if 'categoria_hidrica' in gdf_ndwi.columns:
             cat_dist = gdf_ndwi['categoria_hidrica'].value_counts()
-            
             # Colores para categorías
             colores_categoria = {
                 'EXCESO HÍDRICO': '#4575b4',
@@ -2650,9 +2355,7 @@ def mostrar_analisis_ndwi():
                 'MODERADO ESTRÉS': '#fdae61',
                 'SEVERO ESTRÉS': '#d73027'
             }
-            
             colors_pie = [colores_categoria.get(cat, '#999999') for cat in cat_dist.index]
-            
             ax.pie(cat_dist.values, labels=cat_dist.index, autopct='%1.1f%%',
                    colors=colors_pie, startangle=90)
             ax.set_title('Distribución de Condiciones Hídricas')
@@ -2660,14 +2363,12 @@ def mostrar_analisis_ndwi():
             ax.text(0.5, 0.5, 'Datos no disponibles', 
                     ha='center', va='center', transform=ax.transAxes)
         st.pyplot(fig)
-    
     with col_dist2:
         # Gráfico de barras de estrés hídrico por zona
         fig_bar, ax_bar = plt.subplots(1, 1, figsize=(10, 6))
         if 'id_zona' in gdf_ndwi.columns and 'estres_hidrico' in gdf_ndwi.columns:
             zonas = gdf_ndwi['id_zona']
             estres = gdf_ndwi['estres_hidrico']
-            
             # Colores basados en nivel de estrés
             colores_estres = []
             for e in estres:
@@ -2677,7 +2378,6 @@ def mostrar_analisis_ndwi():
                     colores_estres.append('#fee08b')
                 else:
                     colores_estres.append('#d73027')
-            
             bars = ax_bar.bar(zonas, estres, color=colores_estres, edgecolor='black')
             ax_bar.set_xlabel('Zona')
             ax_bar.set_ylabel('Índice de Estrés Hídrico')
@@ -2687,10 +2387,8 @@ def mostrar_analisis_ndwi():
             ax_bar.text(0.5, 0.5, 'Datos de estrés hídrico no disponibles', 
                        ha='center', va='center', transform=ax_bar.transAxes)
         st.pyplot(fig_bar)
-    
     # Mapa NDWI
     st.subheader("🗺️ MAPA NDWI")
-    
     if not gdf_ndwi.empty and 'ndwi' in gdf_ndwi.columns:
         mapa_ndwi = crear_mapa_interactivo_esri(
             gdf_ndwi,
@@ -2704,18 +2402,13 @@ def mostrar_analisis_ndwi():
             st.warning("No se pudo crear el mapa NDWI")
     else:
         st.warning("No hay datos NDWI disponibles para mostrar el mapa")
-    
     # Tabla detallada
     st.subheader("📊 TABLA DETALLADA NDWI")
-    
     columnas_ndwi = ['id_zona', 'area_ha', 'ndwi', 'categoria_hidrica', 
                     'estres_hidrico', 'humedad_suelo', 'recomendacion_riego']
-    
     columnas_disponibles = [col for col in columnas_ndwi if col in gdf_ndwi.columns]
-    
     if columnas_disponibles:
         df_detalle = gdf_ndwi[columnas_disponibles].copy()
-        
         # Formatear columnas numéricas
         if 'area_ha' in df_detalle.columns:
             df_detalle['area_ha'] = df_detalle['area_ha'].round(3)
@@ -2725,24 +2418,18 @@ def mostrar_analisis_ndwi():
             df_detalle['estres_hidrico'] = df_detalle['estres_hidrico'].round(3)
         if 'humedad_suelo' in df_detalle.columns:
             df_detalle['humedad_suelo'] = df_detalle['humedad_suelo'].round(3)
-        
         st.dataframe(df_detalle, use_container_width=True)
     else:
         st.warning("No hay datos NDWI disponibles para mostrar en la tabla")
-    
     # Recomendaciones de riego
     st.subheader("💧 RECOMENDACIONES DE RIEGO")
-    
     if 'recomendacion_riego' in gdf_ndwi.columns:
         recomendaciones_unicas = gdf_ndwi['recomendacion_riego'].unique()
         for rec in recomendaciones_unicas[:5]:  # Mostrar solo las 5 primeras únicas
             st.markdown(f"- {rec}")
-    
     # Descargar resultados
     st.markdown("### 💾 DESCARGAR RESULTADOS")
-    
     col_dl1, col_dl2 = st.columns(2)
-    
     with col_dl1:
         # Descargar CSV
         if not gdf_ndwi.empty:
@@ -2753,7 +2440,6 @@ def mostrar_analisis_ndwi():
                 file_name=f"ndwi_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv"
             )
-    
     with col_dl2:
         # Descargar GeoJSON
         if not gdf_ndwi.empty:
@@ -2764,30 +2450,22 @@ def mostrar_analisis_ndwi():
                 file_name=f"ndwi_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
                 mime="application/json"
             )
-
 def mostrar_analisis_altimetria():
     """Muestra el análisis altimétrico"""
-    
     if st.session_state.analisis_altimetria is None:
         st.warning("No hay datos de análisis altimétrico disponibles")
         return
-    
     gdf_alt = st.session_state.analisis_altimetria
     cultivo = st.session_state.cultivo_seleccionado
-    
     st.markdown("## 🏔️ ANÁLISIS ALTIMÉTRICO")
-    
     # Botón para volver atrás
     if st.button("⬅️ Volver a Configuración", key="volver_altimetria"):
         st.session_state.analisis_completado = False
         st.rerun()
-    
     # Información general
     st.info(f"**Cultivo:** {cultivo.replace('_', ' ').title()} | **Zonas analizadas:** {len(gdf_alt)}")
-    
     # Estadísticas resumen
     st.subheader("📊 ESTADÍSTICAS ALTIMÉTRICAS")
-    
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         avg_elevacion = gdf_alt['elevacion'].mean() if 'elevacion' in gdf_alt.columns else 0
@@ -2807,12 +2485,9 @@ def mostrar_analisis_altimetria():
             st.metric("⚠️ Zonas Alto Riesgo", f"{zonas_riesgo} / {len(gdf_alt)}")
         else:
             st.metric("⚠️ Zonas Alto Riesgo", "N/A")
-    
     # Visualizaciones
     st.subheader("📈 VISUALIZACIONES ALTIMÉTRICAS")
-    
     col_viz1, col_viz2 = st.columns(2)
-    
     with col_viz1:
         # Gráfico de dispersión elevación vs pendiente
         fig, ax = plt.subplots(1, 1, figsize=(10, 6))
@@ -2824,7 +2499,6 @@ def mostrar_analisis_altimetria():
             ax.set_ylabel('Pendiente (%)')
             ax.set_title('Elevación vs Pendiente')
             ax.grid(True, alpha=0.3)
-            
             # Añadir colorbar si hay adecuación
             if 'adecuacion_altimetrica' in gdf_alt.columns:
                 cbar = fig.colorbar(scatter, ax=ax)
@@ -2833,14 +2507,12 @@ def mostrar_analisis_altimetria():
             ax.text(0.5, 0.5, 'Datos no disponibles', 
                    ha='center', va='center', transform=ax.transAxes)
         st.pyplot(fig)
-    
     with col_viz2:
         # Gráfico de barras de adecuación por zona
         fig_bar, ax_bar = plt.subplots(1, 1, figsize=(10, 6))
         if 'id_zona' in gdf_alt.columns and 'adecuacion_altimetrica' in gdf_alt.columns:
             zonas = gdf_alt['id_zona']
             adecuacion = gdf_alt['adecuacion_altimetrica']
-            
             # Colores basados en adecuación
             colores_adecuacion = []
             for a in adecuacion:
@@ -2852,7 +2524,6 @@ def mostrar_analisis_altimetria():
                     colores_adecuacion.append('#fee08b')
                 else:
                     colores_adecuacion.append('#d73027')
-            
             bars = ax_bar.bar(zonas, adecuacion, color=colores_adecuacion, edgecolor='black')
             ax_bar.set_xlabel('Zona')
             ax_bar.set_ylabel('Índice de Adecuación')
@@ -2863,11 +2534,20 @@ def mostrar_analisis_altimetria():
                        ha='center', va='center', transform=ax_bar.transAxes)
         st.pyplot(fig_bar)
     
+    # 🔺 NUEVO: Curvas de nivel simuladas
+    st.subheader("⛰️ CURVAS DE NIVEL SIMULADAS")
+    curvas_img = generar_curvas_nivel(gdf_alt, intervalo=50)
+    if curvas_img:
+        st.markdown(
+            f'<img src="data:image/png;base64,{curvas_img}" style="width:100%; max-width:800px;">',
+            unsafe_allow_html=True
+        )
+    else:
+        st.info("No se pudieron generar curvas de nivel con los datos disponibles.")
+
     # Mapas
     st.subheader("🗺️ MAPAS ALTIMÉTRICOS")
-    
     col_map1, col_map2 = st.columns(2)
-    
     with col_map1:
         st.markdown("#### **Mapa de Elevación**")
         if not gdf_alt.empty and 'elevacion' in gdf_alt.columns:
@@ -2880,7 +2560,6 @@ def mostrar_analisis_altimetria():
             if mapa_elevacion:
                 st_folium(mapa_elevacion, width=400, height=300, 
                          key=f"mapa_elevacion_{datetime.now().timestamp()}")
-    
     with col_map2:
         st.markdown("#### **Mapa de Pendiente**")
         if not gdf_alt.empty and 'pendiente' in gdf_alt.columns:
@@ -2893,19 +2572,14 @@ def mostrar_analisis_altimetria():
             if mapa_pendiente:
                 st_folium(mapa_pendiente, width=400, height=300,
                          key=f"mapa_pendiente_{datetime.now().timestamp()}")
-    
     # Tabla detallada
     st.subheader("📊 TABLA DETALLADA DE ALTIMETRÍA")
-    
     columnas_alt = ['id_zona', 'area_ha', 'elevacion', 'pendiente', 'orientacion',
                    'adecuacion_altimetrica', 'categoria_altimetria', 
                    'riesgo_erosivo', 'recomendaciones_altimetria']
-    
     columnas_disponibles = [col for col in columnas_alt if col in gdf_alt.columns]
-    
     if columnas_disponibles:
         df_detalle = gdf_alt[columnas_disponibles].copy()
-        
         # Formatear columnas numéricas
         if 'area_ha' in df_detalle.columns:
             df_detalle['area_ha'] = df_detalle['area_ha'].round(3)
@@ -2915,16 +2589,12 @@ def mostrar_analisis_altimetria():
             df_detalle['pendiente'] = df_detalle['pendiente'].round(1)
         if 'adecuacion_altimetrica' in df_detalle.columns:
             df_detalle['adecuacion_altimetrica'] = df_detalle['adecuacion_altimetrica'].round(3)
-        
         st.dataframe(df_detalle, use_container_width=True)
     else:
         st.warning("No hay datos altimétricos disponibles para mostrar en la tabla")
-    
     # Descargar resultados
     st.markdown("### 💾 DESCARGAR RESULTADOS")
-    
     col_dl1, col_dl2 = st.columns(2)
-    
     with col_dl1:
         # Descargar CSV
         if not gdf_alt.empty:
@@ -2935,7 +2605,6 @@ def mostrar_analisis_altimetria():
                 file_name=f"altimetria_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
                 mime="text/csv"
             )
-    
     with col_dl2:
         # Descargar GeoJSON
         if not gdf_alt.empty:
@@ -2946,16 +2615,12 @@ def mostrar_analisis_altimetria():
                 file_name=f"altimetria_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
                 mime="application/json"
             )
-
 # ============================================================================
 # INTERFAZ PRINCIPAL DE LA APLICACIÓN
 # ============================================================================
-
 def mostrar_interfaz_principal():
     """Muestra la interfaz principal de configuración"""
-    
     st.sidebar.markdown("## ⚙️ CONFIGURACIÓN DEL ANÁLISIS")
-    
     # 1. Selección de cultivo
     st.sidebar.markdown("### 🌱 SELECCIÓN DE CULTIVO")
     cultivo = st.sidebar.selectbox(
@@ -2966,7 +2631,6 @@ def mostrar_interfaz_principal():
         if st.session_state.cultivo_seleccionado in PARAMETROS_CULTIVOS else 0
     )
     st.session_state.cultivo_seleccionado = cultivo
-    
     # 2. Tipo de análisis
     st.sidebar.markdown("### 🔍 TIPO DE ANÁLISIS")
     tipos_analisis = [
@@ -2976,7 +2640,6 @@ def mostrar_interfaz_principal():
         "ALTIMETRÍA",
         "RECOMENDACIONES NPK"
     ]
-    
     analisis_tipo = st.sidebar.selectbox(
         "Seleccione el tipo de análisis:",
         tipos_analisis,
@@ -2984,15 +2647,22 @@ def mostrar_interfaz_principal():
         if st.session_state.analisis_tipo_seleccionado in tipos_analisis else 0
     )
     st.session_state.analisis_tipo_seleccionado = analisis_tipo
-    
+
+    # Selector de nutriente (solo si se eligió RECOMENDACIONES NPK)
+    if analisis_tipo == "RECOMENDACIONES NPK":
+        nutriente_npk = st.sidebar.selectbox(
+            "Nutriente a analizar:",
+            ["NITRÓGENO", "FÓSFORO", "POTASIO"],
+            index=["NITRÓGENO", "FÓSFORO", "POTASIO"].index(st.session_state.nutriente_npk)
+        )
+        st.session_state.nutriente_npk = nutriente_npk
+
     # 3. Parámetros específicos por tipo de análisis
     st.sidebar.markdown("### 📅 PARÁMETROS ADICIONALES")
-    
     # Mes de análisis (para análisis estacionales)
     meses = list(FACTORES_MES.keys())
     mes_analisis = st.sidebar.selectbox("Mes de análisis:", meses, index=0)
     st.session_state.mes_analisis = mes_analisis
-    
     # Fuente satelital
     fuentes = list(FUENTES_SATELITALES.keys())
     fuente_satelital = st.sidebar.selectbox(
@@ -3002,89 +2672,70 @@ def mostrar_interfaz_principal():
         index=0
     )
     st.session_state.fuente_satelital = fuente_satelital
-    
     # Número de zonas para división
     n_zonas = st.sidebar.slider("Número de zonas de manejo:", 1, 50, 10)
     st.session_state.n_zonas = n_zonas
-    
     # Información del cultivo seleccionado
     st.sidebar.markdown("---")
     st.sidebar.markdown(f"### ℹ️ INFORMACIÓN DEL CULTIVO")
     st.sidebar.markdown(f"**Cultivo:** {cultivo.replace('_', ' ').title()}")
-    
     if cultivo in PARAMETROS_CULTIVOS:
         params = PARAMETROS_CULTIVOS[cultivo]
         st.sidebar.markdown(f"**N óptimo:** {params['NITROGENO']['optimo']} kg/ha")
         st.sidebar.markdown(f"**P óptimo:** {params['FOSFORO']['optimo']} kg/ha")
         st.sidebar.markdown(f"**K óptimo:** {params['POTASIO']['optimo']} kg/ha")
         st.sidebar.markdown(f"**pH óptimo:** {params['pH_OPTIMO']}")
-    
     # Botón para cargar datos de demostración
     st.sidebar.markdown("---")
     if st.sidebar.button("🔄 Cargar datos de demostración", type="secondary"):
         cargar_datos_demo()
-    
     # Área principal
     st.markdown("## 📤 CARGA DE DATOS GEOESPACIALES")
-    
     # Opciones de carga
     opcion_carga = st.radio(
         "Seleccione el método de carga:",
         ["📁 Subir archivo Shapefile/KML/ZIP", "🗺️ Usar ubicación manual"]
     )
-    
     if opcion_carga == "📁 Subir archivo Shapefile/KML/ZIP":
         uploaded_file = st.file_uploader(
             "Suba su archivo (Shapefile .zip, KML, KMZ):",
             type=['zip', 'kml', 'kmz'],
             help="Suba un archivo ZIP que contenga shapefile (.shp, .shx, .dbf, .prj) o archivo KML/KMZ"
         )
-        
         if uploaded_file is not None:
             with st.spinner("🔄 Procesando archivo..."):
                 gdf = procesar_archivo(uploaded_file)
-                
                 if gdf is not None and not gdf.empty:
                     st.session_state.gdf_original = gdf
-                    
                     # Mostrar información básica
                     st.success(f"✅ Archivo cargado correctamente")
                     st.info(f"**Número de polígonos:** {len(gdf)} | **CRS:** {gdf.crs}")
-                    
                     # Mostrar mapa de la parcela
                     st.subheader("🗺️ VISUALIZACIÓN DE LA PARCELA")
                     mapa_parcela = crear_mapa_visualizador_parcela(gdf)
                     if mapa_parcela:
                         st_folium(mapa_parcela, width=800, height=500, key="mapa_parcela")
-                    
                     # Dividir en zonas
                     st.subheader("🔢 DIVISIÓN EN ZONAS DE MANEJO")
                     with st.spinner("Dividiendo parcela en zonas..."):
                         gdf_zonas = dividir_parcela_en_zonas(gdf, n_zonas)
-                        
                         if gdf_zonas is not None:
                             st.session_state.gdf_zonas = gdf_zonas
                             st.session_state.area_total = calcular_superficie(gdf_zonas).sum()
-                            
                             st.success(f"✅ Parcela dividida en {len(gdf_zonas)} zonas")
                             st.info(f"**Área total:** {st.session_state.area_total:.2f} hectáreas")
-                            
                             # Mostrar zonas en mapa
                             st.subheader("🗺️ ZONAS DE MANEJO GENERADAS")
                             mapa_zonas = crear_mapa_interactivo_esri(gdf_zonas, "Zonas de Manejo")
                             if mapa_zonas:
                                 st_folium(mapa_zonas, width=800, height=500, key="mapa_zonas")
-                            
                             # Botón para ejecutar análisis
                             st.markdown("---")
                             st.markdown("## 🚀 EJECUTAR ANÁLISIS")
-                            
                             if st.button("▶️ Ejecutar Análisis Completo", type="primary", use_container_width=True):
                                 ejecutar_analisis_completo()
-    
     else:  # Usar ubicación manual
         st.warning("⚠️ Esta funcionalidad está en desarrollo. Por favor, suba un archivo.")
-    
     # Mostrar panel de metodologías
     with st.expander("📚 METODOLOGÍAS AVANZADAS DISPONIBLES", expanded=False):
         for key, metodo in METODOLOGIAS_AVANZADAS.items():
@@ -3094,7 +2745,6 @@ def mostrar_interfaz_principal():
             for app in metodo['aplicaciones'][:3]:
                 st.markdown(f"- {app}")
             st.markdown("---")
-
 def cargar_datos_demo():
     """Carga datos de demostración para pruebas"""
     try:
@@ -3106,25 +2756,19 @@ def cargar_datos_demo():
             (-74.10, 4.70),
             (-74.10, 4.65)
         ])
-        
         gdf = gpd.GeoDataFrame(
             {'id': [1], 'nombre': ['Parcela Demo']},
             geometry=[polygon],
             crs='EPSG:4326'
         )
-        
         st.session_state.gdf_original = gdf
         st.session_state.datos_demo = True
-        
         st.success("✅ Datos de demostración cargados correctamente")
         st.rerun()
-        
     except Exception as e:
         st.error(f"Error cargando datos demo: {str(e)}")
-
 def ejecutar_analisis_completo():
     """Ejecuta el análisis completo según la configuración"""
-    
     with st.spinner("🔄 Ejecutando análisis..."):
         # Obtener parámetros
         cultivo = st.session_state.cultivo_seleccionado
@@ -3132,65 +2776,48 @@ def ejecutar_analisis_completo():
         mes_analisis = st.session_state.mes_analisis
         fuente_satelital = st.session_state.fuente_satelital
         gdf_zonas = st.session_state.gdf_zonas
-        
         if gdf_zonas is None or gdf_zonas.empty:
             st.error("❌ No hay zonas de manejo disponibles para analizar")
             return
-        
         # Ejecutar análisis según tipo
         if analisis_tipo == "FERTILIDAD ACTUAL":
             st.session_state.analisis_fertilidad = analizar_fertilidad_real(
                 gdf_zonas, cultivo, mes_analisis, fuente_satelital
             )
             st.session_state.analisis_completado = True
-            
         elif analisis_tipo == "ANÁLISIS DE TEXTURA":
             st.session_state.analisis_textura = analizar_textura_suelo_avanzado(
                 gdf_zonas, cultivo, mes_analisis
             )
             st.session_state.analisis_completado = True
-            
         elif analisis_tipo == "ANÁLISIS NDWI":
             st.session_state.analisis_ndwi = analizar_ndwi(
                 gdf_zonas, cultivo, mes_analisis, fuente_satelital
             )
             st.session_state.analisis_completado = True
-            
         elif analisis_tipo == "ALTIMETRÍA":
             st.session_state.analisis_altimetria = analizar_altimetria(
                 gdf_zonas, cultivo, usar_elevacion=True
             )
             st.session_state.analisis_completado = True
-            
         elif analisis_tipo == "RECOMENDACIONES NPK":
-            # Para NPK, primero preguntar qué nutriente
-            nutriente = st.selectbox(
-                "Seleccione el nutriente para análisis:",
-                ["NITRÓGENO", "FÓSFORO", "POTASIO"]
+            nutriente = st.session_state.nutriente_npk
+            st.session_state.analisis_npk = generar_recomendaciones_npk(
+                gdf_zonas, cultivo, nutriente, mes_analisis, fuente_satelital
             )
-            
-            if st.button("Analizar NPK"):
-                st.session_state.analisis_npk = generar_recomendaciones_npk(
-                    gdf_zonas, cultivo, nutriente, mes_analisis, fuente_satelital
-                )
-                st.session_state.analisis_completado = True
-        
+            st.session_state.analisis_completado = True
         if st.session_state.analisis_completado:
             st.success("✅ Análisis completado exitosamente")
             st.rerun()
-
 # ============================================================================
 # FLUJO PRINCIPAL DE LA APLICACIÓN
 # ============================================================================
-
 def main():
     """Función principal de la aplicación"""
-    
     # Verificar si el análisis está completado
     if st.session_state.analisis_completado:
         # Mostrar resultados según el tipo de análisis
         analisis_tipo = st.session_state.analisis_tipo_seleccionado
-        
         if analisis_tipo == "FERTILIDAD ACTUAL":
             mostrar_analisis_fertilidad_real()
         elif analisis_tipo == "ANÁLISIS DE TEXTURA":
@@ -3208,7 +2835,6 @@ def main():
     else:
         # Mostrar interfaz de configuración
         mostrar_interfaz_principal()
-    
     # Pie de página
     st.markdown("---")
     st.markdown(
@@ -3220,10 +2846,8 @@ def main():
         """,
         unsafe_allow_html=True
     )
-
 # ============================================================================
 # EJECUCIÓN DE LA APLICACIÓN
 # ============================================================================
-
 if __name__ == "__main__":
     main()
