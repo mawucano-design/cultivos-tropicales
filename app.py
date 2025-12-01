@@ -1,4 +1,4 @@
-# analizador_cultivos_corregido.py
+# analizador_cultivos_corregido_completo.py
 import streamlit as st
 
 # --- session_state init for analysis control (injected) ---
@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import LinearSegmentedColormap
 import io
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, Point
 import math
 import folium
 from folium import plugins
@@ -1592,15 +1592,52 @@ def procesar_archivo(uploaded_file):
         st.error(f"❌ Error procesando archivo: {str(e)}")
         return None
 
+def obtener_centroide_proyectado(gdf):
+    """Obtiene el centroide proyectando a un CRS proyectado para evitar advertencias"""
+    try:
+        if gdf.empty:
+            return Point(-74.0, 4.0)  # Punto por defecto en Colombia
+        
+        # Verificar si el CRS es geográfico
+        if gdf.crs and gdf.crs.is_geographic:
+            # Proyectar a un CRS proyectado (UTM para Colombia)
+            try:
+                # Intentar con UTM adecuado para Colombia
+                gdf_proj = gdf.to_crs('EPSG:3116')  # MAGNA-SIRGAS / Colombia West zone
+                centroid = gdf_proj.geometry.centroid.iloc[0]
+                # Convertir de vuelta a WGS84 para el mapa
+                centroid_wgs84 = gpd.GeoSeries([centroid], crs='EPSG:3116').to_crs('EPSG:4326').iloc[0]
+                return centroid_wgs84
+            except:
+                # Fallback: usar el centroide del bounding box
+                bounds = gdf.total_bounds
+                if len(bounds) >= 4:
+                    center_lon = (bounds[0] + bounds[2]) / 2
+                    center_lat = (bounds[1] + bounds[3]) / 2
+                    return Point(center_lon, center_lat)
+                else:
+                    # Último recurso: usar el primer punto
+                    return gdf.geometry.centroid.iloc[0]
+        else:
+            # Ya está proyectado, usar directamente
+            return gdf.geometry.centroid.iloc[0]
+    except Exception as e:
+        # Fallback seguro
+        try:
+            return gdf.geometry.centroid.iloc[0]
+        except:
+            # Punto por defecto (Colombia)
+            return Point(-74.0, 4.0)
+
 def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=None, nutriente=None):
     """Crea mapa interactivo con base ESRI Satélite - VERSIÓN CORREGIDA"""
     try:
-        # Obtener centro y bounds del GeoDataFrame
+        # Obtener centro y bounds del GeoDataFrame usando función corregida
         if gdf.empty:
             st.warning("El GeoDataFrame está vacío, no se puede crear el mapa")
             return None
         
-        centroid = gdf.geometry.centroid.iloc[0]
+        centroid = obtener_centroide_proyectado(gdf)
         bounds = gdf.total_bounds
         
         # Crear mapa centrado con ESRI Satélite por defecto
@@ -1805,7 +1842,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                     
                     # Marcador con número de zona
                     try:
-                        centroid = row.geometry.centroid
+                        centroid = obtener_centroide_proyectado(gpd.GeoDataFrame([row], crs=gdf.crs))
                         folium.Marker(
                             [centroid.y, centroid.x],
                             icon=folium.DivIcon(
@@ -1922,10 +1959,10 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
         return None
 
 def crear_mapa_visualizador_parcela(gdf):
-    """Crea mapa interactivo para visualizar la parcela original con ESRI Satélite"""
+    """Crea mapa interactivo para visualizar la parcela original con ESRI Satélite - VERSIÓN CORREGIDA"""
     try:
-        # Obtener centro y bounds
-        centroid = gdf.geometry.centroid.iloc[0]
+        # Usar función corregida para obtener centroide
+        centroid = obtener_centroide_proyectado(gdf)
         bounds = gdf.total_bounds
         
         # Crear mapa con ESRI Satélite por defecto
@@ -2130,7 +2167,7 @@ def crear_resumen_agroecologico(cultivo):
     return markdown
 
 # ============================================================================
-# FUNCIONES DE VISUALIZACIÓN - VERSIONES CORREGIDAS (SIN BOTONES CON st.rerun)
+# FUNCIONES DE VISUALIZACIÓN - VERSIONES CORREGIDAS
 # ============================================================================
 def mostrar_analisis_fertilidad_real():
     """Muestra el análisis de fertilidad real del suelo"""
@@ -2266,7 +2303,7 @@ def mostrar_analisis_fertilidad_real():
         if 'potasio' in df_detalle.columns:
             df_detalle['potasio'] = df_detalle['potasio'].round(0)
         
-        st.dataframe(df_detalle, use_container_width=True)
+        st.dataframe(df_detalle, width='stretch')
     else:
         st.warning("No hay datos disponibles para mostrar en la tabla")
     
@@ -2406,7 +2443,7 @@ def mostrar_recomendaciones_npk():
         if f'recomendacion_{nutriente.lower()}_kg' in df_npk.columns:
             df_npk[f'recomendacion_{nutriente.lower()}_kg'] = df_npk[f'recomendacion_{nutriente.lower()}_kg'].round(1)
         
-        st.dataframe(df_npk, use_container_width=True)
+        st.dataframe(df_npk, width='stretch')
     else:
         st.warning("No hay datos de recomendaciones disponibles para mostrar en la tabla")
     
@@ -2532,7 +2569,7 @@ def mostrar_analisis_textura_avanzado():
         if 'agua_disponible' in df_detalle.columns:
             df_detalle['agua_disponible'] = df_detalle['agua_disponible'].round(1)
         
-        st.dataframe(df_detalle, use_container_width=True)
+        st.dataframe(df_detalle, width='stretch')
     else:
         st.warning("No hay datos de textura disponibles para mostrar en la tabla")
     
@@ -2694,7 +2731,7 @@ def mostrar_analisis_ndwi():
         if 'humedad_suelo' in df_detalle.columns:
             df_detalle['humedad_suelo'] = df_detalle['humedad_suelo'].round(3)
         
-        st.dataframe(df_detalle, use_container_width=True)
+        st.dataframe(df_detalle, width='stretch')
     else:
         st.warning("No hay datos NDWI disponibles para mostrar en la tabla")
     
@@ -2887,7 +2924,7 @@ def mostrar_analisis_altimetria():
         if 'adecuacion_altimetrica' in df_detalle.columns:
             df_detalle['adecuacion_altimetrica'] = df_detalle['adecuacion_altimetrica'].round(3)
         
-        st.dataframe(df_detalle, use_container_width=True)
+        st.dataframe(df_detalle, width='stretch')
     else:
         st.warning("No hay datos altimétricos disponibles para mostrar en la tabla")
     
@@ -3040,7 +3077,7 @@ def mostrar_interfaz_principal():
                                 st.session_state.nutriente_npk = nutriente_npk
                             
                             # Botón principal para ejecutar análisis
-                            if st.button("▶️ Ejecutar Análisis Completo", type="primary", use_container_width=True, key="btn_ejecutar"):
+                            if st.button("▶️ Ejecutar Análisis Completo", type="primary", width='stretch', key="btn_ejecutar"):
                                 st.session_state.analisis_en_progreso = True
 
 def cargar_datos_demo():
@@ -3119,28 +3156,28 @@ def ejecutar_analisis_completo():
             if st.session_state.analisis_completado:
                 st.success("✅ Análisis completado exitosamente")
                 st.balloons()
-                # No usar st.rerun() - la aplicación se actualizará automáticamente
                 
     except Exception as e:
         st.error(f"❌ Error durante el análisis: {str(e)}")
         st.exception(e)
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL CORREGIDA - SIN st.rerun()
+# FUNCIÓN PRINCIPAL CORREGIDA
 # ============================================================================
 def main():
-    """Función principal de la aplicación - VERSIÓN CORREGIDA SIN BUCLE"""
+    """Función principal de la aplicación - VERSIÓN CORREGIDA"""
     # Mostrar siempre el título principal
     st.title("🌱 ANALIZADOR CULTIVOS - METODOLOGÍA GEE COMPLETA CON AGROECOLOGÍA")
     st.markdown("---")
     
-    # Control de navegación
-    col1, col2 = st.columns([6, 1])
-    with col2:
-        if st.session_state.get('analisis_completado', False):
-            if st.button("⚙️ Nueva Configuración", type="secondary", key="btn_nueva_config"):
-                # Limpiar estados de análisis
+    # Control de navegación mejorado
+    if st.session_state.get('analisis_completado', False):
+        col1, col2 = st.columns([6, 1])
+        with col2:
+            if st.button("🔄 Nueva Configuración", type="secondary", width='content', key="btn_nueva_config"):
+                # Limpiar TODOS los estados de análisis
                 st.session_state.analisis_completado = False
+                st.session_state.analisis_en_progreso = False  # AÑADIDO: Limpiar flag de análisis
                 st.session_state.analisis_fertilidad = None
                 st.session_state.analisis_textura = None
                 st.session_state.analisis_ndwi = None
@@ -3148,14 +3185,17 @@ def main():
                 st.session_state.analisis_npk = None
                 st.session_state.gdf_zonas = None
                 st.session_state.gdf_original = None
+                st.session_state.datos_demo = False
+                st.session_state.mapa_ndwi = None
+                st.session_state.mapa_altimetria = None
                 st.session_state.mostrar_configuracion = True
-                st.success("✅ Configuración reiniciada - Complete los parámetros nuevamente")
+                st.rerun()  # Forzar recarga para mostrar configuración
     
     # Decidir qué mostrar
-    if not st.session_state.get('analisis_completado', False) and st.session_state.mostrar_configuracion:
+    if not st.session_state.get('analisis_completado', False):
         # Mostrar interfaz de configuración
         mostrar_interfaz_principal()
-    elif st.session_state.get('analisis_completado', False):
+    else:
         # Mostrar resultados según el tipo de análisis
         analisis_tipo = st.session_state.get('analisis_tipo_seleccionado', 'FERTILIDAD ACTUAL')
         
@@ -3179,13 +3219,11 @@ def main():
             datos_disponibles = True
         
         if not datos_disponibles:
-            st.warning("⚠️ No hay resultados disponibles para mostrar. Vuelva a la configuración.")
-            if st.button("🔙 Volver a Configuración", key="btn_volver_config"):
+            st.warning("⚠️ No hay resultados disponibles para mostrar.")
+            if st.button("🔙 Volver a Configuración", width='content', key="btn_volver_config"):
                 st.session_state.analisis_completado = False
                 st.session_state.mostrar_configuracion = True
-    else:
-        # Por defecto, mostrar configuración
-        mostrar_interfaz_principal()
+                st.rerun()
     
     # Pie de página
     st.markdown("---")
@@ -3203,13 +3241,9 @@ def main():
 # EJECUCIÓN DE LA APLICACIÓN
 # ============================================================================
 
-
 # --- Analysis runner (injected) ---
 def _check_and_run_analysis():
-    """Run the heavy analysis once when triggered via the UI button.
-    The button sets st.session_state['analisis_en_progreso'] = True; this function
-    detects that flag and executes ejecutar_analisis_completo() exactly once.
-    """
+    """Run the heavy analysis once when triggered via the UI button."""
     try:
         if st.session_state.get('analisis_en_progreso', False):
             with st.spinner('🔄 Ejecutando análisis. Esto puede tardar unos segundos...'):
@@ -3218,11 +3252,12 @@ def _check_and_run_analysis():
             # mark as finished
             st.session_state['analisis_en_progreso'] = False
             st.session_state['analisis_completado'] = True
+            st.rerun()  # Forzar actualización para mostrar resultados
     except Exception as e:
         st.error(f"Error en ejecución del análisis: {e}")
 
 # Ejecutar verificación al final de cada render
 _check_and_run_analysis()
-# ---------------------------
+
 if __name__ == "__main__":
     main()
