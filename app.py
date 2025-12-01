@@ -1489,7 +1489,7 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
     try:
         if len(gdf) == 0:
             st.error("El GeoDataFrame está vacío")
-            return gdf
+            return None
         
         # Usar el primer polígono como parcela principal
         parcela_principal = gdf.iloc[0].geometry
@@ -1501,14 +1501,14 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
         bounds = parcela_principal.bounds
         if len(bounds) < 4:
             st.error("No se pueden obtener los límites de la parcela")
-            return gdf
+            return None
             
         minx, miny, maxx, maxy = bounds
         
         # Verificar que los bounds sean válidos
         if minx >= maxx or miny >= maxy:
             st.error("Límites de parcela inválidos")
-            return gdf
+            return None
         
         sub_poligonos = []
         
@@ -1565,6 +1565,22 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
                 'id_zona': range(1, len(sub_poligonos) + 1),
                 'geometry': sub_poligonos
             }, crs=gdf.crs)
+            return nuevo_gdf
+        else:
+            # Si no se pudieron crear zonas, crear al menos una con toda la parcela
+            st.warning("No se pudieron crear zonas, retornando parcela original como una sola zona")
+            return gpd.GeoDataFrame({
+                'id_zona': [1],
+                'geometry': [gdf.iloc[0].geometry]
+            }, crs=gdf.crs)
+            
+    except Exception as e:
+        st.error(f"Error dividiendo parcela: {str(e)}")
+        # En caso de error, retornar la parcela original como una sola zona
+        return gpd.GeoDataFrame({
+            'id_zona': [1],
+            'geometry': [gdf.iloc[0].geometry]
+        }, crs=gdf.crs)
             return nuevo_gdf
         else:
             st.warning("No se pudieron crear zonas, retornando parcela original")
