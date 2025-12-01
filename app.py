@@ -3409,33 +3409,63 @@ def mostrar_configuracion_parcela():
             # Calcular índices según tipo de análisis seleccionado
             if analisis_tipo == "FERTILIDAD ACTUAL":
                 gdf_analisis = analizar_fertilidad_real(gdf_zonas, cultivo, mes_analisis, fuente_satelital)
-                st.session_state.analisis_fertilidad = gdf_analisis
+                if gdf_analisis is not None:
+                    st.session_state.analisis_fertilidad = gdf_analisis
+                    st.session_state.gdf_analisis = gdf_analisis  # ← AÑADIR ESTA LÍNEA
+                    st.session_state.area_total = area_total
+                    st.session_state.analisis_completado = True
+                    st.success("✅ Análisis completado correctamente")
+                    st.rerun()  # ← ESTO DEBE ESTAR DENTRO DEL IF
+                else:
+                    st.error("Error en el análisis de fertilidad")
                 
             elif analisis_tipo == "RECOMENDACIONES NPK":
                 gdf_analisis = generar_recomendaciones_npk(gdf_zonas, cultivo, nutriente, mes_analisis, fuente_satelital)
-                st.session_state.analisis_npk = gdf_analisis
+                if gdf_analisis is not None:
+                    st.session_state.analisis_npk = gdf_analisis
+                    st.session_state.gdf_analisis = gdf_analisis  # ← AÑADIR ESTA LÍNEA
+                    st.session_state.area_total = area_total
+                    st.session_state.analisis_completado = True
+                    st.success("✅ Análisis completado correctamente")
+                    st.rerun()
+                else:
+                    st.error("Error en las recomendaciones NPK")
                 
             elif analisis_tipo == "ANÁLISIS DE TEXTURA":
                 gdf_analisis = analizar_textura_suelo_avanzado(gdf_zonas, cultivo, mes_analisis)
-                st.session_state.analisis_textura = gdf_analisis
+                if gdf_analisis is not None:
+                    st.session_state.analisis_textura = gdf_analisis
+                    st.session_state.gdf_analisis = gdf_analisis  # ← AÑADIR ESTA LÍNEA
+                    st.session_state.area_total = area_total
+                    st.session_state.analisis_completado = True
+                    st.success("✅ Análisis completado correctamente")
+                    st.rerun()
+                else:
+                    st.error("Error en el análisis de textura")
                 
             elif analisis_tipo == "ANÁLISIS NDWI":
                 gdf_analisis = analizar_ndwi(gdf_zonas, cultivo, mes_analisis, fuente_satelital)
-                st.session_state.analisis_ndwi = gdf_analisis
+                if gdf_analisis is not None:
+                    st.session_state.analisis_ndwi = gdf_analisis
+                    st.session_state.gdf_analisis = gdf_analisis  # ← AÑADIR ESTA LÍNEA
+                    st.session_state.area_total = area_total
+                    st.session_state.analisis_completado = True
+                    st.success("✅ Análisis completado correctamente")
+                    st.rerun()
+                else:
+                    st.error("Error en el análisis NDWI")
                 
             elif analisis_tipo == "ALTIMETRÍA":
                 gdf_analisis = analizar_altimetria(gdf_zonas, cultivo, usar_elevacion)
-                st.session_state.analisis_altimetria = gdf_analisis
-            
-            # Actualizar estado
-            if gdf_analisis is not None:
-                st.session_state.area_total = area_total
-                st.session_state.analisis_completado = True
-                st.success(f"✅ Análisis {analisis_tipo} completado correctamente")
-                st.rerun()
-            else:
-                st.error(f"Error en el análisis {analisis_tipo}")
-
+                if gdf_analisis is not None:
+                    st.session_state.analisis_altimetria = gdf_analisis
+                    st.session_state.gdf_analisis = gdf_analisis  # ← AÑADIR ESTA LÍNEA
+                    st.session_state.area_total = area_total
+                    st.session_state.analisis_completado = True
+                    st.success("✅ Análisis completado correctamente")
+                    st.rerun()
+                else:
+                    st.error("Error en el análisis de altimetría")
 # ============================================================================
 # INTERFAZ PRINCIPAL
 # ============================================================================
@@ -3487,26 +3517,27 @@ def main():
 
     # Mostrar interfaz según el estado
     if st.session_state.analisis_completado:
-        if analisis_tipo == "FERTILIDAD ACTUAL":
+        # Mostrar el análisis correspondiente
+        if analisis_tipo == "FERTILIDAD ACTUAL" and st.session_state.analisis_fertilidad is not None:
             mostrar_analisis_fertilidad_real()
-        elif analisis_tipo == "RECOMENDACIONES NPK":
+        elif analisis_tipo == "RECOMENDACIONES NPK" and st.session_state.analisis_npk is not None:
             mostrar_recomendaciones_npk()
-        elif analisis_tipo == "ANÁLISIS DE TEXTURA":
+        elif analisis_tipo == "ANÁLISIS DE TEXTURA" and st.session_state.analisis_textura is not None:
             mostrar_analisis_textura_mejorado()
-        elif analisis_tipo == "ANÁLISIS NDWI":
+        elif analisis_tipo == "ANÁLISIS NDWI" and st.session_state.analisis_ndwi is not None:
             mostrar_analisis_ndwi()
-        elif analisis_tipo == "ALTIMETRÍA":
+        elif analisis_tipo == "ALTIMETRÍA" and st.session_state.analisis_altimetria is not None:
             mostrar_analisis_altimetria()
         else:
-            st.warning(f"Análisis {analisis_tipo} no reconocido")
+            st.warning("❌ El análisis seleccionado no se completó correctamente")
             if st.button("⬅️ Volver a Configuración"):
                 st.session_state.analisis_completado = False
                 st.rerun()
+                
     elif st.session_state.gdf_original is not None:
         mostrar_configuracion_parcela()
     else:
         mostrar_modo_demo()
-
 # EJECUTAR APLICACIÓN
 if __name__ == "__main__":
     main()
