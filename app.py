@@ -24,6 +24,9 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import base64
 import fiona
+# >>>>>> NUEVO: para curvas de nivel
+from scipy.interpolate import griddata
+
 st.set_page_config(page_title="🌴 Analizador Cultivos", layout="wide")
 st.title("🌱 ANALIZADOR CULTIVOS - METODOLOGÍA GEE COMPLETA CON AGROECOLOGÍA")
 st.markdown("---")
@@ -395,10 +398,9 @@ if 'fuente_satelital' not in st.session_state:
     st.session_state.fuente_satelital = "PLANETSCOPE"
 if 'n_zonas' not in st.session_state:
     st.session_state.n_zonas = 10
+# >>>>>> NUEVO: inicializar nutriente_npk
 if 'nutriente_npk' not in st.session_state:
-    st.session_state.nutriente_npk = "NITRÓGENO"  # <-- NUEVO
-
-
+    st.session_state.nutriente_npk = "NITRÓGENO"
 # ============================================================================
 # FUNCIONES PARA TODOS LOS ANÁLISIS
 # ============================================================================
@@ -976,7 +978,7 @@ def analizar_altimetria(gdf, cultivo, usar_elevacion=True):
     zonas_gdf['orientacion'] = "N"
     zonas_gdf['adecuacion_altimetrica'] = 0.0
     zonas_gdf['categoria_altimetria'] = "ÓPTIMA"
-    zonas_gdf['riesgo_erosivo'] = "BAJO"
+    zonas_gdf[' riesgo_erosivo'] = "BAJO"
     zonas_gdf['recomendaciones_altimetria'] = ""
     for idx, row in zonas_gdf.iterrows():
         try:
@@ -1225,57 +1227,22 @@ def analizar_textura_suelo_avanzado(gdf, cultivo, mes_analisis):
             zonas_gdf.loc[idx, 'riesgo_erosion'] = "BAJO"
     return zonas_gdf
 
-# ============================================================================
-# NUEVA FUNCIÓN: CURVAS DE NIVEL
-# ============================================================================
-def generar_curvas_nivel(gdf_altimetria, intervalo=50):
-    """Genera líneas de contorno (curvas de nivel) simuladas a partir de elevaciones por zona"""
-    try:
-        # Crear una malla regular sobre el bounding box
-        bounds = gdf_altimetria.total_bounds
-        minx, miny, maxx, maxy = bounds
-        if minx >= maxx or miny >= maxy:
-            return None
-        resolucion = max((maxx - minx) / 20, (maxy - miny) / 20)  # Ajustar resolución
-        x = np.arange(minx, maxx, resolucion)
-        y = np.arange(miny, maxy, resolucion)
-        X, Y = np.meshgrid(x, y)
-        
-        # Interpolar elevación en la malla usando valores promedio por zona
-        Z = np.full_like(X, np.nan)
-        for i in range(X.shape[0]):
-            for j in range(X.shape[1]):
-                punto = gpd.points_from_xy([X[i, j]], [Y[i, j]], crs=gdf_altimetria.crs)
-                # Encontrar zona más cercana
-                distancias = gdf_altimetria.distance(punto[0])
-                if not distancias.empty and distancias.min() < resolucion * 2:
-                    idx_cercano = distancias.idxmin()
-                    Z[i, j] = gdf_altimetria.loc[idx_cercano, 'elevacion']
-        
-        # Generar contornos
-        fig, ax = plt.subplots(figsize=(10, 6))
-        niveles = np.arange(
-            np.nanmin(Z) // intervalo * intervalo,
-            np.nanmax(Z) + intervalo,
-            intervalo
-        )
-        CS = ax.contour(X, Y, Z, levels=niveles, colors='black', linewidths=0.8)
-        ax.clabel(CS, inline=True, fontsize=8, fmt='%1.0f m')
-        ax.set_title("Curvas de Nivel Simuladas")
-        ax.axis('equal')
-        ax.set_xlabel("Longitud")
-        ax.set_ylabel("Latitud")
-        
-        # Convertir a imagen base64 para mostrar en Streamlit
-        buf = io.BytesToBytesIO()
-        plt.savefig(buf, format="png", dpi=150, bbox_inches='tight')
-        buf.seek(0)
-        img_base64 = base64.b64encode(buf.read()).decode()
-        plt.close(fig)
-        return img_base64
-    except Exception as e:
-        st.warning(f"No se pudieron generar curvas de nivel: {str(e)}")
-        return None
+# >>>>>>>>>> NUEVO: función corregida para resumen agroecológico (sin f-string rota)
+def crear_resumen_agroecologico(cultivo):
+    """Crea un resumen de recomendaciones agroecológicas para el cultivo"""
+    recomendaciones = RECOMENDACIONES_AGROECOLOGICAS.get(cultivo, {})
+    markdown = f"""
+### 🌿 RECOMENDACIONES AGROECOLÓGICAS - {cultivo.replace('_', ' ').title()}
+**Descripción general:** Recomendaciones basadas en principios agroecológicos para el cultivo de {cultivo.replace('_', ' ')}.
+"""
+    for categoria, items in recomendaciones.items():
+        categoria_formateada = categoria.replace('_', ' ').title()
+        markdown += f"\n**{categoria_formateada}:**\n"
+        for item in items[:3]:
+            markdown += f"• {item}\n"
+    if not recomendaciones:
+        markdown += "\n**No hay recomendaciones agroecológicas específicas disponibles para este cultivo.**\n"
+    return markdown
 
 # ============================================================================
 # FUNCIONES AUXILIARES
@@ -1897,21 +1864,148 @@ def crear_visualizacion_textura_avanzado(gdf_textura, cultivo):
         ax.text(0.5, 0.5, f'Error al crear visualizaciones: {str(e)}', 
                 ha='center', va='center', transform=ax.transAxes)
         return fig
-def crear_resumen_agroecologico(cultivo):
-    """Crea un resumen de recomendaciones agroecológicas para el cultivo"""
-    recomendaciones = RECOMENDACIONES_AGROECOLOGICAS.get(cultivo, {})
-    markdown = f"""
-### 🌿 RECOMENDACIONES AGROECOLÓGICAS - {cultivo.replace('_', ' ').title()}
-**Descripción general:** Recomendaciones basadas en principios agroecológicos para el cultivo de {cultivo.replace('_', ' ')}.
-"""
-    for categoria, items in recomendaciones.items():
-        categoria_formateada = categoria.replace('_', ' ').title()
-        markdown += f"\n**{categoria_formateada}:**\n"
-        for item in items[:3]:  # Mostrar solo las 3 primeras recomendaciones
-            markdown += f"• {item}\n"
-    if not recomendaciones:
-        markdown += "\n**No hay recomendaciones agroecológicas específicas disponibles para este cultivo.**\n"
-    return markdown
+
+# >>>>>>>>>> NUEVO: función reemplazada completamente — altimetría con curvas de nivel
+def mostrar_analisis_altimetria():
+    """Muestra el análisis altimétrico con curvas de nivel integradas en un solo mapa"""
+    if st.session_state.analisis_altimetria is None:
+        st.warning("No hay datos de análisis altimétrico disponibles")
+        return
+    gdf_alt = st.session_state.analisis_altimetria
+    cultivo = st.session_state.cultivo_seleccionado
+
+    st.markdown("## 🏔️ ANÁLISIS ALTIMÉTRICO CON CURVAS DE NIVEL")
+    
+    if st.button("⬅️ Volver a Configuración", key="volver_altimetria"):
+        st.session_state.analisis_completado = False
+        st.rerun()
+
+    # Estadísticas resumen
+    st.subheader("📊 Resumen")
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        avg_elev = gdf_alt['elevacion'].mean() if 'elevacion' in gdf_alt.columns else 0
+        st.metric("⛰️ Elevación promedio", f"{avg_elev:.0f} m")
+    with col2:
+        avg_pend = gdf_alt['pendiente'].mean() if 'pendiente' in gdf_alt.columns else 0
+        st.metric("📐 Pendiente promedio", f"{avg_pend:.1f}%")
+    with col3:
+        if 'categoria_altimetria' in gdf_alt.columns:
+            cat = gdf_alt['categoria_altimetria'].mode()[0]
+        else:
+            cat = "N/A"
+        st.metric("🏷️ Categoría", cat)
+
+    # === MAPA ÚNICO CON CURVAS DE NIVEL ===
+    st.subheader("🗺️ Mapa de Elevación con Curvas de Nivel")
+    
+    if gdf_alt.empty:
+        st.warning("Sin datos para mostrar")
+        return
+
+    centroid = gdf_alt.geometry.centroid.iloc[0]
+    bounds = gdf_alt.total_bounds
+
+    m = folium.Map(
+        location=[centroid.y, centroid.x],
+        zoom_start=15,
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Esri Satélite'
+    )
+
+    # Añadir capa de elevación (polígonos coloreados)
+    vmin, vmax = 0, 1000
+    colores = PALETAS_GEE['ALTIMETRIA']
+
+    def obtener_color(valor, vmin, vmax, colores):
+        if vmax == vmin:
+            return colores[len(colores)//2]
+        valor_norm = (valor - vmin) / (vmax - vmin)
+        valor_norm = max(0, min(1, valor_norm))
+        idx = int(valor_norm * (len(colores) - 1))
+        return colores[idx]
+
+    for idx, row in gdf_alt.iterrows():
+        if pd.notna(row['elevacion']):
+            color = obtener_color(row['elevacion'], vmin, vmax, colores)
+            folium.GeoJson(
+                row.geometry,
+                style_function=lambda x, color=color: {
+                    'fillColor': color,
+                    'color': 'black',
+                    'weight': 1,
+                    'fillOpacity': 0.6
+                },
+                tooltip=f"Zona {row['id_zona']}: {row['elevacion']:.0f} m"
+            ).add_to(m)
+
+    # === GENERAR Y AÑADIR CURVAS DE NIVEL ===
+    try:
+        # Extraer puntos (centroides y elevación)
+        puntos = []
+        valores = []
+        for idx, row in gdf_alt.iterrows():
+            if hasattr(row.geometry, 'centroid'):
+                c = row.geometry.centroid
+                puntos.append([c.x, c.y])
+                valores.append(row['elevacion'])
+        puntos = np.array(puntos)
+        valores = np.array(valores)
+
+        if len(puntos) >= 4:
+            # Crear malla
+            xi = np.linspace(puntos[:,0].min(), puntos[:,0].max(), 50)
+            yi = np.linspace(puntos[:,1].min(), puntos[:,1].max(), 50)
+            Xi, Yi = np.meshgrid(xi, yi)
+            Zi = griddata(puntos, valores, (Xi, Yi), method='linear')
+
+            # Definir intervalos (cada 50 m)
+            niveles = np.arange(
+                np.nanmin(Zi) // 50 * 50,
+                np.nanmax(Zi) + 50,
+                50
+            )
+            # Dibujar contornos
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots()
+            contornos = ax.contour(Xi, Yi, Zi, levels=niveles)
+            plt.close(fig)
+
+            # Convertir a líneas de Folium
+            for i, collection in enumerate(contornos.collections):
+                nivel = contornos.levels[i]
+                for path in collection.get_paths():
+                    v = path.vertices
+                    if len(v) > 1:
+                        # Convertir a lista de coordenadas [lat, lon]
+                        line_coords = [[y, x] for x, y in v]
+                        folium.PolyLine(
+                            line_coords,
+                            color='white',
+                            weight=1.5,
+                            opacity=0.8,
+                            popup=f"Curva de nivel: {nivel:.0f} m"
+                        ).add_to(m)
+    except Exception as e:
+        st.warning(f"⚠️ No se pudieron generar curvas de nivel: {str(e)}")
+
+    # Ajustar vista y controles
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+    folium.LayerControl().add_to(m)
+    plugins.Fullscreen().add_to(m)
+
+    # Mostrar mapa
+    st_folium(m, width=850, height=600, key="mapa_altimetria_curvas")
+
+    # Tabla opcional (pequeña)
+    st.subheader("📋 Datos por zona")
+    cols = ['id_zona', 'elevacion', 'pendiente', 'orientacion', 'categoria_altimetria']
+    df = gdf_alt[[c for c in cols if c in gdf_alt.columns]].copy()
+    df['elevacion'] = df['elevacion'].round(0)
+    df['pendiente'] = df['pendiente'].round(1)
+    st.dataframe(df, use_container_width=True)
+
 # ============================================================================
 # FUNCIONES DE VISUALIZACIÓN
 # ============================================================================
@@ -2078,7 +2172,7 @@ def mostrar_recomendaciones_npk():
     analisis_tipo = st.session_state.analisis_tipo_seleccionado
     # Obtener nutriente del análisis
     if analisis_tipo == "RECOMENDACIONES NPK":
-        nutriente = st.session_state.get('nutriente_npk', 'NITRÓGENO')
+        nutriente = st.session_state.nutriente_npk
     else:
         nutriente = "NITRÓGENO"  # Valor por defecto
     st.markdown(f"## 💊 RECOMENDACIONES DE {nutriente} - {cultivo.replace('_', ' ').title()}")
@@ -2445,171 +2539,6 @@ def mostrar_analisis_ndwi():
                 file_name=f"ndwi_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
                 mime="application/json"
             )
-def mostrar_analisis_altimetria():
-    """Muestra el análisis altimétrico"""
-    if st.session_state.analisis_altimetria is None:
-        st.warning("No hay datos de análisis altimétrico disponibles")
-        return
-    gdf_alt = st.session_state.analisis_altimetria
-    cultivo = st.session_state.cultivo_seleccionado
-    st.markdown("## 🏔️ ANÁLISIS ALTIMÉTRICO")
-    # Botón para volver atrás
-    if st.button("⬅️ Volver a Configuración", key="volver_altimetria"):
-        st.session_state.analisis_completado = False
-        st.rerun()
-    # Información general
-    st.info(f"**Cultivo:** {cultivo.replace('_', ' ').title()} | **Zonas analizadas:** {len(gdf_alt)}")
-    # Estadísticas resumen
-    st.subheader("📊 ESTADÍSTICAS ALTIMÉTRICAS")
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        avg_elevacion = gdf_alt['elevacion'].mean() if 'elevacion' in gdf_alt.columns else 0
-        st.metric("⛰️ Elevación Promedio", f"{avg_elevacion:.0f} m")
-    with col2:
-        avg_pendiente = gdf_alt['pendiente'].mean() if 'pendiente' in gdf_alt.columns else 0
-        st.metric("📐 Pendiente Promedio", f"{avg_pendiente:.1f}%")
-    with col3:
-        if 'categoria_altimetria' in gdf_alt.columns:
-            categoria_pred = gdf_alt['categoria_altimetria'].mode()[0] if len(gdf_alt) > 0 else "REGULAR"
-        else:
-            categoria_pred = "N/A"
-        st.metric("🏷️ Categoría Predominante", categoria_pred)
-    with col4:
-        if 'riesgo_erosivo' in gdf_alt.columns:
-            zonas_riesgo = len(gdf_alt[gdf_alt['riesgo_erosivo'] == 'ALTO'])
-            st.metric("⚠️ Zonas Alto Riesgo", f"{zonas_riesgo} / {len(gdf_alt)}")
-        else:
-            st.metric("⚠️ Zonas Alto Riesgo", "N/A")
-    # Visualizaciones
-    st.subheader("📈 VISUALIZACIONES ALTIMÉTRICAS")
-    col_viz1, col_viz2 = st.columns(2)
-    with col_viz1:
-        # Gráfico de dispersión elevación vs pendiente
-        fig, ax = plt.subplots(1, 1, figsize=(10, 6))
-        if 'elevacion' in gdf_alt.columns and 'pendiente' in gdf_alt.columns:
-            scatter = ax.scatter(gdf_alt['elevacion'], gdf_alt['pendiente'], 
-                               c=gdf_alt['adecuacion_altimetrica'] if 'adecuacion_altimetrica' in gdf_alt.columns else 'blue',
-                               s=100, alpha=0.7, edgecolors='black')
-            ax.set_xlabel('Elevación (m)')
-            ax.set_ylabel('Pendiente (%)')
-            ax.set_title('Elevación vs Pendiente')
-            ax.grid(True, alpha=0.3)
-            # Añadir colorbar si hay adecuación
-            if 'adecuacion_altimetrica' in gdf_alt.columns:
-                cbar = fig.colorbar(scatter, ax=ax)
-                cbar.set_label('Índice de Adecuación')
-        else:
-            ax.text(0.5, 0.5, 'Datos no disponibles', 
-                   ha='center', va='center', transform=ax.transAxes)
-        st.pyplot(fig)
-    with col_viz2:
-        # Gráfico de barras de adecuación por zona
-        fig_bar, ax_bar = plt.subplots(1, 1, figsize=(10, 6))
-        if 'id_zona' in gdf_alt.columns and 'adecuacion_altimetrica' in gdf_alt.columns:
-            zonas = gdf_alt['id_zona']
-            adecuacion = gdf_alt['adecuacion_altimetrica']
-            # Colores basados en adecuación
-            colores_adecuacion = []
-            for a in adecuacion:
-                if a >= 0.8:
-                    colores_adecuacion.append('#1a9850')
-                elif a >= 0.6:
-                    colores_adecuacion.append('#a6d96a')
-                elif a >= 0.4:
-                    colores_adecuacion.append('#fee08b')
-                else:
-                    colores_adecuacion.append('#d73027')
-            bars = ax_bar.bar(zonas, adecuacion, color=colores_adecuacion, edgecolor='black')
-            ax_bar.set_xlabel('Zona')
-            ax_bar.set_ylabel('Índice de Adecuación')
-            ax_bar.set_title('Adecuación Altimétrica por Zona')
-            ax_bar.set_ylim(0, 1)
-        else:
-            ax_bar.text(0.5, 0.5, 'Datos de adecuación no disponibles', 
-                       ha='center', va='center', transform=ax_bar.transAxes)
-        st.pyplot(fig_bar)
-    
-    # 🔺 NUEVO: Curvas de nivel simuladas
-    st.subheader("⛰️ CURVAS DE NIVEL SIMULADAS")
-    curvas_img = generar_curvas_nivel(gdf_alt, intervalo=50)
-    if curvas_img:
-        st.markdown(
-            f'<img src="data:image/png;base64,{curvas_img}" style="width:100%; max-width:800px;">',
-            unsafe_allow_html=True
-        )
-    else:
-        st.info("No se pudieron generar curvas de nivel con los datos disponibles.")
-
-    # Mapas
-    st.subheader("🗺️ MAPAS ALTIMÉTRICOS")
-    col_map1, col_map2 = st.columns(2)
-    with col_map1:
-        st.markdown("#### **Mapa de Elevación**")
-        if not gdf_alt.empty and 'elevacion' in gdf_alt.columns:
-            mapa_elevacion = crear_mapa_interactivo_esri(
-                gdf_alt,
-                f"Elevación - {cultivo.replace('_', ' ').title()}",
-                'elevacion',
-                "ALTIMETRÍA"
-            )
-            if mapa_elevacion:
-                st_folium(mapa_elevacion, width=400, height=300, 
-                         key=f"mapa_elevacion_{datetime.now().timestamp()}")
-    with col_map2:
-        st.markdown("#### **Mapa de Pendiente**")
-        if not gdf_alt.empty and 'pendiente' in gdf_alt.columns:
-            mapa_pendiente = crear_mapa_interactivo_esri(
-                gdf_alt,
-                f"Pendiente - {cultivo.replace('_', ' ').title()}",
-                'pendiente',
-                "ALTIMETRÍA"
-            )
-            if mapa_pendiente:
-                st_folium(mapa_pendiente, width=400, height=300,
-                         key=f"mapa_pendiente_{datetime.now().timestamp()}")
-    # Tabla detallada
-    st.subheader("📊 TABLA DETALLADA DE ALTIMETRÍA")
-    columnas_alt = ['id_zona', 'area_ha', 'elevacion', 'pendiente', 'orientacion',
-                   'adecuacion_altimetrica', 'categoria_altimetria', 
-                   'riesgo_erosivo', 'recomendaciones_altimetria']
-    columnas_disponibles = [col for col in columnas_alt if col in gdf_alt.columns]
-    if columnas_disponibles:
-        df_detalle = gdf_alt[columnas_disponibles].copy()
-        # Formatear columnas numéricas
-        if 'area_ha' in df_detalle.columns:
-            df_detalle['area_ha'] = df_detalle['area_ha'].round(3)
-        if 'elevacion' in df_detalle.columns:
-            df_detalle['elevacion'] = df_detalle['elevacion'].round(0)
-        if 'pendiente' in df_detalle.columns:
-            df_detalle['pendiente'] = df_detalle['pendiente'].round(1)
-        if 'adecuacion_altimetrica' in df_detalle.columns:
-            df_detalle['adecuacion_altimetrica'] = df_detalle['adecuacion_altimetrica'].round(3)
-        st.dataframe(df_detalle, use_container_width=True)
-    else:
-        st.warning("No hay datos altimétricos disponibles para mostrar en la tabla")
-    # Descargar resultados
-    st.markdown("### 💾 DESCARGAR RESULTADOS")
-    col_dl1, col_dl2 = st.columns(2)
-    with col_dl1:
-        # Descargar CSV
-        if not gdf_alt.empty:
-            csv_data = gdf_alt.to_csv(index=False)
-            st.download_button(
-                label="📥 Descargar Datos CSV",
-                data=csv_data,
-                file_name=f"altimetria_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
-            )
-    with col_dl2:
-        # Descargar GeoJSON
-        if not gdf_alt.empty:
-            geojson_data = gdf_alt.to_json()
-            st.download_button(
-                label="🗺️ Descargar GeoJSON",
-                data=geojson_data,
-                file_name=f"altimetria_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
-                mime="application/json"
-            )
 # ============================================================================
 # INTERFAZ PRINCIPAL DE LA APLICACIÓN
 # ============================================================================
@@ -2643,12 +2572,12 @@ def mostrar_interfaz_principal():
     )
     st.session_state.analisis_tipo_seleccionado = analisis_tipo
 
-    # Selector de nutriente (solo si se eligió RECOMENDACIONES NPK)
+    # >>>>>> NUEVO: selector de nutriente para NPK en la barra lateral
     if analisis_tipo == "RECOMENDACIONES NPK":
         nutriente_npk = st.sidebar.selectbox(
             "Nutriente a analizar:",
             ["NITRÓGENO", "FÓSFORO", "POTASIO"],
-            index=["NITRÓGENO", "FÓSFORO", "POTASIO"].index(st.session_state.nutriente_npk)
+            key="nutriente_npk_selector"
         )
         st.session_state.nutriente_npk = nutriente_npk
 
@@ -2796,6 +2725,7 @@ def ejecutar_analisis_completo():
             )
             st.session_state.analisis_completado = True
         elif analisis_tipo == "RECOMENDACIONES NPK":
+            # >>>>>> CORRECCIÓN: eliminar st.selectbox y st.button aquí
             nutriente = st.session_state.nutriente_npk
             st.session_state.analisis_npk = generar_recomendaciones_npk(
                 gdf_zonas, cultivo, nutriente, mes_analisis, fuente_satelital
@@ -2820,7 +2750,7 @@ def main():
         elif analisis_tipo == "ANÁLISIS NDWI":
             mostrar_analisis_ndwi()
         elif analisis_tipo == "ALTIMETRÍA":
-            mostrar_analisis_altimetria()
+            mostrar_analisis_altimetria()  # <<< usa la nueva versión
         elif analisis_tipo == "RECOMENDACIONES NPK":
             mostrar_recomendaciones_npk()
         else:
