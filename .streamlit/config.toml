@@ -1,31 +1,15 @@
+[server]
+maxUploadSize = 500
+enableCORS = false
+enableXsrfProtection = false
+
+[browser]
+serverAddress = "localhost"
+serverPort = 8501
+
 [theme]
-primaryColor = "#1f77b4"
+primaryColor = "#4CAF50"
 backgroundColor = "#FFFFFF"
 secondaryBackgroundColor = "#F0F2F6"
 textColor = "#262730"
 font = "sans serif"
-
-[server]
-maxUploadSize = 2000  # Tamaño máximo de archivo en MB
-enableCORS = false
-enableXsrfProtection = true
-
-[browser]
-serverAddress = "localhost"
-gatherUsageStats = false
-
-[client]
-showErrorDetails = true
-
-# Configuración para folium/mapas
-[mapbox]
-token = ""  # Deja vacío si no usas Mapbox, usa variable de entorno si la necesitas
-
-# Configuración de caché
-[runner]
-magicEnabled = true
-fastRerun = false  # Esta opción está deprecada, pero Streamlit la ignora si está presente
-
-# Configuración de seguridad
-[session]
-cookieExpiry = "1d"
