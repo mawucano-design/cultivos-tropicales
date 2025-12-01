@@ -1906,16 +1906,11 @@ def crear_resumen_agroecologico(cultivo):
 """
     for categoria, items in recomendaciones.items():
         categoria_formateada = categoria.replace('_', ' ').title()
-        markdown += f"
-**{categoria_formateada}:**
-"
+        markdown += f"\n**{categoria_formateada}:**\n"
         for item in items[:3]:  # Mostrar solo las 3 primeras recomendaciones
-            markdown += f"• {item}
-"
+            markdown += f"• {item}\n"
     if not recomendaciones:
-        markdown += "
-**No hay recomendaciones agroecológicas específicas disponibles para este cultivo.**
-"
+        markdown += "\n**No hay recomendaciones agroecológicas específicas disponibles para este cultivo.**\n"
     return markdown
 # ============================================================================
 # FUNCIONES DE VISUALIZACIÓN
