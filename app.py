@@ -1135,8 +1135,6 @@ def mostrar_analisis_textura_mejorado():
 # FUNCIONES ORIGINALES (modificadas para integración)
 # ============================================================================
 
-# [Todas las funciones originales se mantienen aquí, pero se actualizan para usar las nuevas funciones de textura]
-
 # FUNCIÓN MEJORADA PARA DIVIDIR PARCELA EN ZONAS
 def dividir_parcela_en_zonas(gdf, n_zonas):
     """Divide la parcela en zonas de manejo con manejo robusto de errores"""
@@ -1531,14 +1529,169 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
     
     return m
 
+# FUNCIÓN PARA CREAR MAPA VISUALIZADOR DE PARCELA (FALTABA)
+def crear_mapa_visualizador_parcela(gdf):
+    """Crea mapa interactivo para visualizar la parcela original con ESRI Satélite"""
+    
+    # Obtener centro y bounds
+    centroid = gdf.geometry.centroid.iloc[0]
+    bounds = gdf.total_bounds
+    
+    # Crear mapa con ESRI Satélite por defecto
+    m = folium.Map(
+        location=[centroid.y, centroid.x],
+        zoom_start=14,
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Esri Satélite'
+    )
+    
+    # Añadir otras bases
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Esri Calles',
+        overlay=False
+    ).add_to(m)
+    
+    folium.TileLayer(
+        tiles='OpenStreetMap',
+        name='OpenStreetMap',
+        overlay=False
+    ).add_to(m)
+    
+    # Añadir polígonos de la parcela
+    for idx, row in gdf.iterrows():
+        area_ha = calcular_superficie(gdf.iloc[[idx]]).iloc[0]
+        
+        folium.GeoJson(
+            row.geometry.__geo_interface__,
+            style_function=lambda x: {
+                'fillColor': '#1f77b4',
+                'color': '#2ca02c',
+                'weight': 3,
+                'fillOpacity': 0.4,
+                'opacity': 0.8
+            },
+            popup=folium.Popup(
+                f"<b>Parcela {idx + 1}</b><br>"
+                f"<b>Área:</b> {area_ha:.2f} ha<br>"
+                f"<b>Coordenadas:</b> {centroid.y:.4f}, {centroid.x:.4f}",
+                max_width=300
+            ),
+            tooltip=f"Parcela {idx + 1} - {area_ha:.2f} ha"
+        ).add_to(m)
+    
+    # Ajustar bounds
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+    
+    # Añadir controles
+    folium.LayerControl().add_to(m)
+    plugins.MeasureControl(position='bottomleft').add_to(m)
+    plugins.MiniMap(toggle_display=True).add_to(m)
+    plugins.Fullscreen(position='topright').add_to(m)
+    
+    # Añadir leyenda
+    legend_html = '''
+    <div style="position: fixed; 
+                top: 10px; right: 10px; width: 200px; height: auto; 
+                background-color: white; border:2px solid grey; z-index:9999; 
+                font-size:14px; padding: 10px">
+    <p><b>🌱 Visualizador de Parcela</b></p>
+    <p><b>Leyenda:</b></p>
+    <p><i style="background:#1f77b4; width:20px; height:20px; display:inline-block; margin-right:5px; opacity:0.4;"></i> Área de la parcela</p>
+    <p><i style="background:#2ca02c; width:20px; height:20px; display:inline-block; margin_right:5px; opacity:0.8;"></i> Borde de la parcela</p>
+    </div>
+    '''
+    m.get_root().html.add_child(folium.Element(legend_html))
+    
+    return m
+
 # ============================================================================
-# FUNCIONES DE ANÁLISIS EXISTENTES (modificadas para compatibilidad)
+# FUNCIONES DE FLUJO PRINCIPAL
 # ============================================================================
 
-# [Todas las demás funciones originales se mantienen aquí...]
+def mostrar_modo_demo():
+    """Muestra la interfaz de demostración"""
+    st.markdown("### 🚀 Modo Demostración")
+    st.info("""
+    **NUEVO: Análisis de Textura Avanzado**
+    
+    **Características mejoradas:**
+    1. Metodologías modernas (sensores, teledetección)
+    2. Clasificación continua de texturas
+    3. Recomendaciones sitio-específicas
+    4. Monitoreo dinámico en tiempo real
+    
+    **Para usar la aplicación:**
+    1. Sube un archivo ZIP con el shapefile de tu parcela
+    2. Selecciona 'ANÁLISIS DE TEXTURA' en Tipo de Análisis
+    3. Configura los parámetros en el sidebar
+    4. Ejecuta el análisis avanzado
+    
+    O haz clic en **Cargar Datos de Demostración** para probar con datos de ejemplo.
+    """)
+    
+    if st.button("🎯 Cargar Datos de Demostración", type="primary"):
+        st.session_state.datos_demo = True
+        st.rerun()
+
+def mostrar_configuracion_parcela():
+    """Muestra la configuración de la parcela antes del análisis"""
+    gdf_original = st.session_state.gdf_original
+    
+    if st.session_state.datos_demo:
+        st.success("✅ Datos de demostración cargados")
+    else:
+        st.success("✅ Parcela cargada correctamente")
+    
+    # Calcular estadísticas
+    area_total = calcular_superficie(gdf_original).sum()
+    num_poligonos = len(gdf_original)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("📐 Área Total", f"{area_total:.2f} ha")
+    with col2:
+        st.metric("🔢 Número de Polígonos", num_poligonos)
+    with col3:
+        st.metric("🌱 Cultivo", cultivo.replace('_', ' ').title())
+    
+    # VISUALIZADOR DE PARCELA ORIGINAL
+    st.markdown("### 🗺️ Visualizador de Parcela")
+    
+    # Crear y mostrar mapa interactivo
+    mapa_parcela = crear_mapa_visualizador_parcela(gdf_original)
+    st_folium(mapa_parcela, width=800, height=500)
+    
+    # DIVIDIR PARCELA EN ZONAS
+    st.markdown("### 📊 División en Zonas de Manejo")
+    st.info(f"La parcela se dividirá en **{n_divisiones} zonas** para análisis detallado")
+    
+    # Botón para ejecutar análisis
+    if st.button("🚀 Ejecutar Análisis GEE Completo", type="primary"):
+        with st.spinner("🔄 Dividiendo parcela en zonas..."):
+            gdf_zonas = dividir_parcela_en_zonas(gdf_original, n_divisiones)
+            st.session_state.gdf_zonas = gdf_zonas
+        
+        with st.spinner("🔬 Realizando análisis GEE..."):
+            # Calcular índices según tipo de análisis
+            if analisis_tipo == "ANÁLISIS DE TEXTURA":
+                gdf_analisis = analizar_textura_suelo_avanzado(gdf_zonas, cultivo, mes_analisis)
+                st.session_state.analisis_textura = gdf_analisis
+            # Nota: Para otros tipos de análisis necesitarías implementar las funciones correspondientes
+            else:
+                # Para otros análisis, mostrar mensaje
+                st.warning(f"Análisis {analisis_tipo} no implementado aún. Por favor, selecciona 'ANÁLISIS DE TEXTURA'")
+                return
+            
+            st.session_state.area_total = area_total
+            st.session_state.analisis_completado = True
+        
+        st.rerun()
 
 # ============================================================================
-# INTERFAZ PRINCIPAL MODIFICADA
+# INTERFAZ PRINCIPAL
 # ============================================================================
 
 def main():
@@ -1555,6 +1708,9 @@ def main():
     - Nomenclatura actualizada
     """)
 
+    # Variables globales (para compatibilidad)
+    global cultivo, analisis_tipo, nutriente, mes_analisis, n_divisiones, uploaded_file
+    
     # Procesar archivo subido si existe
     if uploaded_file is not None and not st.session_state.analisis_completado:
         with st.spinner("🔄 Procesando archivo..."):
@@ -1582,77 +1738,14 @@ def main():
         if analisis_tipo == "ANÁLISIS DE TEXTURA":
             mostrar_analisis_textura_mejorado()
         else:
-            # Para otros tipos de análisis, mantener la interfaz original
-            st.info("Para análisis de textura avanzado, selecciona 'ANÁLISIS DE TEXTURA' en el menú")
-            # Aquí iría el resto de la interfaz original...
+            st.warning(f"Análisis {analisis_tipo} no implementado aún. Por favor, selecciona 'ANÁLISIS DE TEXTURA'")
+            if st.button("⬅️ Volver a Configuración"):
+                st.session_state.analisis_completado = False
+                st.rerun()
     elif st.session_state.gdf_original is not None:
         mostrar_configuracion_parcela()
     else:
         mostrar_modo_demo()
-
-def mostrar_modo_demo():
-    """Muestra la interfaz de demostración"""
-    st.markdown("### 🚀 Modo Demostración")
-    st.info("""
-    **NUEVO: Análisis de Textura Avanzado**
-    
-    **Características mejoradas:**
-    1. Metodologías modernas (sensores, teledetección)
-    2. Clasificación continua de texturas
-    3. Recomendaciones sitio-específicas
-    4. Monitoreo dinámico en tiempo real
-    
-    **Para usar la aplicación:**
-    1. Sube un archivo ZIP con el shapefile de tu parcela
-    2. Selecciona 'ANÁLISIS DE TEXTURA' en Tipo de Análisis
-    3. Configura los parámetros en el sidebar
-    4. Ejecuta el análisis avanzado
-    """)
-    
-    if st.button("🎯 Cargar Datos de Demostración", type="primary"):
-        st.session_state.datos_demo = True
-        st.rerun()
-
-def mostrar_configuracion_parcela():
-    """Muestra la configuración de la parcela antes del análisis"""
-    gdf_original = st.session_state.gdf_original
-    
-    if st.session_state.datos_demo:
-        st.success("✅ Datos de demostración cargados")
-    else:
-        st.success("✅ Parcela cargada correctamente")
-    
-    # Calcular estadísticas
-    area_total = calcular_superficie(gdf_original).sum()
-    
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("📐 Área Total", f"{area_total:.2f} ha")
-    with col2:
-        st.metric("🔢 Número de Polígonos", len(gdf_original))
-    with col3:
-        st.metric("🌱 Cultivo", cultivo.replace('_', ' ').title())
-    
-    # Botón para ejecutar análisis
-    if st.button("🚀 Ejecutar Análisis Avanzado", type="primary"):
-        with st.spinner("🔄 Dividiendo parcela en zonas..."):
-            gdf_zonas = dividir_parcela_en_zonas(gdf_original, n_divisiones)
-            st.session_state.gdf_zonas = gdf_zonas
-        
-        with st.spinner("🔬 Realizando análisis avanzado..."):
-            if analisis_tipo == "ANÁLISIS DE TEXTURA":
-                # Usar la nueva función de análisis avanzado
-                gdf_analisis = analizar_textura_suelo_avanzado(gdf_zonas, cultivo, mes_analisis)
-                st.session_state.analisis_textura = gdf_analisis
-            else:
-                # Para otros análisis, usar funciones originales
-                st.info("Para análisis de textura avanzado, selecciona 'ANÁLISIS DE TEXTURA'")
-                # Aquí irían las otras funciones de análisis...
-            
-            st.session_state.area_total = area_total
-            st.session_state.analisis_completado = True
-        
-        st.rerun()
 
 # EJECUTAR APLICACIÓN
 if __name__ == "__main__":
