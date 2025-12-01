@@ -1,4 +1,11 @@
 import streamlit as st
+
+# --- session_state init for analysis control (injected) ---
+if 'analisis_en_progreso' not in st.session_state:
+    st.session_state.analisis_en_progreso = False
+# (Other flags used by the original script are left intact)
+# -------------------------------------------
+
 import geopandas as gpd
 import pandas as pd
 import numpy as np
@@ -3033,9 +3040,8 @@ def mostrar_interfaz_principal():
                             
                             # Botón principal para ejecutar análisis
                             if st.button("▶️ Ejecutar Análisis Completo", type="primary", use_container_width=True, key="btn_ejecutar"):
-                                # Ejecutar el análisis
-                                ejecutar_analisis_completo()
-    else:
+                                st.session_state.analisis_en_progreso = True
+else:
         st.warning("⚠️ Esta funcionalidad está en desarrollo. Por favor, suba un archivo.")
 
 def cargar_datos_demo():
@@ -3197,5 +3203,27 @@ def main():
 # ============================================================================
 # EJECUCIÓN DE LA APLICACIÓN
 # ============================================================================
+
+
+# --- Analysis runner (injected) ---
+def _check_and_run_analysis():
+    """Run the heavy analysis once when triggered via the UI button.
+    The button sets st.session_state['analisis_en_progreso'] = True; this function
+    detects that flag and executes ejecutar_analisis_completo() exactly once.
+    """
+    try:
+        if st.session_state.get('analisis_en_progreso', False):
+            with st.spinner('🔄 Ejecutando análisis. Esto puede tardar unos segundos...'):
+                # Call the existing analysis function
+                ejecutar_analisis_completo()
+            # mark as finished
+            st.session_state['analisis_en_progreso'] = False
+            st.session_state['analisis_completado'] = True
+    except Exception as e:
+        st.error(f"Error en ejecución del análisis: {e}")
+
+# Ejecutar verificación al final de cada render
+_check_and_run_analysis()
+# ---------------------------
 if __name__ == "__main__":
     main()
