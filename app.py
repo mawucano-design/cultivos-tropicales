@@ -413,6 +413,8 @@ if 'n_zonas' not in st.session_state:
     st.session_state.n_zonas = 10
 if 'nutriente_npk' not in st.session_state:
     st.session_state.nutriente_npk = "NITRÓGENO"
+if 'mostrar_configuracion' not in st.session_state:
+    st.session_state.mostrar_configuracion = True
 
 # ============================================================================
 # FUNCIONES PARA TODOS LOS ANÁLISIS
@@ -3020,17 +3022,17 @@ def mostrar_interfaz_principal():
                             st.markdown("---")
                             st.markdown("## 🚀 EJECUTAR ANÁLISIS")
                             
+                            # Guardar parámetros en session_state
+                            st.session_state.cultivo_seleccionado = cultivo
+                            st.session_state.analisis_tipo_seleccionado = analisis_tipo
+                            st.session_state.mes_analisis = mes_analisis
+                            st.session_state.fuente_satelital = fuente_satelital
+                            st.session_state.n_zonas = n_zonas
+                            if analisis_tipo == "RECOMENDACIONES NPK":
+                                st.session_state.nutriente_npk = nutriente_npk
+                            
                             # Botón principal para ejecutar análisis
                             if st.button("▶️ Ejecutar Análisis Completo", type="primary", use_container_width=True, key="btn_ejecutar"):
-                                # Guardar parámetros en session_state
-                                st.session_state.cultivo_seleccionado = cultivo
-                                st.session_state.analisis_tipo_seleccionado = analisis_tipo
-                                st.session_state.mes_analisis = mes_analisis
-                                st.session_state.fuente_satelital = fuente_satelital
-                                st.session_state.n_zonas = n_zonas
-                                if analisis_tipo == "RECOMENDACIONES NPK":
-                                    st.session_state.nutriente_npk = nutriente_npk
-                                
                                 # Ejecutar el análisis
                                 ejecutar_analisis_completo()
     else:
@@ -3112,24 +3114,25 @@ def ejecutar_analisis_completo():
             if st.session_state.analisis_completado:
                 st.success("✅ Análisis completado exitosamente")
                 st.balloons()
+                # No usar st.rerun() - la aplicación se actualizará automáticamente
                 
     except Exception as e:
         st.error(f"❌ Error durante el análisis: {str(e)}")
         st.exception(e)
 
 # ============================================================================
-# FUNCIÓN PRINCIPAL CORREGIDA
+# FUNCIÓN PRINCIPAL CORREGIDA - SIN st.rerun()
 # ============================================================================
 def main():
-    """Función principal de la aplicación - VERSIÓN CORREGIDA"""
+    """Función principal de la aplicación - VERSIÓN CORREGIDA SIN BUCLE"""
     # Mostrar siempre el título principal
     st.title("🌱 ANALIZADOR CULTIVOS - METODOLOGÍA GEE COMPLETA CON AGROECOLOGÍA")
     st.markdown("---")
     
-    # Botón para volver a configuración (siempre visible cuando hay análisis)
-    if st.session_state.get('analisis_completado', False):
-        col1, col2 = st.columns([6, 1])
-        with col2:
+    # Control de navegación
+    col1, col2 = st.columns([6, 1])
+    with col2:
+        if st.session_state.get('analisis_completado', False):
             if st.button("⚙️ Nueva Configuración", type="secondary", key="btn_nueva_config"):
                 # Limpiar estados de análisis
                 st.session_state.analisis_completado = False
@@ -3138,29 +3141,45 @@ def main():
                 st.session_state.analisis_ndwi = None
                 st.session_state.analisis_altimetria = None
                 st.session_state.analisis_npk = None
-                st.success("Configuración reiniciada")
+                st.session_state.gdf_zonas = None
+                st.session_state.gdf_original = None
+                st.session_state.mostrar_configuracion = True
+                st.success("✅ Configuración reiniciada - Complete los parámetros nuevamente")
     
     # Decidir qué mostrar
-    if st.session_state.get('analisis_completado', False):
+    if not st.session_state.get('analisis_completado', False) and st.session_state.mostrar_configuracion:
+        # Mostrar interfaz de configuración
+        mostrar_interfaz_principal()
+    elif st.session_state.get('analisis_completado', False):
         # Mostrar resultados según el tipo de análisis
         analisis_tipo = st.session_state.get('analisis_tipo_seleccionado', 'FERTILIDAD ACTUAL')
         
+        # Verificar que hay datos disponibles
+        datos_disponibles = False
+        
         if analisis_tipo == "FERTILIDAD ACTUAL" and st.session_state.get('analisis_fertilidad') is not None:
             mostrar_analisis_fertilidad_real()
+            datos_disponibles = True
         elif analisis_tipo == "ANÁLISIS DE TEXTURA" and st.session_state.get('analisis_textura') is not None:
             mostrar_analisis_textura_avanzado()
+            datos_disponibles = True
         elif analisis_tipo == "ANÁLISIS NDWI" and st.session_state.get('analisis_ndwi') is not None:
             mostrar_analisis_ndwi()
+            datos_disponibles = True
         elif analisis_tipo == "ALTIMETRÍA" and st.session_state.get('analisis_altimetria') is not None:
             mostrar_analisis_altimetria()
+            datos_disponibles = True
         elif analisis_tipo == "RECOMENDACIONES NPK" and st.session_state.get('analisis_npk') is not None:
             mostrar_recomendaciones_npk()
-        else:
-            st.warning("⚠️ No hay resultados disponibles para mostrar.")
-            st.session_state.analisis_completado = False
-            mostrar_interfaz_principal()
+            datos_disponibles = True
+        
+        if not datos_disponibles:
+            st.warning("⚠️ No hay resultados disponibles para mostrar. Vuelva a la configuración.")
+            if st.button("🔙 Volver a Configuración", key="btn_volver_config"):
+                st.session_state.analisis_completado = False
+                st.session_state.mostrar_configuracion = True
     else:
-        # Mostrar interfaz de configuración
+        # Por defecto, mostrar configuración
         mostrar_interfaz_principal()
     
     # Pie de página
