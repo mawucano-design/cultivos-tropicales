@@ -1140,6 +1140,7 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
     """Divide la parcela en zonas de manejo con manejo robusto de errores"""
     try:
         if len(gdf) == 0:
+            st.error("El GeoDataFrame está vacío")
             return gdf
         
         # Usar el primer polígono como parcela principal
@@ -1669,26 +1670,28 @@ def mostrar_configuracion_parcela():
     st.info(f"La parcela se dividirá en **{n_divisiones} zonas** para análisis detallado")
     
     # Botón para ejecutar análisis
-    if st.button("🚀 Ejecutar Análisis GEE Completo", type="primary"):
+    if st.button("🚀 Ejecutar Análisis GEE Completo", type="primary", key="ejecutar_analisis"):
         with st.spinner("🔄 Dividiendo parcela en zonas..."):
             gdf_zonas = dividir_parcela_en_zonas(gdf_original, n_divisiones)
+            if gdf_zonas is None or len(gdf_zonas) == 0:
+                st.error("No se pudo dividir la parcela en zonas. Verifica la geometría.")
+                return
             st.session_state.gdf_zonas = gdf_zonas
         
         with st.spinner("🔬 Realizando análisis GEE..."):
             # Calcular índices según tipo de análisis
             if analisis_tipo == "ANÁLISIS DE TEXTURA":
                 gdf_analisis = analizar_textura_suelo_avanzado(gdf_zonas, cultivo, mes_analisis)
-                st.session_state.analisis_textura = gdf_analisis
-            # Nota: Para otros tipos de análisis necesitarías implementar las funciones correspondientes
+                if gdf_analisis is not None:
+                    st.session_state.analisis_textura = gdf_analisis
+                    st.session_state.area_total = area_total
+                    st.session_state.analisis_completado = True
+                    st.success("✅ Análisis completado correctamente")
+                    st.rerun()
+                else:
+                    st.error("Error en el análisis de textura")
             else:
-                # Para otros análisis, mostrar mensaje
                 st.warning(f"Análisis {analisis_tipo} no implementado aún. Por favor, selecciona 'ANÁLISIS DE TEXTURA'")
-                return
-            
-            st.session_state.area_total = area_total
-            st.session_state.analisis_completado = True
-        
-        st.rerun()
 
 # ============================================================================
 # INTERFAZ PRINCIPAL
@@ -1718,6 +1721,7 @@ def main():
             if gdf_original is not None:
                 st.session_state.gdf_original = gdf_original
                 st.session_state.datos_demo = False
+                st.rerun()  # Forzar rerun para actualizar la interfaz
 
     # Cargar datos de demostración si se solicita
     if st.session_state.datos_demo and st.session_state.gdf_original is None:
@@ -1732,6 +1736,7 @@ def main():
             crs="EPSG:4326"
         )
         st.session_state.gdf_original = gdf_demo
+        st.rerun()  # Forzar rerun para actualizar la interfaz
 
     # Mostrar interfaz según el estado
     if st.session_state.analisis_completado:
