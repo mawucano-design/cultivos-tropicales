@@ -1583,6 +1583,22 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
         }, crs=gdf.crs)
             return nuevo_gdf
         else:
+            # Si no se pudieron crear zonas, crear al menos una con toda la parcela
+            st.warning("No se pudieron crear zonas, retornando parcela original como una sola zona")
+            return gpd.GeoDataFrame({
+                'id_zona': [1],
+                'geometry': [gdf.iloc[0].geometry]
+            }, crs=gdf.crs)
+            
+    except Exception as e:
+        st.error(f"Error dividiendo parcela: {str(e)}")
+        # En caso de error, retornar la parcela original como una sola zona
+        return gpd.GeoDataFrame({
+            'id_zona': [1],
+            'geometry': [gdf.iloc[0].geometry]
+        }, crs=gdf.crs)
+            return nuevo_gdf
+        else:
             st.warning("No se pudieron crear zonas, retornando parcela original")
             return gdf
             
