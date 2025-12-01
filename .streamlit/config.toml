@@ -1,7 +1,12 @@
+[theme]
+primaryColor = "#1f77b4"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F0F2F6"
+textColor = "#262730"
+font = "sans serif"
+
 [server]
-port = 8501
-address = "0.0.0.0"
-headless = true
+maxUploadSize = 2000  # Tamaño máximo de archivo en MB
 enableCORS = false
 enableXsrfProtection = true
 
@@ -9,40 +14,18 @@ enableXsrfProtection = true
 serverAddress = "localhost"
 gatherUsageStats = false
 
-[theme]
-primaryColor = "#1f77b4"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#f0f2f6"
-textColor = "#262730"
-font = "sans serif"
-
-[runner]
-magicEnabled = false
-fastRerun = true
-
 [client]
 showErrorDetails = true
 
-[deprecation]
-showfileUploaderEncoding = false
-showImageFormat = false
-
-# Configuración específica para mapas y datos geoespaciales
+# Configuración para folium/mapas
 [mapbox]
-token = ""
+token = ""  # Deja vacío si no usas Mapbox, usa variable de entorno si la necesitas
 
-# Configuración para mejorar el rendimiento con datos grandes
-[global]
-developmentMode = false
-enableStaticServing = true
+# Configuración de caché
+[runner]
+magicEnabled = true
+fastRerun = false  # Esta opción está deprecada, pero Streamlit la ignora si está presente
 
-# Configuración de caché para mejor rendimiento
-[cache]
-# Tiempo de vida de la caché en segundos (1 hora)
-ttl = 3600
-# Tamaño máximo de la caché en bytes (500MB)
-maxSize = 500000000
-
-# Logger configuration
-[logger]
-level = "info"
+# Configuración de seguridad
+[session]
+cookieExpiry = "1d"
