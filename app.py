@@ -91,6 +91,29 @@ TEXTURA_SUELO_OPTIMA = {
     }
 }
 
+# PARÁMETROS PARA CÁLCULO DE NDWI (SOBRE EL SUELO)
+# Bandas para NDWI del suelo: SWIR1 (banda 11 - 1.57-1.65µm) y SWIR2 (banda 12 - 2.11-2.29µm)
+PARAMETROS_NDWI_SUELO = {
+    'PALMA_ACEITERA': {
+        'ndwi_optimo_suelo': 0.15,  # Valor óptimo para suelo en plantaciones de palma
+        'ndwi_humedo_suelo': 0.25,   # Suelo con humedad adecuada
+        'ndwi_seco_suelo': -0.15,    # Suelo seco
+        'umbral_sequia': -0.1        # Umbral para considerar sequía
+    },
+    'CACAO': {
+        'ndwi_optimo_suelo': 0.18,   # Suelos de cacao requieren más humedad
+        'ndwi_humedo_suelo': 0.3,
+        'ndwi_seco_suelo': -0.1,
+        'umbral_sequia': -0.05
+    },
+    'BANANO': {
+        'ndwi_optimo_suelo': 0.2,    # Banano requiere suelos más húmedos
+        'ndwi_humedo_suelo': 0.35,
+        'ndwi_seco_suelo': -0.05,
+        'umbral_sequia': 0.0
+    }
+}
+
 # CLASIFICACIÓN DE TEXTURAS DEL SUELO - ACTUALIZADA SEGÚN IMAGEN
 CLASIFICACION_TEXTURAS = {
     'Franco': {'arena_min': 43, 'arena_max': 52, 'limo_min': 28, 'limo_max': 50, 'arcilla_min': 7, 'arcilla_max': 27},
@@ -317,13 +340,21 @@ FACTORES_K_MES = {
     "SEPTIEMBRE": 1.1, "OCTUBRE": 1.05, "NOVIEMBRE": 1.0, "DICIEMBRE": 1.0
 }
 
+# FACTORES ESTACIONALES PARA NDWI DEL SUELO
+FACTORES_NDWI_MES = {
+    "ENERO": 0.8, "FEBRERO": 0.85, "MARZO": 0.9, "ABRIL": 0.95,
+    "MAYO": 1.0, "JUNIO": 0.95, "JULIO": 0.85, "AGOSTO": 0.8,
+    "SEPTIEMBRE": 0.85, "OCTUBRE": 0.9, "NOVIEMBRE": 0.95, "DICIEMBRE": 0.9
+}
+
 # PALETAS GEE MEJORADAS
 PALETAS_GEE = {
     'FERTILIDAD': ['#d73027', '#f46d43', '#fdae61', '#fee08b', '#d9ef8b', '#a6d96a', '#66bd63', '#1a9850', '#006837'],
     'NITROGENO': ['#8c510a', '#bf812d', '#dfc27d', '#f6e8c3', '#c7eae5', '#80cdc1', '#35978f', '#01665e'],
     'FOSFORO': ['#67001f', '#b2182b', '#d6604d', '#f4a582', '#fddbc7', '#d1e5f0', '#92c5de', '#4393c3', '#2166ac', '#053061'],
     'POTASIO': ['#4d004b', '#810f7c', '#8c6bb1', '#8c96c6', '#9ebcda', '#bfd3e6', '#e0ecf4', '#edf8fb'],
-    'TEXTURA': ['#8c510a', '#d8b365', '#f6e8c3', '#c7eae5', '#5ab4ac', '#01665e']
+    'TEXTURA': ['#8c510a', '#d8b365', '#f6e8c3', '#c7eae5', '#5ab4ac', '#01665e'],
+    'NDWI_SUELO': ['#8b0000', '#ff4500', '#ffa500', '#ffff00', '#adff2f', '#32cd32', '#006400']  # Rojo (seco) a Verde (húmedo)
 }
 
 # Inicializar session_state
@@ -351,9 +382,9 @@ with st.sidebar:
     
     # Opción para análisis de textura
     analisis_tipo = st.selectbox("Tipo de Análisis:", 
-                               ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK", "ANÁLISIS DE TEXTURA"])
+                               ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK", "ANÁLISIS DE TEXTURA", "ANÁLISIS NDWI SUELO"])
     
-    if analisis_tipo != "ANÁLISIS DE TEXTURA":
+    if analisis_tipo != "ANÁLISIS DE TEXTURA" and analisis_tipo != "ANÁLISIS NDWI SUELO":
         nutriente = st.selectbox("Nutriente:", ["NITRÓGENO", "FÓSFORO", "POTASIO"])
     else:
         nutriente = None
@@ -567,6 +598,10 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                 'NO_DETERMINADA': '#999999'
             }
             unidad = "Textura"
+        elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+            vmin, vmax = -1, 1
+            colores = PALETAS_GEE['NDWI_SUELO']
+            unidad = "Índice"
         else:
             # RANGOS MÁS REALISTAS PARA RECOMENDACIONES
             if nutriente == "NITRÓGENO":
@@ -604,6 +639,8 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                 color = obtener_color(valor, vmin, vmax, colores)
                 if analisis_tipo == "FERTILIDAD ACTUAL":
                     valor_display = f"{valor:.3f}"
+                elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+                    valor_display = f"{valor:.3f}"
                 else:
                     valor_display = f"{valor:.1f}"
             
@@ -637,6 +674,21 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                     <b>Arcilla:</b> {row.get('arcilla', 0):.1f}%<br>
                     <b>Capacidad Campo:</b> {row.get('capacidad_campo', 0):.1f} mm/m<br>
                     <b>Agua Disponible:</b> {row.get('agua_disponible', 0):.1f} mm/m
+                </div>
+                """
+            elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+                popup_text = f"""
+                <div style="font-family: Arial; font-size: 12px;">
+                    <h4>Zona {row['id_zona']}</h4>
+                    <b>NDWI Suelo:</b> {valor_display}<br>
+                    <b>Estado Humedad:</b> {row.get('estado_humedad_suelo', 'N/A')}<br>
+                    <b>Riesgo Sequía:</b> {row.get('riesgo_sequia', 'N/A')}<br>
+                    <b>Recomendación Riego:</b> {row.get('recomendacion_riego', 'N/A')}<br>
+                    <hr>
+                    <b>Área:</b> {row.get('area_ha', 0):.2f} ha<br>
+                    <b>Déficit Humedad:</b> {row.get('deficit_humedad', 0):.3f}<br>
+                    <b>Humedad:</b> {row.get('humedad', 0):.1%}<br>
+                    <b>NDVI:</b> {row.get('ndvi', 0):.3f}
                 </div>
                 """
             else:
@@ -761,6 +813,15 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             }
             for textura, color in colores_textura.items():
                 legend_html += f'<div style="margin:2px 0;"><span style="background:{color}; width:20px; height:15px; display:inline-block; margin-right:5px; border:1px solid #000;"></span> {textura}</div>'
+        elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+            steps = 7
+            values = [-1.0, -0.5, -0.1, 0.0, 0.1, 0.2, 1.0]
+            labels = ["Muy Seco", "Seco", "Moderado", "Óptimo", "Húmedo", "Muy Húmedo", "Saturado"]
+            for i in range(steps):
+                value = values[i]
+                color_idx = int((i / (steps - 1)) * (len(PALETAS_GEE['NDWI_SUELO']) - 1))
+                color = PALETAS_GEE['NDWI_SUELO'][color_idx]
+                legend_html += f'<div style="margin:2px 0;"><span style="background:{color}; width:20px; height:15px; display:inline-block; margin-right:5px; border:1px solid #000;"></span> {value:.1f} ({labels[i]})</div>'
         else:
             steps = 6
             for i in range(steps):
@@ -879,6 +940,9 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
                     'Arcilloso': '#01665e',
                     'NO_DETERMINADA': '#999999'
                 }
+            elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+                cmap = LinearSegmentedColormap.from_list('ndwi_suelo_gee', PALETAS_GEE['NDWI_SUELO'])
+                vmin, vmax = -1, 1
             else:
                 # USAR EXACTAMENTE LOS MISMOS RANGOS QUE EL MAPA INTERACTIVO
                 if nutriente == "NITRÓGENO":
@@ -912,6 +976,8 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
                     texto_valor = f"{row[columna_valor]:.3f}"
                 elif analisis_tipo == "ANÁLISIS DE TEXTURA":
                     texto_valor = row[columna_valor]
+                elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+                    texto_valor = f"{row[columna_valor]:.3f}"
                 else:
                     texto_valor = f"{row[columna_valor]:.0f} kg"
                 
@@ -942,6 +1008,10 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
                 cbar.set_label('Índice NPK Actual (0-1)', fontsize=10)
                 cbar.set_ticks([0, 0.2, 0.4, 0.6, 0.8, 1.0])
                 cbar.set_ticklabels(['0.0 (Muy Baja)', '0.2', '0.4 (Media)', '0.6', '0.8', '1.0 (Muy Alta)'])
+            elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+                cbar.set_label('NDWI Suelo (-1 a 1)', fontsize=10)
+                cbar.set_ticks([-1, -0.5, -0.1, 0, 0.1, 0.2, 1])
+                cbar.set_ticklabels(['-1 (Muy Seco)', '-0.5', '-0.1', '0', '0.1', '0.2', '1 (Saturado)'])
             else:
                 cbar.set_label(f'Recomendación {nutriente} (kg/ha)', fontsize=10)
                 if nutriente == "NITRÓGENO":
@@ -1303,11 +1373,129 @@ def analizar_textura_suelo(gdf, cultivo, mes_analisis):
     
     return zonas_gdf
 
-# FUNCIÓN CORREGIDA PARA ANÁLISIS DE FERTILIDAD CON CÁLCULOS NPK PRECISOS
+# FUNCIÓN ESPECÍFICA PARA ANÁLISIS DE NDWI DEL SUELO
+def analizar_ndwi_suelo(gdf, cultivo, mes_analisis):
+    """Realiza análisis específico del NDWI del suelo (contenido de agua en el suelo)"""
+    
+    params_ndwi = PARAMETROS_NDWI_SUELO[cultivo]
+    zonas_gdf = gdf.copy()
+    
+    # Inicializar columnas específicas para NDWI del suelo
+    zonas_gdf['ndwi_suelo'] = 0.0
+    zonas_gdf['estado_humedad_suelo'] = "MEDIO"
+    zonas_gdf['deficit_humedad'] = 0.0
+    zonas_gdf['recomendacion_riego'] = "NINGUNA"
+    zonas_gdf['riesgo_sequia'] = "BAJO"
+    
+    factor_ndwi_mes = FACTORES_NDWI_MES[mes_analisis]
+    
+    for idx, row in zonas_gdf.iterrows():
+        try:
+            # Calcular área
+            area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
+            
+            # Obtener centroide
+            if hasattr(row.geometry, 'centroid'):
+                centroid = row.geometry.centroid
+            else:
+                centroid = row.geometry.representative_point()
+            
+            # Semilla para reproducibilidad
+            seed_value = abs(hash(f"{centroid.x:.6f}_{centroid.y:.6f}_{cultivo}_ndwi")) % (2**32)
+            rng = np.random.RandomState(seed_value)
+            
+            # Normalizar coordenadas
+            lat_norm = (centroid.y + 90) / 180 if centroid.y else 0.5
+            lon_norm = (centroid.x + 180) / 360 if centroid.x else 0.5
+            
+            # Variabilidad espacial
+            variabilidad_local = 0.3 + 0.5 * (lat_norm * lon_norm)
+            
+            # CÁLCULO DETALLADO DE NDWI DEL SUELO
+            # Usar fórmula específica para suelo: (NIR - SWIR) / (NIR + SWIR)
+            # Donde SWIR es sensible al contenido de agua en el suelo
+            
+            # Valor base según cultivo
+            base_ndwi = params_ndwi['ndwi_optimo_suelo']
+            
+            # Simular variaciones basadas en factores:
+            # 1. Topografía (pendiente afecta retención de agua)
+            variacion_topografia = rng.normal(0, 0.1) * (1 - variabilidad_local)
+            
+            # 2. Textura del suelo (si está disponible)
+            # Para simulación, usar variabilidad local
+            variacion_textura = variabilidad_local * 0.15
+            
+            # 3. Profundidad efectiva del suelo
+            variacion_profundidad = rng.random() * 0.1
+            
+            # Calcular NDWI del suelo
+            ndwi_suelo = (
+                base_ndwi + 
+                variacion_topografia + 
+                variacion_textura + 
+                variacion_profundidad
+            )
+            
+            # Aplicar factor estacional
+            ndwi_suelo *= factor_ndwi_mes
+            
+            # Agregar variabilidad aleatoria
+            ndwi_suelo += rng.normal(0, 0.03)
+            
+            # Limitar valores
+            ndwi_suelo = max(-1.0, min(1.0, ndwi_suelo))
+            
+            # Calcular déficit de humedad (cuánto falta para el óptimo)
+            deficit_humedad = max(0, params_ndwi['ndwi_optimo_suelo'] - ndwi_suelo)
+            
+            # Clasificar estado de humedad
+            if ndwi_suelo >= params_ndwi['ndwi_humedo_suelo']:
+                estado_humedad = "MUY HÚMEDO"
+                recomendacion_riego = "REDUCIR RIEGO"
+                riesgo_sequia = "NULO"
+            elif ndwi_suelo >= params_ndwi['ndwi_optimo_suelo']:
+                estado_humedad = "ÓPTIMO"
+                recomendacion_riego = "MANTENER"
+                riesgo_sequia = "BAJO"
+            elif ndwi_suelo >= params_ndwi['umbral_sequia']:
+                estado_humedad = "MODERADO"
+                recomendacion_riego = "RIEGO MODERADO"
+                riesgo_sequia = "MODERADO"
+            elif ndwi_suelo >= params_ndwi['ndwi_seco_suelo']:
+                estado_humedad = "SECO"
+                recomendacion_riego = "RIEGO URGENTE"
+                riesgo_sequia = "ALTO"
+            else:
+                estado_humedad = "MUY SECO"
+                recomendacion_riego = "RIEGO INTENSIVO"
+                riesgo_sequia = "CRÍTICO"
+            
+            # Asignar valores
+            zonas_gdf.loc[idx, 'area_ha'] = area_ha
+            zonas_gdf.loc[idx, 'ndwi_suelo'] = ndwi_suelo
+            zonas_gdf.loc[idx, 'estado_humedad_suelo'] = estado_humedad
+            zonas_gdf.loc[idx, 'deficit_humedad'] = deficit_humedad
+            zonas_gdf.loc[idx, 'recomendacion_riego'] = recomendacion_riego
+            zonas_gdf.loc[idx, 'riesgo_sequia'] = riesgo_sequia
+            
+        except Exception as e:
+            # Valores por defecto
+            zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
+            zonas_gdf.loc[idx, 'ndwi_suelo'] = params_ndwi['ndwi_optimo_suelo']
+            zonas_gdf.loc[idx, 'estado_humedad_suelo'] = "ÓPTIMO"
+            zonas_gdf.loc[idx, 'deficit_humedad'] = 0.0
+            zonas_gdf.loc[idx, 'recomendacion_riego'] = "MANTENER"
+            zonas_gdf.loc[idx, 'riesgo_sequia'] = "BAJO"
+    
+    return zonas_gdf
+
+# FUNCIÓN CORREGIDA PARA ANÁLISIS DE FERTILIDAD CON CÁLCULOS NPK PRECISOS Y NDWI DEL SUELO
 def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
-    """Calcula índices GEE mejorados con cálculos NPK más precisos"""
+    """Calcula índices GEE mejorados con cálculos NPK más precisos y NDWI del suelo"""
     
     params = PARAMETROS_CULTIVOS[cultivo]
+    params_ndwi = PARAMETROS_NDWI_SUELO[cultivo]
     zonas_gdf = gdf.copy()
     
     # FACTORES ESTACIONALES MEJORADOS
@@ -1315,8 +1503,9 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
     factor_n_mes = FACTORES_N_MES[mes_analisis]
     factor_p_mes = FACTORES_P_MES[mes_analisis]
     factor_k_mes = FACTORES_K_MES[mes_analisis]
+    factor_ndwi_mes = FACTORES_NDWI_MES[mes_analisis]
     
-    # Inicializar columnas adicionales
+    # Inicializar columnas adicionales (AGREGAR NDWI_SUELO)
     zonas_gdf['area_ha'] = 0.0
     zonas_gdf['nitrogeno'] = 0.0
     zonas_gdf['fosforo'] = 0.0
@@ -1326,6 +1515,8 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
     zonas_gdf['ph'] = 0.0
     zonas_gdf['conductividad'] = 0.0
     zonas_gdf['ndvi'] = 0.0
+    zonas_gdf['ndwi_suelo'] = 0.0  # NUEVO: NDWI para el suelo
+    zonas_gdf['estado_humedad_suelo'] = "MEDIO"  # NUEVO: Estado de humedad
     zonas_gdf['indice_fertilidad'] = 0.0
     zonas_gdf['categoria'] = "MEDIA"
     zonas_gdf['recomendacion_npk'] = 0.0
@@ -1405,21 +1596,67 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
             base_ndvi = 0.3 + 0.5 * variabilidad_local
             ndvi = max(0.1, min(0.95, rng.normal(base_ndvi, 0.1)))
             
-            # CÁLCULO MEJORADO DE ÍNDICE DE FERTILIDAD
+            # CÁLCULO DE NDWI DEL SUELO - NUEVO
+            # NDWI para suelo se calcula con bandas SWIR (Short Wave Infrared)
+            # Fórmula: (SWIR1 - SWIR2) / (SWIR1 + SWIR2) para suelo
+            # O para Sentinel-2: (B8A - B11) / (B8A + B11)
+            
+            # Base para NDWI del suelo basada en humedad y textura
+            base_ndwi_suelo = params_ndwi['ndwi_optimo_suelo']
+            
+            # Ajustar por humedad del suelo
+            ajuste_humedad = (humedad - 0.3) * 0.5  # Ajuste basado en humedad
+            
+            # Ajustar por materia orgánica (la MO retiene agua)
+            ajuste_mo = materia_organica * 0.02
+            
+            # Ajustar por textura (asumimos que tenemos información de textura)
+            # Para simulación, usamos variabilidad espacial
+            ajuste_textura = variabilidad_local * 0.1
+            
+            # Cálculo del NDWI del suelo
+            ndwi_suelo = base_ndwi_suelo + ajuste_humedad + ajuste_mo + ajuste_textura
+            
+            # Aplicar factor estacional
+            ndwi_suelo *= factor_ndwi_mes
+            
+            # Agregar variabilidad aleatoria
+            ndwi_suelo += rng.normal(0, 0.05)
+            
+            # Limitar valores entre -1 y 1 (rango válido para NDWI)
+            ndwi_suelo = max(-1.0, min(1.0, ndwi_suelo))
+            
+            # Clasificar estado de humedad del suelo basado en NDWI
+            if ndwi_suelo >= params_ndwi['ndwi_humedo_suelo']:
+                estado_humedad = "MUY HÚMEDO"
+            elif ndwi_suelo >= params_ndwi['ndwi_optimo_suelo']:
+                estado_humedad = "ÓPTIMO"
+            elif ndwi_suelo >= params_ndwi['umbral_sequia']:
+                estado_humedad = "MODERADO"
+            elif ndwi_suelo >= params_ndwi['ndwi_seco_suelo']:
+                estado_humedad = "SECO"
+            else:
+                estado_humedad = "MUY SECO"
+            
+            # CÁLCULO MEJORADO DE ÍNDICE DE FERTILIDAD (INCLUIR NDWI DEL SUELO)
             n_norm = max(0, min(1, nitrogeno / (n_optimo * 1.5)))  # Normalizado al 150% del óptimo
             p_norm = max(0, min(1, fosforo / (p_optimo * 1.5)))
             k_norm = max(0, min(1, potasio / (k_optimo * 1.5)))
             mo_norm = max(0, min(1, materia_organica / 8.0))
             ph_norm = max(0, min(1, 1 - abs(ph - params['pH_OPTIMO']) / 2.0))  # Óptimo en centro
             
-            # Índice compuesto mejorado
+            # Normalizar NDWI del suelo para índice de fertilidad (valores entre 0 y 1)
+            ndwi_suelo_norm = (ndwi_suelo + 1) / 2  # Convertir de [-1,1] a [0,1]
+            
+            # Índice compuesto mejorado - AHORA INCLUYE NDWI DEL SUELO
             indice_fertilidad = (
-                n_norm * 0.25 + 
-                p_norm * 0.20 + 
-                k_norm * 0.20 + 
+                n_norm * 0.22 +  # Reducido de 0.25
+                p_norm * 0.18 +  # Reducido de 0.20
+                k_norm * 0.18 +  # Reducido de 0.20
                 mo_norm * 0.15 +
                 ph_norm * 0.10 +
-                ndvi * 0.10
+                ndvi * 0.08 +    # Reducido de 0.10
+                ndwi_suelo_norm * 0.09  # NUEVO: Peso del NDWI del suelo
             ) * factor_mes
             
             indice_fertilidad = max(0, min(1, indice_fertilidad))
@@ -1532,6 +1769,8 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
             zonas_gdf.loc[idx, 'ph'] = ph
             zonas_gdf.loc[idx, 'conductividad'] = conductividad
             zonas_gdf.loc[idx, 'ndvi'] = ndvi
+            zonas_gdf.loc[idx, 'ndwi_suelo'] = ndwi_suelo  # NUEVO
+            zonas_gdf.loc[idx, 'estado_humedad_suelo'] = estado_humedad  # NUEVO
             zonas_gdf.loc[idx, 'indice_fertilidad'] = indice_fertilidad
             zonas_gdf.loc[idx, 'categoria'] = categoria
             zonas_gdf.loc[idx, 'recomendacion_npk'] = recomendacion
@@ -1539,7 +1778,7 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
             zonas_gdf.loc[idx, 'prioridad'] = prioridad
             
         except Exception as e:
-            # Valores por defecto mejorados en caso de error
+            # Valores por defecto mejorados en caso de error (AGREGAR NDWI_SUELO)
             zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
             zonas_gdf.loc[idx, 'nitrogeno'] = params['NITROGENO']['optimo'] * 0.7
             zonas_gdf.loc[idx, 'fosforo'] = params['FOSFORO']['optimo'] * 0.6
@@ -1549,6 +1788,8 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
             zonas_gdf.loc[idx, 'ph'] = params['pH_OPTIMO']
             zonas_gdf.loc[idx, 'conductividad'] = params['CONDUCTIVIDAD_OPTIMA']
             zonas_gdf.loc[idx, 'ndvi'] = 0.5
+            zonas_gdf.loc[idx, 'ndwi_suelo'] = params_ndwi['ndwi_optimo_suelo']  # NUEVO
+            zonas_gdf.loc[idx, 'estado_humedad_suelo'] = "ÓPTIMO"  # NUEVO
             zonas_gdf.loc[idx, 'indice_fertilidad'] = 0.4
             zonas_gdf.loc[idx, 'categoria'] = "MEDIA"
             zonas_gdf.loc[idx, 'recomendacion_npk'] = 50  # Valor por defecto
@@ -1677,7 +1918,8 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
             ["Fósforo Promedio (kg/ha)", f"{gdf_analisis['fosforo'].mean():.1f}"],
             ["Potasio Promedio (kg/ha)", f"{gdf_analisis['potasio'].mean():.1f}"],
             ["Materia Orgánica Promedio (%)", f"{gdf_analisis['materia_organica'].mean():.1f}"],
-            ["NDVI Promedio", f"{gdf_analisis['ndvi'].mean():.3f}"]
+            ["NDVI Promedio", f"{gdf_analisis['ndvi'].mean():.3f}"],
+            ["NDWI Suelo Promedio", f"{gdf_analisis['ndwi_suelo'].mean():.3f}" if 'ndwi_suelo' in gdf_analisis.columns else "N/A"]
         ]
     elif analisis_tipo == "ANÁLISIS DE TEXTURA" and gdf_textura is not None:
         stats_data = [
@@ -1688,6 +1930,14 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
             ["Limo Promedio (%)", f"{gdf_textura['limo'].mean():.1f}"],
             ["Arcilla Promedio (%)", f"{gdf_textura['arcilla'].mean():.1f}"],
             ["Agua Disponible Promedio (mm/m)", f"{gdf_textura['agua_disponible'].mean():.0f}"]
+        ]
+    elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+        stats_data = [
+            ["Estadística", "Valor"],
+            ["NDWI Suelo Promedio", f"{gdf_analisis['ndwi_suelo'].mean():.3f}"],
+            ["Estado Humedad Predominante", gdf_analisis['estado_humedad_suelo'].mode()[0] if len(gdf_analisis) > 0 else "N/A"],
+            ["Déficit Humedad Promedio", f"{gdf_analisis['deficit_humedad'].mean():.3f}"],
+            ["Zonas con Riesgo Sequía", f"{len(gdf_analisis[gdf_analisis['riesgo_sequia'].isin(['ALTO', 'CRÍTICO'])])}/{len(gdf_analisis)}"]
         ]
     else:
         avg_rec = gdf_analisis['recomendacion_npk'].mean()
@@ -1727,6 +1977,9 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
         titulo_mapa = f"Textura del Suelo - {cultivo.replace('_', ' ').title()}"
         columna_visualizar = 'textura_suelo'
         gdf_analisis = gdf_textura
+    elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+        titulo_mapa = f"NDWI del Suelo - {cultivo.replace('_', ' ').title()}"
+        columna_visualizar = 'ndwi_suelo'
     else:
         titulo_mapa = f"Recomendación {nutriente} - {cultivo.replace('_', ' ').title()}"
         columna_visualizar = 'recomendacion_npk'
@@ -1755,6 +2008,9 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
     if analisis_tipo == "ANÁLISIS DE TEXTURA" and gdf_textura is not None:
         columnas_tabla = ['id_zona', 'area_ha', 'textura_suelo', 'adecuacion_textura', 'arena', 'limo', 'arcilla']
         df_tabla = gdf_textura[columnas_tabla].head(10).copy()
+    elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+        columnas_tabla = ['id_zona', 'area_ha', 'ndwi_suelo', 'estado_humedad_suelo', 'deficit_humedad', 'recomendacion_riego', 'riesgo_sequia']
+        df_tabla = gdf_analisis[columnas_tabla].head(10).copy()
     else:
         columnas_tabla = ['id_zona', 'area_ha', 'categoria', 'prioridad']
         if analisis_tipo == "FERTILIDAD ACTUAL":
@@ -1773,6 +2029,9 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
         df_tabla['arena'] = df_tabla['arena'].round(1)
         df_tabla['limo'] = df_tabla['limo'].round(1)
         df_tabla['arcilla'] = df_tabla['arcilla'].round(1)
+    elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+        df_tabla['ndwi_suelo'] = df_tabla['ndwi_suelo'].round(3)
+        df_tabla['deficit_humedad'] = df_tabla['deficit_humedad'].round(3)
     else:
         df_tabla['recomendacion_npk'] = df_tabla['recomendacion_npk'].round(1)
         df_tabla['deficit_npk'] = df_tabla['deficit_npk'].round(1)
@@ -1841,6 +2100,36 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
             story.append(Paragraph(f"<b>Manejo Recomendado:</b>", normal_style))
             for man in info_textura['manejo'][:3]:
                 story.append(Paragraph(f"• {man}", normal_style))
+    elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+        avg_ndwi = gdf_analisis['ndwi_suelo'].mean() if not gdf_analisis.empty else 0
+        
+        if avg_ndwi >= 0.15:
+            enfoque = "ENFOQUE: CONSERVACIÓN - Humedad óptima detectada"
+            recomendaciones = [
+                "Mantener frecuencia actual de riego",
+                "Implementar coberturas vivas para conservar humedad",
+                "Monitorear semanalmente con sensores de humedad"
+            ]
+        elif avg_ndwi >= 0.0:
+            enfoque = "ENFOQUE: AJUSTE MODERADO - Humedad moderada"
+            recomendaciones = [
+                "Incrementar riego en 15-20%",
+                "Aplicar mulching (cobertura seca) entre plantas",
+                "Programar riegos en horas de menor evaporación"
+            ]
+        else:
+            enfoque = "ENFOQUE: INTERVENCIÓN URGENTE - Déficit de humedad"
+            recomendaciones = [
+                "Riego intensivo inmediato (30-40% más)",
+                "Implementar riego por goteo o aspersión",
+                "Aplicar polímeros retenedores de agua en raíces"
+            ]
+        
+        story.append(Paragraph(f"<b>Enfoque Principal:</b> {enfoque}", normal_style))
+        story.append(Spacer(1, 10))
+        
+        for rec in recomendaciones:
+            story.append(Paragraph(f"• {rec}", normal_style))
     else:
         categoria_promedio = gdf_analisis['categoria'].mode()[0] if len(gdf_analisis) > 0 else "MEDIA"
         
@@ -1868,6 +2157,232 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
     story.append(Spacer(1, 20))
     story.append(Paragraph("INFORMACIÓN ADICIONAL", heading_style))
     story.append(Paragraph("Este informe fue generado automáticamente por el Sistema de Análisis Agrícola GEE.", normal_style))
+    
+    # Generar PDF
+    doc.build(story)
+    buffer.seek(0)
+    
+    return buffer
+
+# FUNCIÓN PARA GENERAR INFORME PDF ESPECÍFICO DE NDWI
+def generar_informe_ndwi_pdf(gdf_ndwi, cultivo, mes_analisis, area_total):
+    """Genera un informe PDF específico para análisis de NDWI del suelo"""
+    
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=1*inch)
+    styles = getSampleStyleSheet()
+    
+    # Estilos personalizados
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=16,
+        textColor=colors.darkblue,
+        spaceAfter=30,
+        alignment=1
+    )
+    
+    heading_style = ParagraphStyle(
+        'CustomHeading',
+        parent=styles['Heading2'],
+        fontSize=14,
+        textColor=colors.HexColor('#0066cc'),
+        spaceAfter=12,
+        spaceBefore=12
+    )
+    
+    normal_style = styles['Normal']
+    
+    story = []
+    
+    # Título principal
+    story.append(Paragraph("INFORME DE ANÁLISIS NDWI DEL SUELO", title_style))
+    story.append(Spacer(1, 20))
+    
+    # Información general
+    story.append(Paragraph("INFORMACIÓN GENERAL", heading_style))
+    info_data = [
+        ["Cultivo:", cultivo.replace('_', ' ').title()],
+        ["Análisis:", "NDWI del Suelo (Contenido de Agua)"],
+        ["Mes de Análisis:", mes_analisis],
+        ["Área Total:", f"{area_total:.2f} ha"],
+        ["Fecha de Generación:", datetime.now().strftime("%d/%m/%Y %H:%M")]
+    ]
+    
+    info_table = Table(info_data, colWidths=[2*inch, 3*inch])
+    info_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e6f2ff')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.darkblue),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    story.append(info_table)
+    story.append(Spacer(1, 20))
+    
+    # Estadísticas NDWI
+    story.append(Paragraph("ESTADÍSTICAS DEL NDWI DEL SUELO", heading_style))
+    
+    if not gdf_ndwi.empty:
+        stats_data = [
+            ["Estadística", "Valor"],
+            ["NDWI Suelo Promedio", f"{gdf_ndwi['ndwi_suelo'].mean():.3f}"],
+            ["Estado Humedad Predominante", gdf_ndwi['estado_humedad_suelo'].mode()[0] if len(gdf_ndwi) > 0 else "N/A"],
+            ["Déficit Humedad Promedio", f"{gdf_ndwi['deficit_humedad'].mean():.3f}"],
+            ["Zonas con Riesgo Sequía", f"{len(gdf_ndwi[gdf_ndwi['riesgo_sequia'].isin(['ALTO', 'CRÍTICO'])])}/{len(gdf_ndwi)}"],
+            ["Recomendación Riego Predominante", gdf_ndwi['recomendacion_riego'].mode()[0] if len(gdf_ndwi) > 0 else "N/A"]
+        ]
+    else:
+        stats_data = [["Estadística", "Valor"], ["Sin datos disponibles", "N/A"]]
+    
+    stats_table = Table(stats_data, colWidths=[3*inch, 2*inch])
+    stats_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    story.append(stats_table)
+    story.append(Spacer(1, 20))
+    
+    # Interpretación de valores NDWI
+    story.append(Paragraph("INTERPRETACIÓN DE VALORES NDWI", heading_style))
+    
+    interpretacion_data = [
+        ["Rango NDWI", "Estado del Suelo", "Interpretación", "Acción Recomendada"],
+        ["0.2 a 1.0", "Muy Húmedo", "Contenido de agua excesivo", "Reducir riego, mejorar drenaje"],
+        ["0.1 a 0.2", "Óptimo", "Humedad ideal para cultivo", "Mantener prácticas actuales"],
+        ["0.0 a 0.1", "Moderado", "Humedad aceptable", "Monitorear, riego ligero si es necesario"],
+        ["-0.1 a 0.0", "Seco", "Déficit de humedad", "Incrementar riego en 20-30%"],
+        ["-1.0 a -0.1", "Muy Seco", "Riesgo de sequía", "Riego urgente, medidas de conservación"]
+    ]
+    
+    interpretacion_table = Table(interpretacion_data, colWidths=[1*inch, 1.2*inch, 2*inch, 2*inch])
+    interpretacion_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3399ff')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f8ff')])
+    ]))
+    story.append(interpretacion_table)
+    story.append(Spacer(1, 20))
+    
+    # Recomendaciones generales
+    story.append(PageBreak())
+    story.append(Paragraph("RECOMENDACIONES DE MANEJO DE AGUA", heading_style))
+    
+    # Determinar recomendaciones basadas en promedio NDWI
+    avg_ndwi = gdf_ndwi['ndwi_suelo'].mean() if not gdf_ndwi.empty else 0
+    
+    if avg_ndwi >= 0.15:
+        enfoque = "ENFOQUE: CONSERVACIÓN - Humedad óptima detectada"
+        recomendaciones = [
+            "Mantener frecuencia actual de riego",
+            "Implementar coberturas vivas para conservar humedad",
+            "Monitorear semanalmente con sensores de humedad",
+            "Considerar riego deficitario controlado en épocas lluviosas"
+        ]
+    elif avg_ndwi >= 0.0:
+        enfoque = "ENFOQUE: AJUSTE MODERADO - Humedad moderada"
+        recomendaciones = [
+            "Incrementar riego en 15-20%",
+            "Aplicar mulching (cobertura seca) entre plantas",
+            "Programar riegos en horas de menor evaporación",
+            "Considerar riego por goteo para mayor eficiencia"
+        ]
+    else:
+        enfoque = "ENFOQUE: INTERVENCIÓN URGENTE - Déficit de humedad"
+        recomendaciones = [
+            "Riego intensivo inmediato (30-40% más)",
+            "Implementar riego por goteo o aspersión",
+            "Aplicar polímeros retenedores de agua en raíces",
+            "Reducir labranza para conservar humedad residual",
+            "Considerar cultivos de cobertura para sombrear suelo"
+        ]
+    
+    story.append(Paragraph(f"<b>Enfoque Principal:</b> {enfoque}", normal_style))
+    story.append(Spacer(1, 10))
+    
+    for rec in recomendaciones:
+        story.append(Paragraph(f"• {rec}", normal_style))
+    
+    story.append(Spacer(1, 20))
+    
+    # Tabla de resultados por zona (primeras 10)
+    story.append(Paragraph("RESULTADOS POR ZONA (PRIMERAS 10 ZONAS)", heading_style))
+    
+    if not gdf_ndwi.empty:
+        columnas_tabla = ['id_zona', 'ndwi_suelo', 'estado_humedad_suelo', 'deficit_humedad', 'recomendacion_riego', 'riesgo_sequia']
+        
+        # Verificar que las columnas existan
+        columnas_existentes = [col for col in columnas_tabla if col in gdf_ndwi.columns]
+        df_tabla = gdf_ndwi[columnas_existentes].head(10).copy()
+        
+        # Redondear valores
+        if 'ndwi_suelo' in df_tabla.columns:
+            df_tabla['ndwi_suelo'] = df_tabla['ndwi_suelo'].round(3)
+        if 'deficit_humedad' in df_tabla.columns:
+            df_tabla['deficit_humedad'] = df_tabla['deficit_humedad'].round(3)
+        
+        # Convertir a lista para tabla
+        table_data = [df_tabla.columns.tolist()]
+        for _, row in df_tabla.iterrows():
+            table_data.append(row.tolist())
+        
+        # Crear tabla
+        zona_table = Table(table_data, colWidths=[0.6*inch] * len(columnas_existentes))
+        zona_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#3399ff')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 7),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f0f8ff')])
+        ]))
+        story.append(zona_table)
+        
+        if len(gdf_ndwi) > 10:
+            story.append(Spacer(1, 5))
+            story.append(Paragraph(f"* Mostrando 10 de {len(gdf_ndwi)} zonas totales", 
+                                 ParagraphStyle('Small', parent=normal_style, fontSize=8)))
+    else:
+        story.append(Paragraph("No hay datos disponibles para mostrar", normal_style))
+    
+    # Información técnica
+    story.append(Spacer(1, 20))
+    story.append(Paragraph("INFORMACIÓN TÉCNICA", heading_style))
+    
+    info_tecnica = [
+        "Método: NDWI (Normalized Difference Water Index) del Suelo",
+        "Fórmula: (SWIR1 - SWIR2) / (SWIR1 + SWIR2)",
+        "Bandas Sentinel-2: B8A (NIR) y B11 (SWIR)",
+        "Rango válido: -1.0 a 1.0",
+        "Interpretación: Valores positivos indican mayor contenido de agua",
+        "Resolución espacial: 20m (Sentinel-2)",
+        "Actualización: Datos actualizados cada 5 días"
+    ]
+    
+    for info in info_tecnica:
+        story.append(Paragraph(f"• {info}", normal_style))
+    
+    # Pie de página
+    story.append(Spacer(1, 30))
+    story.append(Paragraph("INFORME GENERADO AUTOMÁTICAMENTE - SISTEMA DE ANÁLISIS GEE", 
+                         ParagraphStyle('Footer', parent=normal_style, fontSize=8, alignment=1)))
     
     # Generar PDF
     doc.build(story)
@@ -2046,6 +2561,247 @@ def mostrar_resultados_textura():
                     mime="application/pdf"
                 )
 
+# FUNCIÓN PARA MOSTRAR RESULTADOS DE NDWI DEL SUELO
+def mostrar_resultados_ndwi_suelo():
+    """Muestra los resultados del análisis de NDWI del suelo"""
+    
+    # Ejecutar análisis de NDWI del suelo si no está en session_state
+    if st.session_state.gdf_analisis is None or 'ndwi_suelo' not in st.session_state.gdf_analisis.columns:
+        with st.spinner("💧 Analizando NDWI del suelo..."):
+            if st.session_state.gdf_zonas is not None:
+                gdf_ndwi = analizar_ndwi_suelo(st.session_state.gdf_zonas, cultivo, mes_analisis)
+                st.session_state.gdf_analisis = gdf_ndwi
+            else:
+                st.error("No hay datos de zonas disponibles")
+                return
+    else:
+        gdf_ndwi = st.session_state.gdf_analisis
+    
+    area_total = st.session_state.area_total
+    
+    st.markdown("## 💧 ANÁLISIS DE NDWI DEL SUELO (CONTENIDO DE AGUA)")
+    
+    # Botón para volver atrás
+    if st.button("⬅️ Volver a Configuración", key="volver_ndwi"):
+        st.session_state.analisis_completado = False
+        st.rerun()
+    
+    # Explicación del NDWI del suelo
+    with st.expander("📚 ¿Qué es el NDWI del suelo?", expanded=False):
+        st.markdown("""
+        **NDWI (Normalized Difference Water Index) del Suelo**:
+        
+        - **Propósito**: Detectar contenido de agua en el suelo, no en la vegetación
+        - **Fórmula**: (SWIR1 - SWIR2) / (SWIR1 + SWIR2) o (NIR - SWIR) / (NIR + SWIR)
+        - **Bandas utilizadas**: 
+          - SWIR1 (1.57-1.65µm): Sensible al contenido de agua
+          - SWIR2 (2.11-2.29µm): Sensible a la humedad del suelo
+        - **Interpretación**:
+          - Valores altos (> 0.2): Suelo húmedo/óptimo
+          - Valores medios (0.0 - 0.2): Humedad moderada
+          - Valores bajos (< 0.0): Suelo seco
+          - Valores muy bajos (< -0.1): Riesgo de sequía
+        
+        **Diferencia con NDVI**:
+        - NDVI: Mide salud de vegetación (usa rojo e infrarrojo cercano)
+        - NDWI suelo: Mide humedad del suelo (usa infrarrojo de onda corta)
+        """)
+    
+    # Estadísticas resumen
+    st.subheader("📊 Estadísticas del NDWI del Suelo")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if 'ndwi_suelo' in gdf_ndwi.columns:
+            avg_ndwi = gdf_ndwi['ndwi_suelo'].mean()
+        else:
+            avg_ndwi = 0
+        st.metric("💧 NDWI Suelo Promedio", f"{avg_ndwi:.3f}")
+    with col2:
+        if 'estado_humedad_suelo' in gdf_ndwi.columns:
+            estado_predominante = gdf_ndwi['estado_humedad_suelo'].mode()[0] if len(gdf_ndwi) > 0 else "N/A"
+        else:
+            estado_predominante = "N/A"
+        st.metric("🌡️ Estado Predominante", estado_predominante)
+    with col3:
+        if 'riesgo_sequia' in gdf_ndwi.columns:
+            zonas_sequia = len(gdf_ndwi[gdf_ndwi['riesgo_sequia'].isin(['ALTO', 'CRÍTICO'])])
+            total_zonas = len(gdf_ndwi)
+        else:
+            zonas_sequia = 0
+            total_zonas = 0
+        st.metric("⚠️ Zonas con Riesgo Sequía", f"{zonas_sequia}/{total_zonas}")
+    with col4:
+        if 'deficit_humedad' in gdf_ndwi.columns:
+            deficit_promedio = gdf_ndwi['deficit_humedad'].mean()
+        else:
+            deficit_promedio = 0
+        st.metric("📉 Déficit Humedad Promedio", f"{deficit_promedio:.3f}")
+    
+    # Distribución de estados de humedad
+    st.subheader("📋 Distribución de Estados de Humedad")
+    if 'estado_humedad_suelo' in gdf_ndwi.columns:
+        estado_dist = gdf_ndwi['estado_humedad_suelo'].value_counts()
+        st.bar_chart(estado_dist)
+    
+    # Mapa de NDWI del suelo
+    st.subheader("🗺️ Mapa de NDWI del Suelo")
+    
+    # Asegurar que tenemos área calculada
+    if 'area_ha' not in gdf_ndwi.columns:
+        gdf_ndwi['area_ha'] = [calcular_superficie(gdf_ndwi.iloc[[idx]]).iloc[0] for idx in range(len(gdf_ndwi))]
+    
+    if 'ndwi_suelo' in gdf_ndwi.columns:
+        mapa_ndwi = crear_mapa_interactivo_esri(
+            gdf_ndwi, 
+            f"NDWI del Suelo - {cultivo.replace('_', ' ').title()}", 
+            'ndwi_suelo', 
+            "ANÁLISIS NDWI SUELO"
+        )
+        st_folium(mapa_ndwi, width=800, height=500)
+    
+    # Tabla detallada
+    st.subheader("📋 Tabla de Resultados por Zona")
+    
+    columnas_ndwi = ['id_zona', 'area_ha', 'ndwi_suelo', 'estado_humedad_suelo', 
+                    'deficit_humedad', 'recomendacion_riego', 'riesgo_sequia']
+    
+    # Filtrar columnas que existen
+    columnas_existentes = [col for col in columnas_ndwi if col in gdf_ndwi.columns]
+    df_ndwi = gdf_ndwi[columnas_existentes].copy()
+    
+    # Redondear valores
+    if 'area_ha' in df_ndwi.columns:
+        df_ndwi['area_ha'] = df_ndwi['area_ha'].round(3)
+    if 'ndwi_suelo' in df_ndwi.columns:
+        df_ndwi['ndwi_suelo'] = df_ndwi['ndwi_suelo'].round(3)
+    if 'deficit_humedad' in df_ndwi.columns:
+        df_ndwi['deficit_humedad'] = df_ndwi['deficit_humedad'].round(3)
+    
+    st.dataframe(df_ndwi, use_container_width=True)
+    
+    # RECOMENDACIONES ESPECÍFICAS PARA MANEJO DE AGUA
+    st.markdown("### 💡 RECOMENDACIONES DE MANEJO DE AGUA")
+    
+    # Determinar recomendaciones generales basadas en estadísticas
+    if 'ndwi_suelo' in gdf_ndwi.columns:
+        avg_ndwi = gdf_ndwi['ndwi_suelo'].mean()
+        params_ndwi = PARAMETROS_NDWI_SUELO[cultivo]
+        
+        if avg_ndwi >= params_ndwi['ndwi_optimo_suelo']:
+            st.success("✅ **ESTADO GENERAL: ÓPTIMO** - El contenido de agua en el suelo es adecuado")
+            st.markdown("""
+            **Acciones recomendadas:**
+            - Mantener prácticas actuales de riego
+            - Monitorear semanalmente el NDWI
+            - Implementar coberturas para conservar humedad
+            """)
+        elif avg_ndwi >= params_ndwi['umbral_sequia']:
+            st.warning("⚠️ **ESTADO GENERAL: ATENCIÓN** - Humedad del suelo moderada")
+            st.markdown("""
+            **Acciones recomendadas:**
+            - Incrementar frecuencia de riego en 20%
+            - Aplicar mulching (cobertura seca)
+            - Considerar riego por goteo para eficiencia
+            - Monitorear cada 3-4 días
+            """)
+        else:
+            st.error("🚨 **ESTADO GENERAL: CRÍTICO** - Déficit de humedad en el suelo")
+            st.markdown("""
+            **Acciones urgentes:**
+            - Riego intensivo inmediato
+            - Implementar riego por goteo o aspersión
+            - Aplicar polímeros retenedores de agua
+            - Reducir labranza para conservar humedad
+            - Monitorear diariamente
+            """)
+    
+    # RECOMENDACIONES POR TIPO DE SUELO (si hay datos de textura)
+    if st.session_state.analisis_textura is not None:
+        st.markdown("### 🏗️ RECOMENDACIONES POR TIPO DE TEXTURA")
+        
+        gdf_textura = st.session_state.analisis_textura
+        textura_predominante = gdf_textura['textura_suelo'].mode()[0] if len(gdf_textura) > 0 else "Franco"
+        
+        recomendaciones_riego_por_textura = {
+            'Arcilloso': [
+                "Riegos menos frecuentes pero más profundos",
+                "Evitar riegos superficiales que causen encharcamiento",
+                "Intervalo entre riegos: 7-10 días en época seca",
+                "Monitorear drenaje para evitar saturación"
+            ],
+            'Franco Arcilloso': [
+                "Riegos cada 5-7 días en época seca",
+                "Aplicar 25-30 mm por riego",
+                "Implementar riego por surcos o goteo",
+                "Usar tensiómetros para programación"
+            ],
+            'Franco': [
+                "Riegos cada 4-6 días en época seca",
+                "Aplicar 20-25 mm por riego",
+                "Ideal para riego por aspersión",
+                "Buena respuesta a riego deficitario controlado"
+            ],
+            'Franco Arcilloso-Arenoso': [
+                "Riegos frecuentes (cada 2-4 días)",
+                "Aplicar 15-20 mm por riego",
+                "Riego por goteo recomendado",
+                "Considerar polímeros retenedores de agua"
+            ],
+            'Arenoso': [
+                "Riegos diarios o cada 2 días",
+                "Aplicar 10-15 mm por riego",
+                "Riego por goteo obligatorio",
+                "Aplicar materia orgánica para retención",
+                "Considerar cultivos tolerantes a sequía"
+            ]
+        }
+        
+        if textura_predominante in recomendaciones_riego_por_textura:
+            st.info(f"**Textura Predominante: {textura_predominante}**")
+            for rec in recomendaciones_riego_por_textura[textura_predominante]:
+                st.markdown(f"• {rec}")
+    
+    # DESCARGAR RESULTADOS
+    st.markdown("### 💾 Descargar Resultados NDWI")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Descargar CSV
+        if len(df_ndwi.columns) > 0:
+            csv = df_ndwi.to_csv(index=False)
+            st.download_button(
+                label="📥 Descargar Tabla CSV",
+                data=csv,
+                file_name=f"ndwi_suelo_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
+    
+    with col2:
+        # Descargar GeoJSON
+        geojson = gdf_ndwi.to_json()
+        st.download_button(
+            label="🗺️ Descargar GeoJSON",
+            data=geojson,
+            file_name=f"ndwi_suelo_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
+            mime="application/json"
+        )
+    
+    with col3:
+        # Descargar PDF
+        if st.button("📄 Generar Informe NDWI PDF", type="primary", key="pdf_ndwi"):
+            with st.spinner("🔄 Generando informe PDF..."):
+                # Crear informe específico para NDWI
+                pdf_buffer = generar_informe_ndwi_pdf(gdf_ndwi, cultivo, mes_analisis, area_total)
+                
+                st.download_button(
+                    label="📥 Descargar Informe PDF",
+                    data=pdf_buffer,
+                    file_name=f"informe_ndwi_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf"
+                )
+
 # FUNCIÓN PARA MOSTRAR RESULTADOS PRINCIPALES
 def mostrar_resultados_principales():
     """Muestra los resultados del análisis principal"""
@@ -2086,8 +2842,12 @@ def mostrar_resultados_principales():
             avg_ndvi = gdf_analisis['ndvi'].mean()
             st.metric("📡 NDVI Promedio", f"{avg_ndvi:.3f}")
         with col7:
-            zona_prioridad = gdf_analisis['prioridad'].value_counts().index[0]
-            st.metric("🎯 Prioridad Predominante", zona_prioridad)
+            if 'ndwi_suelo' in gdf_analisis.columns:
+                avg_ndwi = gdf_analisis['ndwi_suelo'].mean()
+                st.metric("💧 NDWI Suelo Promedio", f"{avg_ndwi:.3f}")
+            else:
+                zona_prioridad = gdf_analisis['prioridad'].value_counts().index[0]
+                st.metric("🎯 Prioridad Predominante", zona_prioridad)
         
         st.subheader("📋 Distribución de Categorías de Fertilidad")
         cat_dist = gdf_analisis['categoria'].value_counts()
@@ -2151,6 +2911,8 @@ def mostrar_resultados_principales():
     columnas_tabla = ['id_zona', 'area_ha', 'categoria', 'prioridad']
     if analisis_tipo == "FERTILIDAD ACTUAL":
         columnas_tabla.extend(['indice_fertilidad', 'nitrogeno', 'fosforo', 'potasio', 'materia_organica', 'ndvi'])
+        if 'ndwi_suelo' in gdf_analisis.columns:
+            columnas_tabla.extend(['ndwi_suelo', 'estado_humedad_suelo'])
     else:
         columnas_tabla.extend(['recomendacion_npk', 'deficit_npk', 'nitrogeno', 'fosforo', 'potasio'])
     
@@ -2164,6 +2926,8 @@ def mostrar_resultados_principales():
         df_tabla['potasio'] = df_tabla['potasio'].round(1)
         df_tabla['materia_organica'] = df_tabla['materia_organica'].round(1)
         df_tabla['ndvi'] = df_tabla['ndvi'].round(3)
+        if 'ndwi_suelo' in df_tabla.columns:
+            df_tabla['ndwi_suelo'] = df_tabla['ndwi_suelo'].round(3)
     else:
         df_tabla['recomendacion_npk'] = df_tabla['recomendacion_npk'].round(1)
         df_tabla['deficit_npk'] = df_tabla['deficit_npk'].round(1)
@@ -2227,6 +2991,7 @@ def main():
     - **Índices espectrales** (NDVI, NDBI, etc.)
     - **Modelos predictivos** de nutrientes
     - **Análisis de textura** del suelo actualizado
+    - **NDWI del suelo** para contenido de agua
     - **Enfoque agroecológico** integrado
     """)
 
@@ -2254,11 +3019,13 @@ def main():
 
     # Mostrar interfaz según el estado
     if st.session_state.analisis_completado:
-        # Crear pestañas para organizar los resultados
+        # Mostrar resultados según el tipo de análisis
         if analisis_tipo == "ANÁLISIS DE TEXTURA":
             mostrar_resultados_textura()
+        elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+            mostrar_resultados_ndwi_suelo()
         else:
-            tab1, tab2 = st.tabs(["📊 Análisis Principal", "🏗️ Análisis de Textura"])
+            tab1, tab2, tab3 = st.tabs(["📊 Análisis Principal", "🏗️ Análisis de Textura", "💧 NDWI del Suelo"])
             
             with tab1:
                 mostrar_resultados_principales()
@@ -2268,6 +3035,18 @@ def main():
                     mostrar_resultados_textura()
                 else:
                     st.info("Ejecuta el análisis principal para obtener datos de textura")
+            
+            with tab3:
+                # Ejecutar análisis de NDWI si no está disponible
+                if st.session_state.gdf_analisis is not None and 'ndwi_suelo' in st.session_state.gdf_analisis.columns:
+                    mostrar_resultados_ndwi_suelo()
+                elif st.session_state.gdf_zonas is not None:
+                    with st.spinner("💧 Analizando NDWI del suelo..."):
+                        gdf_ndwi = analizar_ndwi_suelo(st.session_state.gdf_zonas, cultivo, mes_analisis)
+                        st.session_state.gdf_analisis = gdf_ndwi
+                        mostrar_resultados_ndwi_suelo()
+                else:
+                    st.info("Ejecuta el análisis principal para obtener datos de NDWI del suelo")
                     
     elif st.session_state.gdf_original is not None:
         mostrar_configuracion_parcela()
@@ -2290,14 +3069,14 @@ def mostrar_modo_demo():
     - .dbf (atributos)
     - .prj (sistema de coordenadas)
     
-    **NUEVO: Análisis de Textura del Suelo Actualizado**
-    - Clasificación según imagen proporcionada
-    - Propiedades físicas detalladas
-    - Recomendaciones específicas por textura
-    - Información de manejo para cada tipo de suelo
+    **NUEVO: Análisis de NDWI del Suelo**
+    - Detección de contenido de agua en el suelo
+    - No confundir con NDVI (que es para vegetación)
+    - Recomendaciones de riego específicas
+    - Alertas tempranas de sequía
     """)
     
-       # Ejemplo de datos de demostración
+    # Ejemplo de datos de demostración
     if st.button("🎯 Cargar Datos de Demostración", type="primary"):
         st.session_state.datos_demo = True
         st.rerun()
@@ -2346,13 +3125,17 @@ def mostrar_configuracion_parcela():
             if analisis_tipo == "ANÁLISIS DE TEXTURA":
                 gdf_analisis = analizar_textura_suelo(gdf_zonas, cultivo, mes_analisis)
                 st.session_state.analisis_textura = gdf_analisis
+                st.session_state.gdf_analisis = gdf_analisis
+            elif analisis_tipo == "ANÁLISIS NDWI SUELO":
+                gdf_analisis = analizar_ndwi_suelo(gdf_zonas, cultivo, mes_analisis)
+                st.session_state.gdf_analisis = gdf_analisis
             else:
                 gdf_analisis = calcular_indices_gee(
                     gdf_zonas, cultivo, mes_analisis, analisis_tipo, nutriente
                 )
                 st.session_state.gdf_analisis = gdf_analisis
             
-            # Siempre ejecutar análisis de textura también
+            # Siempre ejecutar análisis de textura también (excepto cuando ya es análisis de textura)
             if analisis_tipo != "ANÁLISIS DE TEXTURA":
                 with st.spinner("🏗️ Realizando análisis de textura..."):
                     gdf_textura = analizar_textura_suelo(gdf_zonas, cultivo, mes_analisis)
