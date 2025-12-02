@@ -3792,20 +3792,23 @@ def ejecutar_analisis_curvas_nivel(gdf_original, intervalo=5.0, resolucion=10.0)
 
 # FUNCIÓN PARA MOSTRAR RESULTADOS PRINCIPALES
 def mostrar_resultados_principales():
-    """Muestra los resultados del análisis principal"""
+    """Muestra los resultados del análisis principal (solo para fertilidad o recomendaciones NPK)"""
     gdf_analisis = st.session_state.gdf_analisis
     area_total = st.session_state.area_total
-    
+
+    # 🔒 Verificar que el tipo de análisis sea compatible
+    if analisis_tipo not in ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK"]:
+        st.warning("⚠️ El análisis principal no está disponible para este tipo de análisis.")
+        st.write("Use las pestañas específicas: **Análisis de Textura**, **NDWI del Suelo** o **Curvas de Nivel**.")
+        return
+
     st.markdown("## 📈 RESULTADOS DEL ANÁLISIS PRINCIPAL")
-    
     # Botón para volver atrás
     if st.button("⬅️ Volver a Configuración", key="volver_principal"):
         st.session_state.analisis_completado = False
         st.rerun()
-    
     # Estadísticas resumen
     st.subheader("📊 Estadísticas del Análisis")
-    
     if analisis_tipo == "FERTILIDAD ACTUAL":
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -3820,7 +3823,6 @@ def mostrar_resultados_principales():
         with col4:
             avg_k = gdf_analisis['potasio'].mean()
             st.metric("⚡ Potasio Promedio", f"{avg_k:.1f} kg/ha")
-        
         # Estadísticas adicionales
         col5, col6, col7 = st.columns(3)
         with col5:
@@ -3836,11 +3838,10 @@ def mostrar_resultados_principales():
             else:
                 zona_prioridad = gdf_analisis['prioridad'].value_counts().index[0]
                 st.metric("🎯 Prioridad Predominante", zona_prioridad)
-        
         st.subheader("📋 Distribución de Categorías de Fertilidad")
         cat_dist = gdf_analisis['categoria'].value_counts()
         st.bar_chart(cat_dist)
-    else:
+    else:  # RECOMENDACIONES NPK
         col1, col2, col3 = st.columns(3)
         with col1:
             avg_rec = gdf_analisis['recomendacion_npk'].mean()
@@ -3851,7 +3852,6 @@ def mostrar_resultados_principales():
         with col3:
             zona_prioridad = gdf_analisis['prioridad'].value_counts().index[0]
             st.metric("🎯 Prioridad Aplicación", zona_prioridad)
-        
         st.subheader("🌿 Estado Actual de Nutrientes")
         col_n, col_p, col_k, col_mo = st.columns(4)
         with col_n:
@@ -3866,10 +3866,8 @@ def mostrar_resultados_principales():
         with col_mo:
             avg_mo = gdf_analisis['materia_organica'].mean()
             st.metric("Materia Orgánica", f"{avg_mo:.1f}%")
-    
     # MAPAS INTERACTIVOS
     st.markdown("### 🗺️ Mapas de Análisis")
-    
     # Seleccionar columna para visualizar
     if analisis_tipo == "FERTILIDAD ACTUAL":
         columna_visualizar = 'indice_fertilidad'
@@ -3877,13 +3875,11 @@ def mostrar_resultados_principales():
     else:
         columna_visualizar = 'recomendacion_npk'
         titulo_mapa = f"Recomendación {nutriente} - {cultivo.replace('_', ' ').title()}"
-    
     # Crear y mostrar mapa interactivo
     mapa_analisis = crear_mapa_interactivo_esri(
         gdf_analisis, titulo_mapa, columna_visualizar, analisis_tipo, nutriente
     )
     st_folium(mapa_analisis, width=800, height=500)
-    
     # MAPA ESTÁTICO PARA DESCARGA
     st.markdown("### 📄 Mapa para Reporte")
     mapa_estatico = crear_mapa_estatico(
@@ -3891,10 +3887,8 @@ def mostrar_resultados_principales():
     )
     if mapa_estatico:
         st.image(mapa_estatico, caption=titulo_mapa, use_column_width=True)
-    
     # TABLA DETALLADA
     st.markdown("### 📋 Tabla de Resultados por Zona")
-    
     # Preparar datos para tabla
     columnas_tabla = ['id_zona', 'area_ha', 'categoria', 'prioridad']
     if analisis_tipo == "FERTILIDAD ACTUAL":
@@ -3903,10 +3897,8 @@ def mostrar_resultados_principales():
             columnas_tabla.extend(['ndwi_suelo', 'estado_humedad_suelo'])
     else:
         columnas_tabla.extend(['recomendacion_npk', 'deficit_npk', 'nitrogeno', 'fosforo', 'potasio'])
-    
     df_tabla = gdf_analisis[columnas_tabla].copy()
     df_tabla['area_ha'] = df_tabla['area_ha'].round(3)
-    
     if analisis_tipo == "FERTILIDAD ACTUAL":
         df_tabla['indice_fertilidad'] = df_tabla['indice_fertilidad'].round(3)
         df_tabla['nitrogeno'] = df_tabla['nitrogeno'].round(1)
@@ -3919,20 +3911,15 @@ def mostrar_resultados_principales():
     else:
         df_tabla['recomendacion_npk'] = df_tabla['recomendacion_npk'].round(1)
         df_tabla['deficit_npk'] = df_tabla['deficit_npk'].round(1)
-    
     st.dataframe(df_tabla, use_container_width=True)
-    
     # RECOMENDACIONES AGROECOLÓGICAS
     categoria_promedio = gdf_analisis['categoria'].mode()[0] if len(gdf_analisis) > 0 else "MEDIA"
     mostrar_recomendaciones_agroecologicas(
         cultivo, categoria_promedio, area_total, analisis_tipo, nutriente
     )
-    
     # DESCARGAR RESULTADOS
     st.markdown("### 💾 Descargar Resultados")
-    
     col1, col2, col3 = st.columns(3)
-    
     with col1:
         # Descargar CSV
         csv = df_tabla.to_csv(index=False)
@@ -3942,7 +3929,6 @@ def mostrar_resultados_principales():
             file_name=f"resultados_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv"
         )
-    
     with col2:
         # Descargar GeoJSON
         geojson = gdf_analisis.to_json()
@@ -3952,7 +3938,6 @@ def mostrar_resultados_principales():
             file_name=f"zonas_analisis_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
             mime="application/json"
         )
-    
     with col3:
         # Descargar PDF
         if st.button("📄 Generar Informe PDF", type="primary", key="pdf_principal"):
@@ -3960,14 +3945,12 @@ def mostrar_resultados_principales():
                 pdf_buffer = generar_informe_pdf(
                     gdf_analisis, cultivo, analisis_tipo, nutriente, mes_analisis, area_total, st.session_state.analisis_textura
                 )
-                
                 st.download_button(
                     label="📥 Descargar Informe PDF",
                     data=pdf_buffer,
                     file_name=f"informe_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
                     mime="application/pdf"
                 )
-
 # INTERFAZ PRINCIPAL
 def main():
     # Mostrar información de la aplicación
