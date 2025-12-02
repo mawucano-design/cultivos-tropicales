@@ -2230,7 +2230,7 @@ def mostrar_resultados_textura():
                     file_name=f"informe_textura_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
                     mime="application/pdf"
                 )
-
+ print("Columnas disponibles:", list(gdf_analisis.columns))
 # FUNCIÓN PARA MOSTRAR RESULTADOS PRINCIPALES
 def mostrar_resultados_principales():
     """Muestra los resultados del análisis principal"""
