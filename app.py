@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.colors import LinearSegmentedColormap
 import io
-from shapely.geometry import Polygon
+from shapely.geometry import Polygon, LineString, Point, MultiLineString
 import math
 import folium
 from folium import plugins
@@ -24,6 +24,9 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import base64
 import fiona
+from scipy.interpolate import griddata
+import warnings
+warnings.filterwarnings('ignore')
 
 st.set_page_config(page_title="🌴 Analizador Cultivos", layout="wide")
 st.title("🌱 ANALIZADOR CULTIVOS - METODOLOGÍA GEE COMPLETA CON AGROECOLOGÍA")
@@ -92,26 +95,44 @@ TEXTURA_SUELO_OPTIMA = {
 }
 
 # PARÁMETROS PARA CÁLCULO DE NDWI (SOBRE EL SUELO)
-# Bandas para NDWI del suelo: SWIR1 (banda 11 - 1.57-1.65µm) y SWIR2 (banda 12 - 2.11-2.29µm)
 PARAMETROS_NDWI_SUELO = {
     'PALMA_ACEITERA': {
-        'ndwi_optimo_suelo': 0.15,  # Valor óptimo para suelo en plantaciones de palma
-        'ndwi_humedo_suelo': 0.25,   # Suelo con humedad adecuada
-        'ndwi_seco_suelo': -0.15,    # Suelo seco
-        'umbral_sequia': -0.1        # Umbral para considerar sequía
+        'ndwi_optimo_suelo': 0.15,
+        'ndwi_humedo_suelo': 0.25,
+        'ndwi_seco_suelo': -0.15,
+        'umbral_sequia': -0.1
     },
     'CACAO': {
-        'ndwi_optimo_suelo': 0.18,   # Suelos de cacao requieren más humedad
+        'ndwi_optimo_suelo': 0.18,
         'ndwi_humedo_suelo': 0.3,
         'ndwi_seco_suelo': -0.1,
         'umbral_sequia': -0.05
     },
     'BANANO': {
-        'ndwi_optimo_suelo': 0.2,    # Banano requiere suelos más húmedos
+        'ndwi_optimo_suelo': 0.2,
         'ndwi_humedo_suelo': 0.35,
         'ndwi_seco_suelo': -0.05,
         'umbral_sequia': 0.0
     }
+}
+
+# PARÁMETROS PARA ANÁLISIS DE CURVAS DE NIVEL
+PARAMETROS_CURVAS_NIVEL = {
+    'intervalo_curvas': 5.0,  # metros entre curvas
+    'resolucion_dem': 10.0,   # resolución DEM en metros
+    'min_elevacion': 100,     # elevación mínima en metros
+    'max_elevacion': 500,     # elevación máxima en metros
+    'factor_relieve': 0.5     # factor de relieve (0-1)
+}
+
+# CLASIFICACIÓN DE PENDIENTES
+CLASIFICACION_PENDIENTES = {
+    'PLANA (0-2%)': {'min': 0, 'max': 2, 'color': '#4daf4a', 'factor_erosivo': 0.1},
+    'SUAVE (2-5%)': {'min': 2, 'max': 5, 'color': '#a6d96a', 'factor_erosivo': 0.3},
+    'MODERADA (5-10%)': {'min': 5, 'max': 10, 'color': '#ffffbf', 'factor_erosivo': 0.6},
+    'FUERTE (10-15%)': {'min': 10, 'max': 15, 'color': '#fdae61', 'factor_erosivo': 0.8},
+    'MUY FUERTE (15-25%)': {'min': 15, 'max': 25, 'color': '#f46d43', 'factor_erosivo': 0.9},
+    'EXTREMA (>25%)': {'min': 25, 'max': 100, 'color': '#d73027', 'factor_erosivo': 1.0}
 }
 
 # CLASIFICACIÓN DE TEXTURAS DEL SUELO - ACTUALIZADA SEGÚN IMAGEN
@@ -315,6 +336,46 @@ RECOMENDACIONES_AGROECOLOGICAS = {
     }
 }
 
+# RECOMENDACIONES PARA MANEJO DE PENDIENTES
+RECOMENDACIONES_PENDIENTES = {
+    'PLANA (0-2%)': [
+        "Diseño rectangular de plantación",
+        "Sistemas de riego por gravedad eficientes",
+        "Labranza convencional posible",
+        "Maquinaria pesada sin restricciones"
+    ],
+    'SUAVE (2-5%)': [
+        "Diseño en contorno ligero",
+        "Surcos siguiendo curvas de nivel",
+        "Labranza reducida recomendada",
+        "Barreras vivas cada 50 metros"
+    ],
+    'MODERADA (5-10%)': [
+        "Diseño en contorno estricto",
+        "Terrazas de base ancha",
+        "Cultivos en franjas",
+        "Barreras vivas cada 30 metros"
+    ],
+    'FUERTE (10-15%)': [
+        "Terrazas individuales por planta",
+        "Sistemas agroforestales",
+        "Cultivo en callejones (alley cropping)",
+        "Barreras vivas cada 20 metros"
+    ],
+    'MUY FUERTE (15-25%)': [
+        "Terrazas con muros de piedra",
+        "Sistemas silvopastoriles",
+        "Cultivos permanentes de cobertura",
+        "Evitar labranza, usar siembra directa"
+    ],
+    'EXTREMA (>25%)': [
+        "Forestación o agroforestería densa",
+        "Terrazas estrechas con vegetación permanente",
+        "Sistemas de captación de agua",
+        "No usar maquinaria, solo manual"
+    ]
+}
+
 # FACTORES ESTACIONALES
 FACTORES_MES = {
     "ENERO": 0.9, "FEBRERO": 0.95, "MARZO": 1.0, "ABRIL": 1.05,
@@ -354,7 +415,9 @@ PALETAS_GEE = {
     'FOSFORO': ['#67001f', '#b2182b', '#d6604d', '#f4a582', '#fddbc7', '#d1e5f0', '#92c5de', '#4393c3', '#2166ac', '#053061'],
     'POTASIO': ['#4d004b', '#810f7c', '#8c6bb1', '#8c96c6', '#9ebcda', '#bfd3e6', '#e0ecf4', '#edf8fb'],
     'TEXTURA': ['#8c510a', '#d8b365', '#f6e8c3', '#c7eae5', '#5ab4ac', '#01665e'],
-    'NDWI_SUELO': ['#8b0000', '#ff4500', '#ffa500', '#ffff00', '#adff2f', '#32cd32', '#006400']  # Rojo (seco) a Verde (húmedo)
+    'NDWI_SUELO': ['#8b0000', '#ff4500', '#ffa500', '#ffff00', '#adff2f', '#32cd32', '#006400'],
+    'ELEVACION': ['#006837', '#1a9850', '#66bd63', '#a6d96a', '#d9ef8b', '#ffffbf', '#fee08b', '#fdae61', '#f46d43', '#d73027'],
+    'PENDIENTE': ['#4daf4a', '#a6d96a', '#ffffbf', '#fdae61', '#f46d43', '#d73027']
 }
 
 # Inicializar session_state
@@ -372,6 +435,10 @@ if 'datos_demo' not in st.session_state:
     st.session_state.datos_demo = False
 if 'analisis_textura' not in st.session_state:
     st.session_state.analisis_textura = None
+if 'curvas_nivel' not in st.session_state:
+    st.session_state.curvas_nivel = None
+if 'dem_data' not in st.session_state:
+    st.session_state.dem_data = None
 
 # Sidebar
 with st.sidebar:
@@ -380,11 +447,12 @@ with st.sidebar:
     cultivo = st.selectbox("Cultivo:", 
                           ["PALMA_ACEITERA", "CACAO", "BANANO"])
     
-    # Opción para análisis de textura
+    # Opción para análisis
     analisis_tipo = st.selectbox("Tipo de Análisis:", 
-                               ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK", "ANÁLISIS DE TEXTURA", "ANÁLISIS NDWI SUELO"])
+                               ["FERTILIDAD ACTUAL", "RECOMENDACIONES NPK", "ANÁLISIS DE TEXTURA", 
+                                "ANÁLISIS NDWI SUELO", "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)"])
     
-    if analisis_tipo != "ANÁLISIS DE TEXTURA" and analisis_tipo != "ANÁLISIS NDWI SUELO":
+    if analisis_tipo != "ANÁLISIS DE TEXTURA" and analisis_tipo != "ANÁLISIS NDWI SUELO" and analisis_tipo != "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
         nutriente = st.selectbox("Nutriente:", ["NITRÓGENO", "FÓSFORO", "POTASIO"])
     else:
         nutriente = None
@@ -395,6 +463,12 @@ with st.sidebar:
     
     st.subheader("🎯 División de Parcela")
     n_divisiones = st.slider("Número de zonas de manejo:", min_value=16, max_value=32, value=24)
+    
+    # Configuración adicional para curvas de nivel
+    if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+        st.subheader("🏔️ Configuración Curvas de Nivel")
+        intervalo_curvas = st.slider("Intervalo entre curvas (metros):", 1.0, 20.0, 5.0, 1.0)
+        resolucion_dem = st.slider("Resolución DEM (metros):", 5.0, 50.0, 10.0, 5.0)
     
     st.subheader("📤 Subir Parcela")
     uploaded_file = st.file_uploader("Subir ZIP con shapefile o archivo KML de tu parcela", type=['zip', 'kml'])
@@ -408,6 +482,8 @@ with st.sidebar:
         st.session_state.area_total = 0
         st.session_state.datos_demo = False
         st.session_state.analisis_textura = None
+        st.session_state.curvas_nivel = None
+        st.session_state.dem_data = None
         st.rerun()
 
 # FUNCIÓN: CLASIFICAR TEXTURA DEL SUELO - ACTUALIZADA SEGÚN IMAGEN
@@ -602,6 +678,11 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             vmin, vmax = -1, 1
             colores = PALETAS_GEE['NDWI_SUELO']
             unidad = "Índice"
+        elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+            # Para curvas de nivel, usar paleta de elevación
+            vmin, vmax = gdf[columna_valor].min(), gdf[columna_valor].max()
+            colores = PALETAS_GEE['ELEVACION']
+            unidad = "m"
         else:
             # RANGOS MÁS REALISTAS PARA RECOMENDACIONES
             if nutriente == "NITRÓGENO":
@@ -637,10 +718,10 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                 # Manejo para valores numéricos
                 valor = row[columna_valor]
                 color = obtener_color(valor, vmin, vmax, colores)
-                if analisis_tipo == "FERTILIDAD ACTUAL":
+                if analisis_tipo in ["FERTILIDAD ACTUAL", "ANÁLISIS NDWI SUELO"]:
                     valor_display = f"{valor:.3f}"
-                elif analisis_tipo == "ANÁLISIS NDWI SUELO":
-                    valor_display = f"{valor:.3f}"
+                elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                    valor_display = f"{valor:.1f}"
                 else:
                     valor_display = f"{valor:.1f}"
             
@@ -691,6 +772,17 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                     <b>NDVI:</b> {row.get('ndvi', 0):.3f}
                 </div>
                 """
+            elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                popup_text = f"""
+                <div style="font-family: Arial; font-size: 12px;">
+                    <h4>Curva {row['id_curva']}</h4>
+                    <b>Elevación:</b> {valor_display} m<br>
+                    <b>Longitud:</b> {row.get('longitud_m', 0):.1f} m<br>
+                    <hr>
+                    <b>Tipo:</b> Curva de nivel<br>
+                    <b>Intervalo:</b> {PARAMETROS_CURVAS_NIVEL['intervalo_curvas']} m
+                </div>
+                """
             else:
                 popup_text = f"""
                 <div style="font-family: Arial; font-size: 12px;">
@@ -722,28 +814,29 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             ).add_to(m)
             
             # Marcador con número de zona mejorado
-            centroid = row.geometry.centroid
-            folium.Marker(
-                [centroid.y, centroid.x],
-                icon=folium.DivIcon(
-                    html=f'''
-                    <div style="
-                        background-color: white; 
-                        border: 2px solid black; 
-                        border-radius: 50%; 
-                        width: 28px; 
-                        height: 28px; 
-                        display: flex; 
-                        align-items: center; 
-                        justify-content: center; 
-                        font-weight: bold; 
-                        font-size: 11px;
-                        color: black;
-                    ">{row["id_zona"]}</div>
-                    '''
-                ),
-                tooltip=f"Zona {row['id_zona']} - Click para detalles"
-            ).add_to(m)
+            if analisis_tipo != "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                centroid = row.geometry.centroid
+                folium.Marker(
+                    [centroid.y, centroid.x],
+                    icon=folium.DivIcon(
+                        html=f'''
+                        <div style="
+                            background-color: white; 
+                            border: 2px solid black; 
+                            border-radius: 50%; 
+                            width: 28px; 
+                            height: 28px; 
+                            display: flex; 
+                            align-items: center; 
+                            justify-content: center; 
+                            font-weight: bold; 
+                            font-size: 11px;
+                            color: black;
+                        ">{row["id_zona"]}</div>
+                        '''
+                    ),
+                    tooltip=f"Zona {row['id_zona']} - Click para detalles"
+                ).add_to(m)
     else:
         # Mapa simple del polígono original
         for idx, row in gdf.iterrows():
@@ -822,6 +915,13 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                 color_idx = int((i / (steps - 1)) * (len(PALETAS_GEE['NDWI_SUELO']) - 1))
                 color = PALETAS_GEE['NDWI_SUELO'][color_idx]
                 legend_html += f'<div style="margin:2px 0;"><span style="background:{color}; width:20px; height:15px; display:inline-block; margin-right:5px; border:1px solid #000;"></span> {value:.1f} ({labels[i]})</div>'
+        elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+            steps = 6
+            for i in range(steps):
+                value = vmin + (i / (steps - 1)) * (vmax - vmin)
+                color_idx = int((i / (steps - 1)) * (len(colores) - 1))
+                color = colores[color_idx]
+                legend_html += f'<div style="margin:2px 0;"><span style="background:{color}; width:20px; height:15px; display:inline-block; margin-right:5px; border:1px solid #000;"></span> {value:.0f} m</div>'
         else:
             steps = 6
             for i in range(steps):
@@ -943,6 +1043,9 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
             elif analisis_tipo == "ANÁLISIS NDWI SUELO":
                 cmap = LinearSegmentedColormap.from_list('ndwi_suelo_gee', PALETAS_GEE['NDWI_SUELO'])
                 vmin, vmax = -1, 1
+            elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                cmap = LinearSegmentedColormap.from_list('elevacion_gee', PALETAS_GEE['ELEVACION'])
+                vmin, vmax = gdf[columna_valor].min(), gdf[columna_valor].max()
             else:
                 # USAR EXACTAMENTE LOS MISMOS RANGOS QUE EL MAPA INTERACTIVO
                 if nutriente == "NITRÓGENO":
@@ -978,6 +1081,8 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
                     texto_valor = row[columna_valor]
                 elif analisis_tipo == "ANÁLISIS NDWI SUELO":
                     texto_valor = f"{row[columna_valor]:.3f}"
+                elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                    texto_valor = f"{row[columna_valor]:.0f}"
                 else:
                     texto_valor = f"{row[columna_valor]:.0f} kg"
                 
@@ -1012,6 +1117,10 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
                 cbar.set_label('NDWI Suelo (-1 a 1)', fontsize=10)
                 cbar.set_ticks([-1, -0.5, -0.1, 0, 0.1, 0.2, 1])
                 cbar.set_ticklabels(['-1 (Muy Seco)', '-0.5', '-0.1', '0', '0.1', '0.2', '1 (Saturado)'])
+            elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                cbar.set_label('Elevación (metros)', fontsize=10)
+                cbar.set_ticks([vmin, (vmin+vmax)/2, vmax])
+                cbar.set_ticklabels([f'{vmin:.0f} m', f'{(vmin+vmax)/2:.0f} m', f'{vmax:.0f} m'])
             else:
                 cbar.set_label(f'Recomendación {nutriente} (kg/ha)', fontsize=10)
                 if nutriente == "NITRÓGENO":
@@ -1798,6 +1907,421 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
     
     return zonas_gdf
 
+# FUNCIÓN PARA GENERAR DEM SINTÉTICO BASADO EN LIDAR
+def generar_dem_sintetico(gdf, resolucion=10.0):
+    """Genera un DEM sintético basado en datos LiDAR simulados"""
+    
+    # Obtener bounds del polígono
+    bounds = gdf.total_bounds
+    minx, miny, maxx, maxy = bounds
+    
+    # Convertir resolución de metros a grados (aproximadamente)
+    # 1 grado ≈ 111,111 metros en el ecuador
+    resolucion_grados = resolucion / 111111
+    
+    # Crear malla de puntos
+    x = np.arange(minx, maxx, resolucion_grados)
+    y = np.arange(miny, maxy, resolucion_grados)
+    
+    if len(x) < 2 or len(y) < 2:
+        # Si el área es muy pequeña, ajustar resolución
+        resolucion_grados = (maxx - minx) / 10
+        x = np.linspace(minx, maxx, 10)
+        y = np.linspace(miny, maxy, 10)
+    
+    X, Y = np.meshgrid(x, y)
+    
+    # Generar elevaciones sintéticas con patrones realistas
+    # 1. Elevación base
+    elevacion_base = np.random.uniform(100, 300)
+    
+    # 2. Pendiente general (simulando una ladera)
+    slope_x = np.random.uniform(-0.001, 0.001)  # Pendiente en dirección X
+    slope_y = np.random.uniform(-0.001, 0.001)  # Pendiente en dirección Y
+    
+    # 3. Relieve variado (colinas, valles)
+    relief = np.zeros_like(X)
+    
+    # Añadir algunas colinas/valles aleatorios
+    n_hills = np.random.randint(2, 5)
+    for _ in range(n_hills):
+        hill_center_x = np.random.uniform(minx, maxx)
+        hill_center_y = np.random.uniform(miny, maxy)
+        hill_radius = np.random.uniform(0.001, 0.005)
+        hill_height = np.random.uniform(10, 50)
+        
+        # Distancia al centro de la colina
+        dist = np.sqrt((X - hill_center_x)**2 + (Y - hill_center_y)**2)
+        
+        # Función de colina (Gaussiana)
+        relief += hill_height * np.exp(-(dist**2) / (2 * hill_radius**2))
+    
+    # 4. Ruido de alta frecuencia (detalle de LiDAR)
+    noise = np.random.randn(*X.shape) * 2  # Ruido de ±2 metros
+    
+    # Combinar todos los componentes
+    Z = elevacion_base + slope_x * (X - minx) + slope_y * (Y - miny) + relief + noise
+    
+    # Asegurar que no haya valores negativos
+    Z = np.maximum(Z, 50)
+    
+    return X, Y, Z, bounds
+
+# FUNCIÓN PARA CALCULAR CURVAS DE NIVEL
+def calcular_curvas_nivel(gdf, intervalo=5.0, resolucion=10.0):
+    """Calcula curvas de nivel a partir de DEM sintético"""
+    
+    # Generar DEM sintético
+    X, Y, Z, bounds = generar_dem_sintetico(gdf, resolucion)
+    
+    # Flatten arrays para interpolación
+    points = np.column_stack([X.flatten(), Y.flatten()])
+    values = Z.flatten()
+    
+    # Crear grid para interpolación
+    grid_x, grid_y = np.mgrid[bounds[0]:bounds[2]:resolucion/111111, bounds[1]:bounds[3]:resolucion/111111]
+    
+    # Interpolar a grid regular
+    grid_z = griddata(points, values, (grid_x, grid_y), method='cubic')
+    
+    # Calcular niveles para curvas
+    z_min, z_max = np.nanmin(grid_z), np.nanmax(grid_z)
+    niveles = np.arange(np.floor(z_min/intervalo)*intervalo, np.ceil(z_max/intervalo)*intervalo, intervalo)
+    
+    # Calcular pendiente (gradiente)
+    dy, dx = np.gradient(grid_z, resolucion, resolucion)
+    pendiente = np.sqrt(dx**2 + dy**2) * 100  # En porcentaje
+    
+    # Calcular aspecto (orientación)
+    aspecto = np.arctan2(dy, dx) * 180 / np.pi
+    aspecto = np.mod(aspecto + 360, 360)  # Ajustar a 0-360 grados
+    
+    # Extraer polígono principal
+    poligono_principal = gdf.iloc[0].geometry
+    
+    # Crear lista para almacenar curvas
+    curvas_lineas = []
+    curvas_puntos = []
+    
+    # Calcular curvas de nivel usando matplotlib
+    import matplotlib.pyplot as plt
+    from matplotlib.path import Path
+    
+    fig, ax = plt.subplots()
+    CS = ax.contour(grid_x, grid_y, grid_z, levels=niveles, colors='k', linewidths=0.5)
+    plt.close(fig)
+    
+    # Extraer paths de las curvas
+    for collection in CS.collections:
+        paths = collection.get_paths()
+        for path in paths:
+            if len(path.vertices) > 1:
+                # Crear LineString a partir de los vértices
+                linea = LineString(path.vertices)
+                
+                # Intersectar con el polígono principal
+                if poligono_principal.intersects(linea):
+                    interseccion = poligono_principal.intersection(linea)
+                    
+                    if interseccion.geom_type == 'LineString':
+                        curvas_lineas.append(interseccion)
+                    elif interseccion.geom_type == 'MultiLineString':
+                        for parte in interseccion.geoms:
+                            curvas_lineas.append(parte)
+    
+    # Crear GeoDataFrame con curvas de nivel
+    if curvas_lineas:
+        gdf_curvas = gpd.GeoDataFrame({
+            'id_curva': range(1, len(curvas_lineas) + 1),
+            'geometry': curvas_lineas
+        }, crs=gdf.crs)
+        
+        # Asignar elevación a cada curva
+        for idx, curva in enumerate(curvas_lineas):
+            # Obtener punto medio de la curva
+            punto_medio = curva.interpolate(0.5, normalized=True)
+            
+            # Encontrar elevación más cercana en el grid
+            distancias = np.sqrt((grid_x - punto_medio.x)**2 + (grid_y - punto_medio.y)**2)
+            idx_min = np.unravel_index(np.argmin(distancias), distancias.shape)
+            elevacion = grid_z[idx_min]
+            
+            gdf_curvas.loc[idx, 'elevacion'] = round(elevacion, 1)
+    else:
+        gdf_curvas = gpd.GeoDataFrame(columns=['id_curva', 'elevacion', 'geometry'], crs=gdf.crs)
+    
+    return gdf_curvas, grid_x, grid_y, grid_z, pendiente, aspecto, bounds
+
+# FUNCIÓN PARA CLASIFICAR PENDIENTES
+def clasificar_pendiente(pendiente_porcentaje):
+    """Clasifica la pendiente según categorías establecidas"""
+    for categoria, params in CLASIFICACION_PENDIENTES.items():
+        if params['min'] <= pendiente_porcentaje < params['max']:
+            return categoria, params['color']
+    return "EXTREMA (>25%)", CLASIFICACION_PENDIENTES['EXTREMA (>25%)']['color']
+
+# FUNCIÓN PARA CALCULAR ESTADÍSTICAS DE PENDIENTE
+def calcular_estadisticas_pendiente(pendiente_grid):
+    """Calcula estadísticas de pendiente del terreno"""
+    pendiente_flat = pendiente_grid.flatten()
+    pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
+    
+    if len(pendiente_flat) == 0:
+        return {
+            'promedio': 0,
+            'min': 0,
+            'max': 0,
+            'std': 0,
+            'distribucion': {}
+        }
+    
+    stats = {
+        'promedio': float(np.mean(pendiente_flat)),
+        'min': float(np.min(pendiente_flat)),
+        'max': float(np.max(pendiente_flat)),
+        'std': float(np.std(pendiente_flat)),
+        'distribucion': {}
+    }
+    
+    # Calcular distribución por categoría
+    for categoria, params in CLASIFICACION_PENDIENTES.items():
+        mask = (pendiente_flat >= params['min']) & (pendiente_flat < params['max'])
+        stats['distribucion'][categoria] = {
+            'porcentaje': float(np.sum(mask) / len(pendiente_flat) * 100),
+            'area_ha': float(np.sum(mask) * (PARAMETROS_CURVAS_NIVEL['resolucion_dem']**2) / 10000),
+            'color': params['color']
+        }
+    
+    return stats
+
+# FUNCIÓN PARA CREAR MAPA DE CURVAS DE NIVEL
+def crear_mapa_curvas_nivel(gdf_original, gdf_curvas, dem_data=None):
+    """Crea mapa interactivo con curvas de nivel"""
+    
+    # Obtener centro y bounds
+    centroid = gdf_original.geometry.centroid.iloc[0]
+    bounds = gdf_original.total_bounds
+    
+    # Crear mapa con ESRI Satélite por defecto
+    m = folium.Map(
+        location=[centroid.y, centroid.x],
+        zoom_start=14,
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Esri Satélite'
+    )
+    
+    # Añadir otras bases
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Esri Calles',
+        overlay=False
+    ).add_to(m)
+    
+    folium.TileLayer(
+        tiles='OpenStreetMap',
+        name='OpenStreetMap',
+        overlay=False
+    ).add_to(m)
+    
+    # Añadir capa de relieve
+    folium.TileLayer(
+        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}',
+        attr='Esri',
+        name='Relieve',
+        overlay=False
+    ).add_to(m)
+    
+    # Añadir parcela original
+    folium.GeoJson(
+        gdf_original.geometry.__geo_interface__,
+        style_function=lambda x: {
+            'fillColor': '#1f77b4',
+            'color': '#2ca02c',
+            'weight': 3,
+            'fillOpacity': 0.3,
+            'opacity': 0.8
+        },
+        popup=folium.Popup(f"Parcela - Área: {calcular_superficie(gdf_original):.2f} ha", max_width=300),
+        tooltip="Parcela principal"
+    ).add_to(m)
+    
+    # Añadir curvas de nivel
+    if not gdf_curvas.empty and 'elevacion' in gdf_curvas.columns:
+        for idx, row in gdf_curvas.iterrows():
+            # Determinar color basado en elevación (si tenemos datos DEM)
+            if dem_data is not None:
+                grid_z = dem_data['grid_z']
+                z_min, z_max = np.nanmin(grid_z), np.nanmax(grid_z)
+                
+                # Normalizar elevación para color
+                if z_max > z_min:
+                    norm_elev = (row['elevacion'] - z_min) / (z_max - z_min)
+                else:
+                    norm_elev = 0.5
+                
+                # Usar paleta de elevación
+                colores = PALETAS_GEE['ELEVACION']
+                color_idx = int(norm_elev * (len(colores) - 1))
+                color = colores[color_idx]
+                
+                # Determinar grosor basado en intervalo
+                if row['elevacion'] % 25 == 0:  # Curva maestra cada 25m
+                    weight = 3
+                elif row['elevacion'] % 5 == 0:  # Curva intermedia cada 5m
+                    weight = 2
+                else:
+                    weight = 1
+            else:
+                color = '#00441b'  # Verde oscuro por defecto
+                weight = 1
+            
+            folium.GeoJson(
+                row.geometry.__geo_interface__,
+                style_function=lambda x, color=color, weight=weight: {
+                    'color': color,
+                    'weight': weight,
+                    'fillOpacity': 0,
+                    'opacity': 0.8
+                },
+                popup=folium.Popup(f"Curva de nivel {row['id_curva']}<br>Elevación: {row['elevacion']} m", max_width=200),
+                tooltip=f"Elevación: {row['elevacion']} m"
+            ).add_to(m)
+    
+    # Añadir marcador para punto más alto si hay datos DEM
+    if dem_data is not None:
+        grid_z = dem_data['grid_z']
+        grid_x = dem_data['grid_x']
+        grid_y = dem_data['grid_y']
+        
+        # Encontrar punto más alto
+        idx_max = np.unravel_index(np.nanargmax(grid_z), grid_z.shape)
+        punto_alto = [grid_y[idx_max], grid_x[idx_max]]
+        
+        folium.Marker(
+            punto_alto,
+            icon=folium.DivIcon(
+                html='<div style="background-color: red; color: white; padding: 5px; border-radius: 50%;">▲</div>'
+            ),
+            popup=f"Punto más alto: {grid_z[idx_max]:.1f} m",
+            tooltip="Punto más alto"
+        ).add_to(m)
+        
+        # Encontrar punto más bajo
+        idx_min = np.unravel_index(np.nanargmin(grid_z), grid_z.shape)
+        punto_bajo = [grid_y[idx_min], grid_x[idx_min]]
+        
+        folium.Marker(
+            punto_bajo,
+            icon=folium.DivIcon(
+                html='<div style="background-color: blue; color: white; padding: 5px; border-radius: 50%;">▼</div>'
+            ),
+            popup=f"Punto más bajo: {grid_z[idx_min]:.1f} m",
+            tooltip="Punto más bajo"
+        ).add_to(m)
+    
+    # Ajustar bounds
+    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+    
+    # Añadir controles
+    folium.LayerControl().add_to(m)
+    plugins.MeasureControl(position='bottomleft', primary_length_unit='meters').add_to(m)
+    plugins.MiniMap(toggle_display=True).add_to(m)
+    plugins.Fullscreen(position='topright').add_to(m)
+    
+    # Añadir leyenda
+    legend_html = '''
+    <div style="position: fixed; 
+                top: 10px; right: 10px; width: 250px; height: auto; 
+                background-color: white; border:2px solid grey; z-index:9999; 
+                font-size:12px; padding: 10px; border-radius:5px;
+                font-family: Arial;">
+        <h4 style="margin:0 0 10px 0; text-align:center;">🏔️ Curvas de Nivel</h4>
+        <p><b>Leyenda:</b></p>
+        <p><i style="background:#1f77b4; width:20px; height:20px; display:inline-block; margin-right:5px; opacity:0.3;"></i> Área de parcela</p>
+        <p><i style="background:#00441b; width:20px; height:2px; display:inline-block; margin-right:5px; opacity:0.8; vertical-align:middle;"></i> Curvas de nivel</p>
+        <p><span style="background:red; color:white; width:20px; height:20px; display:inline-block; margin-right:5px; border-radius:50%; text-align:center; line-height:20px;">▲</span> Punto más alto</p>
+        <p><span style="background:blue; color:white; width:20px; height:20px; display:inline-block; margin-right:5px; border-radius:50%; text-align:center; line-height:20px;">▼</span> Punto más bajo</p>
+        <p style="margin-top:10px; font-size:10px; color:#666;">
+            💡 Curvas más gruesas indican intervalos mayores (cada 25m)
+        </p>
+    </div>
+    '''
+    m.get_root().html.add_child(folium.Element(legend_html))
+    
+    return m
+
+# FUNCIÓN PARA CREAR MAPA DE PENDIENTES
+def crear_mapa_pendientes(grid_x, grid_y, pendiente_grid, gdf_original):
+    """Crea mapa de calor de pendientes"""
+    
+    # Crear figura
+    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+    
+    # Preparar datos para mapa de calor
+    X = grid_x.flatten()
+    Y = grid_y.flatten()
+    Z = pendiente_grid.flatten()
+    
+    # Crear triangulación para interpolación
+    from matplotlib.tri import Triangulation, LinearTriInterpolator
+    
+    # Crear malla de puntos válidos
+    valid_mask = ~np.isnan(Z)
+    if np.sum(valid_mask) > 0:
+        tri = Triangulation(X[valid_mask], Y[valid_mask])
+        interpolator = LinearTriInterpolator(tri, Z[valid_mask])
+        
+        # Crear grid para visualización
+        xi = np.linspace(X[valid_mask].min(), X[valid_mask].max(), 100)
+        yi = np.linspace(Y[valid_mask].min(), Y[valid_mask].max(), 100)
+        Xi, Yi = np.meshgrid(xi, yi)
+        
+        # Interpolar
+        Zi = interpolator(Xi, Yi)
+        
+        # Crear mapa de calor
+        cmap = LinearSegmentedColormap.from_list('pendiente_cmap', 
+                                                [CLASIFICACION_PENDIENTES[c]['color'] for c in CLASIFICACION_PENDIENTES])
+        
+        heatmap = ax.contourf(Xi, Yi, Zi, levels=20, cmap=cmap, alpha=0.7)
+        
+        # Añadir curvas de nivel de pendiente
+        contours = ax.contour(Xi, Yi, Zi, levels=[2, 5, 10, 15, 25], colors='black', linewidths=0.5, alpha=0.5)
+        ax.clabel(contours, inline=True, fontsize=8, fmt='%1.0f%%')
+    
+    # Añadir parcela
+    gdf_original.plot(ax=ax, color='none', edgecolor='black', linewidth=2)
+    
+    # Configuración
+    ax.set_title('Mapa de Pendientes (%)', fontsize=14, fontweight='bold', pad=15)
+    ax.set_xlabel('Longitud')
+    ax.set_ylabel('Latitud')
+    ax.grid(True, alpha=0.3)
+    
+    # Barra de color
+    if 'heatmap' in locals():
+        cbar = plt.colorbar(heatmap, ax=ax, shrink=0.8)
+        cbar.set_label('Pendiente (%)', fontsize=10)
+    
+    # Leyenda de categorías
+    patches = []
+    for categoria, params in CLASIFICACION_PENDIENTES.items():
+        patches.append(mpatches.Patch(color=params['color'], label=categoria))
+    
+    ax.legend(handles=patches, loc='upper left', fontsize=8, title='Categorías de Pendiente')
+    
+    plt.tight_layout()
+    
+    # Convertir a imagen
+    buf = io.BytesIO()
+    plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+    buf.seek(0)
+    plt.close()
+    
+    return buf
+
 # FUNCIÓN PARA PROCESAR ARCHIVO SUBIDO
 def procesar_archivo(uploaded_file):
     """Procesa el archivo ZIP con shapefile o archivo KML"""
@@ -1939,6 +2463,15 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
             ["Déficit Humedad Promedio", f"{gdf_analisis['deficit_humedad'].mean():.3f}"],
             ["Zonas con Riesgo Sequía", f"{len(gdf_analisis[gdf_analisis['riesgo_sequia'].isin(['ALTO', 'CRÍTICO'])])}/{len(gdf_analisis)}"]
         ]
+    elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+        stats_data = [
+            ["Estadística", "Valor"],
+            ["Número de Curvas", f"{len(gdf_analisis)}"],
+            ["Elevación Promedio (m)", f"{gdf_analisis['elevacion'].mean():.1f}"],
+            ["Elevación Mínima (m)", f"{gdf_analisis['elevacion'].min():.1f}"],
+            ["Elevación Máxima (m)", f"{gdf_analisis['elevacion'].max():.1f}"],
+            ["Rango de Elevación (m)", f"{gdf_analisis['elevacion'].max() - gdf_analisis['elevacion'].min():.1f}"]
+        ]
     else:
         avg_rec = gdf_analisis['recomendacion_npk'].mean()
         total_rec = (gdf_analisis['recomendacion_npk'] * gdf_analisis['area_ha']).sum()
@@ -1980,6 +2513,9 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
     elif analisis_tipo == "ANÁLISIS NDWI SUELO":
         titulo_mapa = f"NDWI del Suelo - {cultivo.replace('_', ' ').title()}"
         columna_visualizar = 'ndwi_suelo'
+    elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+        titulo_mapa = f"Curvas de Nivel - {cultivo.replace('_', ' ').title()}"
+        columna_visualizar = 'elevacion'
     else:
         titulo_mapa = f"Recomendación {nutriente} - {cultivo.replace('_', ' ').title()}"
         columna_visualizar = 'recomendacion_npk'
@@ -2011,6 +2547,11 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
     elif analisis_tipo == "ANÁLISIS NDWI SUELO":
         columnas_tabla = ['id_zona', 'area_ha', 'ndwi_suelo', 'estado_humedad_suelo', 'deficit_humedad', 'recomendacion_riego', 'riesgo_sequia']
         df_tabla = gdf_analisis[columnas_tabla].head(10).copy()
+    elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+        columnas_tabla = ['id_curva', 'elevacion']
+        if 'longitud_m' in gdf_analisis.columns:
+            columnas_tabla.append('longitud_m')
+        df_tabla = gdf_analisis[columnas_tabla].head(10).copy()
     else:
         columnas_tabla = ['id_zona', 'area_ha', 'categoria', 'prioridad']
         if analisis_tipo == "FERTILIDAD ACTUAL":
@@ -2021,7 +2562,8 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
         df_tabla = gdf_analisis[columnas_tabla].head(10).copy()
     
     # Redondear valores
-    df_tabla['area_ha'] = df_tabla['area_ha'].round(3)
+    if 'area_ha' in df_tabla.columns:
+        df_tabla['area_ha'] = df_tabla['area_ha'].round(3)
     if analisis_tipo == "FERTILIDAD ACTUAL":
         df_tabla['indice_fertilidad'] = df_tabla['indice_fertilidad'].round(3)
     elif analisis_tipo == "ANÁLISIS DE TEXTURA":
@@ -2032,6 +2574,10 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
     elif analisis_tipo == "ANÁLISIS NDWI SUELO":
         df_tabla['ndwi_suelo'] = df_tabla['ndwi_suelo'].round(3)
         df_tabla['deficit_humedad'] = df_tabla['deficit_humedad'].round(3)
+    elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+        df_tabla['elevacion'] = df_tabla['elevacion'].round(1)
+        if 'longitud_m' in df_tabla.columns:
+            df_tabla['longitud_m'] = df_tabla['longitud_m'].round(1)
     else:
         df_tabla['recomendacion_npk'] = df_tabla['recomendacion_npk'].round(1)
         df_tabla['deficit_npk'] = df_tabla['deficit_npk'].round(1)
@@ -2123,6 +2669,41 @@ def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_ana
                 "Riego intensivo inmediato (30-40% más)",
                 "Implementar riego por goteo o aspersión",
                 "Aplicar polímeros retenedores de agua en raíces"
+            ]
+        
+        story.append(Paragraph(f"<b>Enfoque Principal:</b> {enfoque}", normal_style))
+        story.append(Spacer(1, 10))
+        
+        for rec in recomendaciones:
+            story.append(Paragraph(f"• {rec}", normal_style))
+    elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+        # Para curvas de nivel
+        elevacion_promedio = gdf_analisis['elevacion'].mean() if not gdf_analisis.empty else 0
+        rango_elevacion = gdf_analisis['elevacion'].max() - gdf_analisis['elevacion'].min() if not gdf_analisis.empty else 0
+        
+        if rango_elevacion < 20:
+            enfoque = "ENFOQUE: TERRENO PLANO - Manejo convencional"
+            recomendaciones = [
+                "Diseño rectangular de plantación",
+                "Sistemas de riego por gravedad",
+                "Labranza convencional posible",
+                "Maquinaria pesada sin restricciones"
+            ]
+        elif rango_elevacion < 50:
+            enfoque = "ENFOQUE: LADERA SUAVE - Diseño en contorno"
+            recomendaciones = [
+                "Diseño en contorno ligero",
+                "Surcos siguiendo curvas de nivel",
+                "Labranza reducida recomendada",
+                "Barreras vivas cada 50 metros"
+            ]
+        else:
+            enfoque = "ENFOQUE: LADERA PRONUNCIADA - Terrazas y bancales"
+            recomendaciones = [
+                "Terrazas de base ancha",
+                "Cultivos en franjas",
+                "Barreras vivas cada 30 metros",
+                "Sistemas de drenaje en contorno"
             ]
         
         story.append(Paragraph(f"<b>Enfoque Principal:</b> {enfoque}", normal_style))
@@ -2802,6 +3383,338 @@ def mostrar_resultados_ndwi_suelo():
                     mime="application/pdf"
                 )
 
+# FUNCIÓN PARA MOSTRAR RESULTADOS DE CURVAS DE NIVEL
+def mostrar_resultados_curvas_nivel():
+    """Muestra resultados del análisis de curvas de nivel"""
+    
+    if st.session_state.curvas_nivel is None or st.session_state.dem_data is None:
+        st.warning("No hay datos de curvas de nivel disponibles")
+        return
+    
+    gdf_curvas = st.session_state.curvas_nivel
+    dem_data = st.session_state.dem_data
+    area_total = st.session_state.area_total
+    
+    st.markdown("## 🏔️ ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)")
+    
+    # Botón para volver atrás
+    if st.button("⬅️ Volver a Configuración", key="volver_curvas"):
+        st.session_state.analisis_completado = False
+        st.rerun()
+    
+    # Explicación técnica
+    with st.expander("📚 ¿Qué son las curvas de nivel?", expanded=False):
+        st.markdown("""
+        **Curvas de nivel (Líneas de contorno)**:
+        
+        - **Definición**: Líneas que conectan puntos de igual elevación sobre el nivel del mar
+        - **Fuente de datos**: LiDAR (Light Detection and Ranging) o Modelos Digitales de Elevación (DEM)
+        - **Resolución típica LiDAR**: 1-5 puntos/m²
+        - **Precisión vertical**: 10-20 cm
+        - **Aplicaciones en agricultura**:
+          - Diseño de sistemas de riego y drenaje
+          - Prevención de erosión
+          - Planificación de terrazas y bancales
+          - Diseño de caminos y accesos
+          - Identificación de zonas de acumulación de agua
+        
+        **Interpretación**:
+        - Curvas muy juntas = Pendientes pronunciadas
+        - Curvas separadas = Terreno plano
+        - Curvas en forma de V = Valles (apuntan hacia arriba)
+        - Curvas en forma de U = Crestas (apuntan hacia abajo)
+        """)
+    
+    # Estadísticas principales
+    st.subheader("📊 Estadísticas Topográficas")
+    
+    # Extraer datos del DEM
+    grid_z = dem_data['grid_z']
+    pendiente_grid = dem_data['pendiente_grid']
+    
+    # Calcular estadísticas
+    elevaciones = grid_z.flatten()
+    elevaciones = elevaciones[~np.isnan(elevaciones)]
+    
+    if len(elevaciones) > 0:
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            elevacion_promedio = np.mean(elevaciones)
+            st.metric("🏔️ Elevación Promedio", f"{elevacion_promedio:.1f} m")
+        with col2:
+            rango_elevacion = np.max(elevaciones) - np.min(elevaciones)
+            st.metric("📏 Rango de Elevación", f"{rango_elevacion:.1f} m")
+        with col3:
+            stats_pendiente = calcular_estadisticas_pendiente(pendiente_grid)
+            st.metric("📐 Pendiente Promedio", f"{stats_pendiente['promedio']:.1f}%")
+        with col4:
+            num_curvas = len(gdf_curvas) if not gdf_curvas.empty else 0
+            st.metric("🔄 Número de Curvas", f"{num_curvas}")
+    
+    # Mapa interactivo de curvas de nivel
+    st.subheader("🗺️ Mapa de Curvas de Nivel")
+    
+    if not gdf_curvas.empty:
+        mapa_curvas = crear_mapa_curvas_nivel(st.session_state.gdf_original, gdf_curvas, dem_data)
+        st_folium(mapa_curvas, width=800, height=500)
+    else:
+        st.warning("No se pudieron generar curvas de nivel para esta parcela")
+    
+    # Distribución de pendientes
+    st.subheader("📈 Distribución de Pendientes")
+    
+    if 'pendiente_grid' in dem_data:
+        # Crear gráfico de distribución
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
+        
+        # Histograma de pendientes
+        pendiente_flat = pendiente_grid.flatten()
+        pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
+        
+        if len(pendiente_flat) > 0:
+            ax1.hist(pendiente_flat, bins=30, edgecolor='black', color='#74c476', alpha=0.7)
+            ax1.axvline(x=stats_pendiente['promedio'], color='red', linestyle='--', label=f'Promedio: {stats_pendiente["promedio"]:.1f}%')
+            ax1.set_xlabel('Pendiente (%)')
+            ax1.set_ylabel('Frecuencia')
+            ax1.set_title('Distribución de Pendientes')
+            ax1.legend()
+            ax1.grid(True, alpha=0.3)
+            
+            # Gráfico de torta por categoría
+            if stats_pendiente['distribucion']:
+                categorias = []
+                porcentajes = []
+                colores = []
+                
+                for cat, data in stats_pendiente['distribucion'].items():
+                    if data['porcentaje'] > 0:
+                        categorias.append(cat.split(' ')[0])  # Solo el nombre
+                        porcentajes.append(data['porcentaje'])
+                        colores.append(data['color'])
+                
+                if porcentajes:
+                    ax2.pie(porcentajes, labels=categorias, colors=colores, autopct='%1.1f%%', startangle=90)
+                    ax2.set_title('Distribución por Categoría de Pendiente')
+        
+        plt.tight_layout()
+        st.pyplot(fig)
+    
+    # Mapa de pendientes estático
+    st.subheader("🗺️ Mapa de Pendientes (Heatmap)")
+    
+    if all(key in dem_data for key in ['grid_x', 'grid_y', 'pendiente_grid']):
+        mapa_pendientes = crear_mapa_pendientes(
+            dem_data['grid_x'], 
+            dem_data['grid_y'], 
+            dem_data['pendiente_grid'], 
+            st.session_state.gdf_original
+        )
+        if mapa_pendientes:
+            st.image(mapa_pendientes, caption='Mapa de Pendientes', use_column_width=True)
+    
+    # Análisis de riesgo de erosión
+    st.subheader("⚠️ Análisis de Riesgo de Erosión")
+    
+    if 'pendiente_grid' in dem_data and stats_pendiente['distribucion']:
+        # Calcular factor de riesgo de erosión
+        riesgo_total = 0
+        for categoria, data in stats_pendiente['distribucion'].items():
+            if categoria in CLASIFICACION_PENDIENTES:
+                riesgo_total += data['porcentaje'] * CLASIFICACION_PENDIENTES[categoria]['factor_erosivo']
+        
+        riesgo_promedio = riesgo_total / 100
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            if riesgo_promedio < 0.3:
+                st.success("✅ **RIESGO BAJO**")
+                st.metric("Factor Riesgo", f"{riesgo_promedio:.2f}")
+            elif riesgo_promedio < 0.6:
+                st.warning("⚠️ **RIESGO MODERADO**")
+                st.metric("Factor Riesgo", f"{riesgo_promedio:.2f}")
+            else:
+                st.error("🚨 **RIESGO ALTO**")
+                st.metric("Factor Riesgo", f"{riesgo_promedio:.2f}")
+        
+        with col2:
+            area_critica = sum(data['area_ha'] for cat, data in stats_pendiente['distribucion'].items() 
+                             if cat in ['FUERTE (10-15%)', 'MUY FUERTE (15-25%)', 'EXTREMA (>25%)'])
+            st.metric("Área Crítica (>10%)", f"{area_critica:.2f} ha")
+        
+        with col3:
+            area_manejable = sum(data['area_ha'] for cat, data in stats_pendiente['distribucion'].items() 
+                               if cat in ['PLANA (0-2%)', 'SUAVE (2-5%)', 'MODERADA (5-10%)'])
+            st.metric("Área Manejable (<10%)", f"{area_manejable:.2f} ha")
+    
+    # RECOMENDACIONES ESPECÍFICAS
+    st.markdown("### 💡 RECOMENDACIONES DE MANEJO POR PENDIENTE")
+    
+    if 'distribucion' in stats_pendiente:
+        # Determinar categoría predominante
+        cat_predominante = max(stats_pendiente['distribucion'].items(), key=lambda x: x[1]['porcentaje'])[0]
+        
+        if cat_predominante in RECOMENDACIONES_PENDIENTES:
+            st.info(f"**Categoría Predominante: {cat_predominante}**")
+            for rec in RECOMENDACIONES_PENDIENTES[cat_predominante]:
+                st.markdown(f"• {rec}")
+        
+        # Recomendaciones específicas por cultivo
+        st.markdown(f"#### 🌱 Recomendaciones Específicas para {cultivo.replace('_', ' ').title()}")
+        
+        recomendaciones_especificas = {
+            'PALMA_ACEITERA': [
+                "En pendientes < 10%: diseño triangular 9×9×9 m",
+                "En pendientes 10-15%: terrazas individuales por palma",
+                "En pendientes > 15%: considerar otras áreas o sistemas agroforestales",
+                "Drenajes en contorno cada 50-100 m según pendiente",
+                "Barreras vivas con leguminosas entre hileras"
+            ],
+            'CACAO': [
+                "Pendientes < 15%: ideal para sistemas agroforestales",
+                "Pendientes 15-25%: terrazas con barreras vivas",
+                "Pendientes > 25%: cacao bajo sombra de bosque secundario",
+                "Árboles de sombra (Erythrina, Inga) en curvas de nivel",
+                "Sistemas de drenaje en V invertida"
+            ],
+            'BANANO': [
+                "Pendientes < 10%: diseño rectangular 3×3 m",
+                "Pendientes 10-15%: hileras en contorno con drenaje en zig-zag",
+                "Pendientes > 15%: no recomendado por riesgo de vuelco",
+                "Sistemas de riego por goteo siguiendo curvas de nivel",
+                "Barreras con vetiver o caña everygreen"
+            ]
+        }
+        
+        if cultivo in recomendaciones_especificas:
+            for rec in recomendaciones_especificas[cultivo]:
+                st.markdown(f"• {rec}")
+    
+    # Tabla de curvas de nivel
+    st.subheader("📋 Tabla de Curvas de Nivel")
+    
+    if not gdf_curvas.empty and 'elevacion' in gdf_curvas.columns:
+        # Calcular longitud de cada curva
+        gdf_curvas_proj = gdf_curvas.to_crs('EPSG:3116')  # Proyectar para cálculo de longitud
+        gdf_curvas['longitud_m'] = gdf_curvas_proj.geometry.length
+        
+        # Crear DataFrame para visualización
+        df_curvas = gdf_curvas[['id_curva', 'elevacion', 'longitud_m']].copy()
+        df_curvas['longitud_m'] = df_curvas['longitud_m'].round(1)
+        
+        # Ordenar por elevación
+        df_curvas = df_curvas.sort_values('elevacion')
+        
+        # Agregar estadísticas por intervalo
+        intervalos = [0, 100, 200, 300, 400, 500]
+        df_intervalos = pd.DataFrame()
+        
+        for i in range(len(intervalos)-1):
+            mask = (df_curvas['elevacion'] >= intervalos[i]) & (df_curvas['elevacion'] < intervalos[i+1])
+            if mask.any():
+                df_intervalos = pd.concat([df_intervalos, pd.DataFrame({
+                    'Intervalo (m)': f"{intervalos[i]}-{intervalos[i+1]}",
+                    'N° Curvas': df_curvas[mask].shape[0],
+                    'Longitud Total (m)': df_curvas[mask]['longitud_m'].sum().round(1),
+                    'Elevación Promedio (m)': df_curvas[mask]['elevacion'].mean().round(1)
+                }, index=[0])])
+        
+        # Mostrar tablas
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**Curvas de Nivel**")
+            st.dataframe(df_curvas.head(10), use_container_width=True)
+            if len(df_curvas) > 10:
+                st.caption(f"Mostrando 10 de {len(df_curvas)} curvas")
+        
+        with col2:
+            st.markdown("**Estadísticas por Intervalo**")
+            st.dataframe(df_intervalos, use_container_width=True)
+    
+    # DESCARGAR RESULTADOS
+    st.markdown("### 💾 Descargar Resultados")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Descargar curvas como GeoJSON
+        if not gdf_curvas.empty:
+            geojson = gdf_curvas.to_json()
+            st.download_button(
+                label="🗺️ Descargar Curvas (GeoJSON)",
+                data=geojson,
+                file_name=f"curvas_nivel_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
+                mime="application/json"
+            )
+    
+    with col2:
+        # Descargar datos DEM como CSV
+        if dem_data and 'grid_z' in dem_data:
+            # Crear DataFrame con puntos muestreados
+            sample_points = []
+            grid_x = dem_data['grid_x']
+            grid_y = dem_data['grid_y']
+            grid_z = dem_data['grid_z']
+            
+            # Muestrear cada 5 puntos
+            for i in range(0, grid_x.shape[0], 5):
+                for j in range(0, grid_x.shape[1], 5):
+                    if not np.isnan(grid_z[i, j]):
+                        sample_points.append({
+                            'lat': grid_y[i, j],
+                            'lon': grid_x[i, j],
+                            'elevacion_m': grid_z[i, j],
+                            'pendiente_%': dem_data['pendiente_grid'][i, j] if 'pendiente_grid' in dem_data else None
+                        })
+            
+            if sample_points:
+                df_dem = pd.DataFrame(sample_points)
+                csv = df_dem.to_csv(index=False)
+                st.download_button(
+                    label="📊 Descargar Muestras DEM (CSV)",
+                    data=csv,
+                    file_name=f"dem_muestras_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv"
+                )
+    
+    with col3:
+        # Generar informe PDF
+        if st.button("📄 Generar Informe Curvas PDF", type="primary", key="pdf_curvas"):
+            with st.spinner("🔄 Generando informe PDF..."):
+                pdf_buffer = generar_informe_pdf(
+                    gdf_curvas, cultivo, "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)", None, mes_analisis, area_total, None
+                )
+                
+                st.download_button(
+                    label="📥 Descargar Informe PDF",
+                    data=pdf_buffer,
+                    file_name=f"informe_curvas_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf"
+                )
+
+# FUNCIÓN PARA EJECUTAR ANÁLISIS DE CURVAS DE NIVEL
+def ejecutar_analisis_curvas_nivel(gdf_original, intervalo=5.0, resolucion=10.0):
+    """Ejecuta el análisis completo de curvas de nivel"""
+    
+    with st.spinner("🔄 Generando modelo digital de elevación (DEM)..."):
+        # Calcular curvas de nivel
+        gdf_curvas, grid_x, grid_y, grid_z, pendiente_grid, aspecto_grid, bounds = calcular_curvas_nivel(
+            gdf_original, intervalo, resolucion
+        )
+    
+    # Guardar en session_state
+    st.session_state.curvas_nivel = gdf_curvas
+    st.session_state.dem_data = {
+        'grid_x': grid_x,
+        'grid_y': grid_y,
+        'grid_z': grid_z,
+        'pendiente_grid': pendiente_grid,
+        'aspecto_grid': aspecto_grid,
+        'bounds': bounds
+    }
+    
+    return gdf_curvas
+
 # FUNCIÓN PARA MOSTRAR RESULTADOS PRINCIPALES
 def mostrar_resultados_principales():
     """Muestra los resultados del análisis principal"""
@@ -2992,6 +3905,7 @@ def main():
     - **Modelos predictivos** de nutrientes
     - **Análisis de textura** del suelo actualizado
     - **NDWI del suelo** para contenido de agua
+    - **LiDAR/DEM** para curvas de nivel
     - **Enfoque agroecológico** integrado
     """)
 
@@ -3024,8 +3938,11 @@ def main():
             mostrar_resultados_textura()
         elif analisis_tipo == "ANÁLISIS NDWI SUELO":
             mostrar_resultados_ndwi_suelo()
+        elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+            mostrar_resultados_curvas_nivel()
         else:
-            tab1, tab2, tab3 = st.tabs(["📊 Análisis Principal", "🏗️ Análisis de Textura", "💧 NDWI del Suelo"])
+            tab1, tab2, tab3, tab4 = st.tabs(["📊 Análisis Principal", "🏗️ Análisis de Textura", 
+                                             "💧 NDWI del Suelo", "🏔️ Curvas de Nivel"])
             
             with tab1:
                 mostrar_resultados_principales()
@@ -3047,6 +3964,23 @@ def main():
                         mostrar_resultados_ndwi_suelo()
                 else:
                     st.info("Ejecuta el análisis principal para obtener datos de NDWI del suelo")
+            
+            with tab4:
+                # Ejecutar análisis de curvas si no está disponible
+                if st.session_state.curvas_nivel is not None:
+                    mostrar_resultados_curvas_nivel()
+                elif st.session_state.gdf_original is not None:
+                    with st.spinner("🏔️ Generando curvas de nivel desde LiDAR/DEM..."):
+                        # Obtener parámetros del sidebar
+                        intervalo = intervalo_curvas if 'intervalo_curvas' in locals() else 5.0
+                        resolucion = resolucion_dem if 'resolucion_dem' in locals() else 10.0
+                        
+                        gdf_curvas = ejecutar_analisis_curvas_nivel(
+                            st.session_state.gdf_original, intervalo, resolucion
+                        )
+                        mostrar_resultados_curvas_nivel()
+                else:
+                    st.info("Carga una parcela para generar curvas de nivel")
                     
     elif st.session_state.gdf_original is not None:
         mostrar_configuracion_parcela()
@@ -3069,11 +4003,11 @@ def mostrar_modo_demo():
     - .dbf (atributos)
     - .prj (sistema de coordenadas)
     
-    **NUEVO: Análisis de NDWI del Suelo**
-    - Detección de contenido de agua en el suelo
-    - No confundir con NDVI (que es para vegetación)
-    - Recomendaciones de riego específicas
-    - Alertas tempranas de sequía
+    **NUEVO: Análisis de Curvas de Nivel (LiDAR/DEM)**
+    - Generación de modelo digital de elevación
+    - Cálculo automático de curvas de nivel
+    - Análisis de pendientes y riesgo de erosión
+    - Recomendaciones específicas por topografía
     """)
     
     # Ejemplo de datos de demostración
@@ -3129,6 +4063,14 @@ def mostrar_configuracion_parcela():
             elif analisis_tipo == "ANÁLISIS NDWI SUELO":
                 gdf_analisis = analizar_ndwi_suelo(gdf_zonas, cultivo, mes_analisis)
                 st.session_state.gdf_analisis = gdf_analisis
+            elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                # Para curvas de nivel usamos la parcela original, no las zonas
+                # Obtener parámetros del sidebar
+                intervalo = intervalo_curvas if 'intervalo_curvas' in locals() else 5.0
+                resolucion = resolucion_dem if 'resolucion_dem' in locals() else 10.0
+                
+                gdf_analisis = ejecutar_analisis_curvas_nivel(gdf_original, intervalo, resolucion)
+                st.session_state.gdf_analisis = gdf_analisis
             else:
                 gdf_analisis = calcular_indices_gee(
                     gdf_zonas, cultivo, mes_analisis, analisis_tipo, nutriente
@@ -3136,7 +4078,7 @@ def mostrar_configuracion_parcela():
                 st.session_state.gdf_analisis = gdf_analisis
             
             # Siempre ejecutar análisis de textura también (excepto cuando ya es análisis de textura)
-            if analisis_tipo != "ANÁLISIS DE TEXTURA":
+            if analisis_tipo != "ANÁLISIS DE TEXTURA" and analisis_tipo != "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
                 with st.spinner("🏗️ Realizando análisis de textura..."):
                     gdf_textura = analizar_textura_suelo(gdf_zonas, cultivo, mes_analisis)
                     st.session_state.analisis_textura = gdf_textura
