@@ -1359,30 +1359,30 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
             # Variabilidad espacial más pronunciada
             variabilidad_local = 0.2 + 0.6 * (lat_norm * lon_norm)  # Mayor correlación espacial
             
-            # Simular valores con distribución normal más realista
+            # Simular valores con distribución normal más realista (niveles más bajos para generar déficit)
             nitrogeno = max(0, rng.normal(
-                n_optimo * (0.8 + 0.4 * variabilidad_local), 
-                n_optimo * 0.15
+                n_optimo * (0.6 + 0.3 * variabilidad_local),  # REDUCIDO: 0.6 en lugar de 0.8
+                n_optimo * 0.2
             ))
             
             fosforo = max(0, rng.normal(
-                p_optimo * (0.7 + 0.6 * variabilidad_local),
-                p_optimo * 0.2
+                p_optimo * (0.5 + 0.4 * variabilidad_local),  # REDUCIDO: 0.5 en lugar de 0.7
+                p_optimo * 0.25
             ))
             
             potasio = max(0, rng.normal(
-                k_optimo * (0.75 + 0.5 * variabilidad_local),
-                k_optimo * 0.18
+                k_optimo * (0.55 + 0.35 * variabilidad_local),  # REDUCIDO: 0.55 en lugar de 0.75
+                k_optimo * 0.22
             ))
             
             # Aplicar factores estacionales mejorados
-            nitrogeno *= factor_n_mes * (0.9 + 0.2 * rng.random())
-            fosforo *= factor_p_mes * (0.9 + 0.2 * rng.random())
-            potasio *= factor_k_mes * (0.9 + 0.2 * rng.random())
+            nitrogeno *= factor_n_mes * (0.8 + 0.3 * rng.random())
+            fosforo *= factor_p_mes * (0.8 + 0.3 * rng.random())
+            potasio *= factor_k_mes * (0.8 + 0.3 * rng.random())
             
             # Parámetros adicionales del suelo simulados
             materia_organica = max(1.0, min(8.0, rng.normal(
-                params['MATERIA_ORGANICA_OPTIMA'], 
+                params['MATERIA_ORGANICA_OPTIMA'] * 0.7,  # REDUCIDO
                 1.0
             )))
             
@@ -1444,76 +1444,83 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
                 categoria = "MUY BAJA"
                 prioridad = "URGENTE"
             
-            # CÁLCULO CORREGIDO DE RECOMENDACIONES NPK - MÁS PRECISO
-            if analisis_tipo == "RECOMENDACIONES NPK":
-                if nutriente == "NITRÓGENO":
-                    # Cálculo realista de recomendación de Nitrógeno
-                    deficit_nitrogeno = max(0, n_optimo - nitrogeno)
-                    
-                    # Factores de ajuste más precisos:
-                    factor_eficiencia = 1.4  # 40% de pérdidas por lixiviación/volatilización
-                    factor_crecimiento = 1.2  # 20% adicional para crecimiento óptimo
-                    factor_materia_organica = max(0.7, 1.0 - (materia_organica / 15.0))  # MO aporta N
-                    factor_ndvi = 1.0 + (0.5 - ndvi) * 0.4  # NDVI bajo = más necesidad
-                    
-                    recomendacion = (deficit_nitrogeno * factor_eficiencia * factor_crecimiento * 
-                                   factor_materia_organica * factor_ndvi)
-                    
-                    # Límites realistas para nitrógeno
-                    recomendacion = min(recomendacion, 250)  # Máximo 250 kg/ha
-                    recomendacion = max(20, recomendacion)   # Mínimo 20 kg/ha
-                    
-                    deficit = deficit_nitrogeno
-                    
-                elif nutriente == "FÓSFORO":
-                    # Cálculo realista de recomendación de Fósforo
-                    deficit_fosforo = max(0, p_optimo - fosforo)
-                    
-                    # Factores de ajuste para fósforo
-                    factor_eficiencia = 1.6  # Alta fijación en el suelo
-                    factor_ph = 1.0
-                    if ph < 5.5 or ph > 7.5:  # Fuera del rango óptimo de disponibilidad
-                        factor_ph = 1.3  # 30% más si el pH no es óptimo
-                    factor_materia_organica = 1.1  # MO ayuda a la disponibilidad de P
-                    
-                    recomendacion = (deficit_fosforo * factor_eficiencia * 
-                                   factor_ph * factor_materia_organica)
-                    
-                    # Límites realistas para fósforo
-                    recomendacion = min(recomendacion, 120)  # Máximo 120 kg/ha P2O5
-                    recomendacion = max(10, recomendacion)   # Mínimo 10 kg/ha
-                    
-                    deficit = deficit_fosforo
-                    
-                else:  # POTASIO
-                    # Cálculo realista de recomendación de Potasio
-                    deficit_potasio = max(0, k_optimo - potasio)
-                    
-                    # Factores de ajuste para potasio
-                    factor_eficiencia = 1.3  # Moderada lixiviación
-                    factor_textura = 1.0
-                    if materia_organica < 2.0:  # Suelos arenosos
-                        factor_textura = 1.2  # 20% más en suelos ligeros
-                    factor_rendimiento = 1.0 + (0.5 - ndvi) * 0.3  # NDVI bajo = más necesidad
-                    
-                    recomendacion = (deficit_potasio * factor_eficiencia * 
-                                   factor_textura * factor_rendimiento)
-                    
-                    # Límites realistas para potasio
-                    recomendacion = min(recomendacion, 200)  # Máximo 200 kg/ha K2O
-                    recomendacion = max(15, recomendacion)   # Mínimo 15 kg/ha
-                    
-                    deficit = deficit_potasio
+            # CÁLCULO CORREGIDO DE RECOMENDACIONES NPK - SIEMPRE CALCULAR
+            if nutriente == "NITRÓGENO":
+                # Cálculo realista de recomendación de Nitrógeno
+                deficit_nitrogeno = max(0, n_optimo - nitrogeno)
                 
-                # Ajuste final basado en la categoría de fertilidad
-                if categoria in ["MUY BAJA", "BAJA"]:
-                    recomendacion *= 1.3  # 30% más en suelos de baja fertilidad
-                elif categoria in ["ALTA", "MUY ALTA", "EXCELENTE"]:
-                    recomendacion *= 0.8  # 20% menos en suelos fértiles
+                # Si no hay déficit, aplicar dosis de mantenimiento (30% del óptimo)
+                if deficit_nitrogeno <= 0:
+                    deficit_nitrogeno = n_optimo * 0.3
                 
-            else:
-                recomendacion = 0
-                deficit = 0
+                # Factores de ajuste más precisos:
+                factor_eficiencia = 1.4  # 40% de pérdidas por lixiviación/volatilización
+                factor_crecimiento = 1.2  # 20% adicional para crecimiento óptimo
+                factor_materia_organica = max(0.7, 1.0 - (materia_organica / 15.0))  # MO aporta N
+                factor_ndvi = 1.0 + (0.5 - ndvi) * 0.4  # NDVI bajo = más necesidad
+                
+                recomendacion = (deficit_nitrogeno * factor_eficiencia * factor_crecimiento * 
+                               factor_materia_organica * factor_ndvi)
+                
+                # Límites realistas para nitrógeno
+                recomendacion = min(recomendacion, 250)  # Máximo 250 kg/ha
+                recomendacion = max(20, recomendacion)   # Mínimo 20 kg/ha
+                
+                deficit = max(0, n_optimo - nitrogeno)
+                
+            elif nutriente == "FÓSFORO":
+                # Cálculo realista de recomendación de Fósforo
+                deficit_fosforo = max(0, p_optimo - fosforo)
+                
+                # Si no hay déficit, aplicar dosis de mantenimiento (20% del óptimo)
+                if deficit_fosforo <= 0:
+                    deficit_fosforo = p_optimo * 0.2
+                
+                # Factores de ajuste para fósforo
+                factor_eficiencia = 1.6  # Alta fijación en el suelo
+                factor_ph = 1.0
+                if ph < 5.5 or ph > 7.5:  # Fuera del rango óptimo de disponibilidad
+                    factor_ph = 1.3  # 30% más si el pH no es óptimo
+                factor_materia_organica = 1.1  # MO ayuda a la disponibilidad de P
+                
+                recomendacion = (deficit_fosforo * factor_eficiencia * 
+                               factor_ph * factor_materia_organica)
+                
+                # Límites realistas para fósforo
+                recomendacion = min(recomendacion, 120)  # Máximo 120 kg/ha P2O5
+                recomendacion = max(10, recomendacion)   # Mínimo 10 kg/ha
+                
+                deficit = max(0, p_optimo - fosforo)
+                
+            else:  # POTASIO
+                # Cálculo realista de recomendación de Potasio
+                deficit_potasio = max(0, k_optimo - potasio)
+                
+                # Si no hay déficit, aplicar dosis de mantenimiento (15% del óptimo)
+                if deficit_potasio <= 0:
+                    deficit_potasio = k_optimo * 0.15
+                
+                # Factores de ajuste para potasio
+                factor_eficiencia = 1.3  # Moderada lixiviación
+                factor_textura = 1.0
+                if materia_organica < 2.0:  # Suelos arenosos
+                    factor_textura = 1.2  # 20% más en suelos ligeros
+                factor_rendimiento = 1.0 + (0.5 - ndvi) * 0.3  # NDVI bajo = más necesidad
+                
+                recomendacion = (deficit_potasio * factor_eficiencia * 
+                               factor_textura * factor_rendimiento)
+                
+                # Límites realistas para potasio
+                recomendacion = min(recomendacion, 200)  # Máximo 200 kg/ha K2O
+                recomendacion = max(15, recomendacion)   # Mínimo 15 kg/ha
+                
+                deficit = max(0, k_optimo - potasio)
+            
+            # Ajuste final basado en la categoría de fertilidad
+            if categoria in ["MUY BAJA", "BAJA"]:
+                recomendacion *= 1.3  # 30% más en suelos de baja fertilidad
+            elif categoria in ["ALTA", "MUY ALTA", "EXCELENTE"]:
+                recomendacion *= 0.8  # 20% menos en suelos fértiles
             
             # Asignar valores al GeoDataFrame
             zonas_gdf.loc[idx, 'area_ha'] = area_ha
@@ -1534,18 +1541,18 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
         except Exception as e:
             # Valores por defecto mejorados en caso de error
             zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
-            zonas_gdf.loc[idx, 'nitrogeno'] = params['NITROGENO']['optimo'] * 0.8
-            zonas_gdf.loc[idx, 'fosforo'] = params['FOSFORO']['optimo'] * 0.8
-            zonas_gdf.loc[idx, 'potasio'] = params['POTASIO']['optimo'] * 0.8
-            zonas_gdf.loc[idx, 'materia_organica'] = params['MATERIA_ORGANICA_OPTIMA']
+            zonas_gdf.loc[idx, 'nitrogeno'] = params['NITROGENO']['optimo'] * 0.7
+            zonas_gdf.loc[idx, 'fosforo'] = params['FOSFORO']['optimo'] * 0.6
+            zonas_gdf.loc[idx, 'potasio'] = params['POTASIO']['optimo'] * 0.65
+            zonas_gdf.loc[idx, 'materia_organica'] = params['MATERIA_ORGANICA_OPTIMA'] * 0.7
             zonas_gdf.loc[idx, 'humedad'] = params['HUMEDAD_OPTIMA']
             zonas_gdf.loc[idx, 'ph'] = params['pH_OPTIMO']
             zonas_gdf.loc[idx, 'conductividad'] = params['CONDUCTIVIDAD_OPTIMA']
-            zonas_gdf.loc[idx, 'ndvi'] = 0.6
-            zonas_gdf.loc[idx, 'indice_fertilidad'] = 0.5
+            zonas_gdf.loc[idx, 'ndvi'] = 0.5
+            zonas_gdf.loc[idx, 'indice_fertilidad'] = 0.4
             zonas_gdf.loc[idx, 'categoria'] = "MEDIA"
-            zonas_gdf.loc[idx, 'recomendacion_npk'] = 0
-            zonas_gdf.loc[idx, 'deficit_npk'] = 0
+            zonas_gdf.loc[idx, 'recomendacion_npk'] = 50  # Valor por defecto
+            zonas_gdf.loc[idx, 'deficit_npk'] = 20  # Valor por defecto
             zonas_gdf.loc[idx, 'prioridad'] = "MEDIA"
     
     return zonas_gdf
@@ -2297,8 +2304,8 @@ def mostrar_modo_demo():
 
 def mostrar_configuracion_parcela():
     """Muestra la configuración de la parcela antes del análisis"""
-    gdf_original = st.session_state.gdf_original
-    
+     gdf_original = st.session_state.gdf_original
+
     # Mostrar información de la parcela
     if st.session_state.datos_demo:
         st.success("✅ Datos de demostración cargados")
