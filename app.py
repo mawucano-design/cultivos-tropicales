@@ -94,7 +94,7 @@ TEXTURA_SUELO_OPTIMA = {
 # CLASIFICACIÓN DE TEXTURAS DEL SUELO - NOMBRES ACTUALIZADOS
 CLASIFICACION_TEXTURAS = {
     'Arenoso': {'arena_min': 85, 'arena_max': 100, 'limo_max': 15, 'arcilla_max': 15},
-    'Franco Arcilloso-Arenoso': {'arena_min': 70, 'arena_max': 85, 'limo_max': 30, 'arcilla_max': 20},
+    'Franco Arcilloso-Arenoso': {'arena_min': 40, 'arena_max': 50, 'limo_max': 30, 'arcilla_max': 30},
     'Franco': {'arena_min': 43, 'arena_max': 52, 'limo_min': 28, 'limo_max': 50, 'arcilla_min': 7, 'arcilla_max': 27},
     'Franco Arcilloso': {'arena_min': 20, 'arena_max': 45, 'limo_min': 15, 'limo_max': 53, 'arcilla_min': 27, 'arcilla_max': 40},
     'Arcilloso': {'arena_max': 45, 'limo_max': 40, 'arcilla_min': 40}
