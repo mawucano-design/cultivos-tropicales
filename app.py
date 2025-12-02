@@ -2297,17 +2297,17 @@ def mostrar_modo_demo():
     - Información de manejo para cada tipo de suelo
     """)
     
-    # Ejemplo de datos de demostración
+      # Ejemplo de datos de demostración
     if st.button("🎯 Cargar Datos de Demostración", type="primary"):
         st.session_state.datos_demo = True
         st.rerun()
 
 def mostrar_configuracion_parcela():
     """Muestra la configuración de la parcela antes del análisis"""
-     gdf_original = st.session_state.gdf_original
-
+    gdf_original = st.session_state.gdf_original
+    
     # Mostrar información de la parcela
-    if st.session_state.datos_demo:
+    if st.session_state.datos
         st.success("✅ Datos de demostración cargados")
     else:
         st.success("✅ Parcela cargada correctamente")
