@@ -630,11 +630,11 @@ def evaluar_adecuacion_textura(textura_actual, cultivo):
     
     return "LIMITANTE", 0.3
 
-# FUNCIÓN MEJORADA PARA CALCULAR SUPERFICIE
+# FUNCIÓN MEJORADA PARA CALCULAR SUPERFICIE - VERSIÓN CORREGIDA
 def calcular_superficie(gdf):
-    """Calcula superficie en hectáreas con manejo robusto de CRS"""
+    """Calcula superficie en hectáreas con manejo robusto de CRS - VERSIÓN CORREGIDA"""
     try:
-        if gdf.empty or gdf.geometry.isnull().all():
+        if gdf is None or gdf.empty or gdf.geometry.isnull().all():
             return 0.0
             
         # Verificar si el CRS es geográfico (grados)
@@ -643,22 +643,22 @@ def calcular_superficie(gdf):
             try:
                 # Usar UTM adecuado (aquí se usa un CRS común para Colombia)
                 gdf_proj = gdf.to_crs('EPSG:3116')  # MAGNA-SIRGAS / Colombia West zone
-                area_m2 = gdf_proj.geometry.area
+                area_m2 = gdf_proj.geometry.area.sum()  # SUMAR todas las áreas
             except:
                 # Fallback: conversión aproximada (1 grado ≈ 111km en ecuador)
-                area_m2 = gdf.geometry.area * 111000 * 111000
+                area_m2 = gdf.geometry.area.sum() * 111000 * 111000
         else:
             # Asumir que ya está en metros
-            area_m2 = gdf.geometry.area
+            area_m2 = gdf.geometry.area.sum()  # SUMAR todas las áreas
             
         return area_m2 / 10000  # Convertir a hectáreas
         
     except Exception as e:
         # Fallback simple
         try:
-            return gdf.geometry.area.mean() / 10000
+            return gdf.geometry.area.sum() / 10000
         except:
-            return 1.0  # Valor por defecto
+            return 0.0  # Valor por defecto
 
 # FUNCIÓN MEJORADA PARA CREAR MAPA INTERACTIVO CON ESRI SATELITE
 def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=None, nutriente=None):
@@ -892,7 +892,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                     'opacity': 0.8
                 },
                 popup=folium.Popup(
-                    f"<b>Polígono {idx + 1}</b><br>Área: {calcular_superficie(gdf.iloc[[idx]]).iloc[0]:.2f} ha", 
+                    f"<b>Polígono {idx + 1}</b><br>Área: {calcular_superficie(gdf.iloc[[idx]]):.2f} ha", 
                     max_width=300
                 ),
             ).add_to(m)
@@ -1016,7 +1016,7 @@ def crear_mapa_visualizador_parcela(gdf):
     
     # Añadir polígonos de la parcela
     for idx, row in gdf.iterrows():
-        area_ha = calcular_superficie(gdf.iloc[[idx]]).iloc[0]
+        area_ha = calcular_superficie(gdf.iloc[[idx]])
         
         folium.GeoJson(
             row.geometry.__geo_interface__,
@@ -1427,7 +1427,7 @@ def analizar_textura_suelo(gdf, cultivo, mes_analisis):
     for idx, row in zonas_gdf.iterrows():
         try:
             # Calcular área
-            area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
+            area_ha = calcular_superficie(zonas_gdf.iloc[[idx]])
             
             # Obtener centroide
             if hasattr(row.geometry, 'centroid'):
@@ -1509,7 +1509,7 @@ def analizar_textura_suelo(gdf, cultivo, mes_analisis):
             
         except Exception as e:
             # Valores por defecto en caso de error
-            zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
+            zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]])
             zonas_gdf.loc[idx, 'arena'] = params_textura['arena_optima']
             zonas_gdf.loc[idx, 'limo'] = params_textura['limo_optima']
             zonas_gdf.loc[idx, 'arcilla'] = params_textura['arcilla_optima']
@@ -1543,7 +1543,7 @@ def analizar_ndwi_suelo(gdf, cultivo, mes_analisis):
     for idx, row in zonas_gdf.iterrows():
         try:
             # Calcular área
-            area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
+            area_ha = calcular_superficie(zonas_gdf.iloc[[idx]])
             
             # Obtener centroide
             if hasattr(row.geometry, 'centroid'):
@@ -1632,7 +1632,7 @@ def analizar_ndwi_suelo(gdf, cultivo, mes_analisis):
             
         except Exception as e:
             # Valores por defecto
-            zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
+            zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]])
             zonas_gdf.loc[idx, 'ndwi_suelo'] = params_ndwi['ndwi_optimo_suelo']
             zonas_gdf.loc[idx, 'estado_humedad_suelo'] = "ÓPTIMO"
             zonas_gdf.loc[idx, 'deficit_humedad'] = 0.0
@@ -1677,7 +1677,7 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
     for idx, row in zonas_gdf.iterrows():
         try:
             # Calcular área
-            area_ha = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
+            area_ha = calcular_superficie(zonas_gdf.iloc[[idx]])
             
             # Obtener centroide
             if hasattr(row.geometry, 'centroid'):
@@ -1930,7 +1930,7 @@ def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
             
         except Exception as e:
             # Valores por defecto mejorados en caso de error (AGREGAR NDWI_SUELO)
-            zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]]).iloc[0]
+            zonas_gdf.loc[idx, 'area_ha'] = calcular_superficie(zonas_gdf.iloc[[idx]])
             zonas_gdf.loc[idx, 'nitrogeno'] = params['NITROGENO']['optimo'] * 0.7
             zonas_gdf.loc[idx, 'fosforo'] = params['FOSFORO']['optimo'] * 0.6
             zonas_gdf.loc[idx, 'potasio'] = params['POTASIO']['optimo'] * 0.65
@@ -2155,9 +2155,15 @@ def generar_curvas_directas_simplificado(grid_x, grid_y, grid_z, niveles, poligo
     return curvas
 
 
-# FUNCIÓN PARA CREAR MAPA DE CURVAS DE NIVEL
+# FUNCIÓN CORREGIDA PARA CREAR MAPA DE CURVAS DE NIVEL
 def crear_mapa_curvas_nivel(gdf_original, gdf_curvas, dem_data=None):
-    """Crea mapa interactivo con curvas de nivel"""
+    """Crea mapa interactivo con curvas de nivel - VERSIÓN CORREGIDA"""
+    
+    # Verificar si hay datos
+    if gdf_original.empty:
+        # Si no hay datos, crear mapa por defecto
+        m = folium.Map(location=[0, 0], zoom_start=2)
+        return m
     
     # Obtener centro y bounds
     centroid = gdf_original.geometry.centroid.iloc[0]
@@ -2194,6 +2200,12 @@ def crear_mapa_curvas_nivel(gdf_original, gdf_curvas, dem_data=None):
         overlay=False
     ).add_to(m)
     
+    # CALCULAR ÁREA ANTES DE USAR EN POPUP - VERSIÓN CORREGIDA
+    try:
+        area_parcela = calcular_superficie(gdf_original)
+    except Exception as e:
+        area_parcela = 0.0
+    
     # Añadir parcela original
     folium.GeoJson(
         gdf_original.geometry.__geo_interface__,
@@ -2204,7 +2216,8 @@ def crear_mapa_curvas_nivel(gdf_original, gdf_curvas, dem_data=None):
             'fillOpacity': 0.3,
             'opacity': 0.8
         },
-        popup=folium.Popup(f"Parcela - Área: {calcular_superficie(gdf_original):.2f} ha", max_width=300),
+        # USAR LA VARIABLE CALCULADA PREVIAMENTE
+        popup=folium.Popup(f"Parcela - Área: {area_parcela:.2f} ha", max_width=300),
         tooltip="Parcela principal"
     ).add_to(m)
     
@@ -3292,7 +3305,7 @@ def mostrar_resultados_ndwi_suelo():
     
     # Asegurar que tenemos área calculada
     if 'area_ha' not in gdf_ndwi.columns:
-        gdf_ndwi['area_ha'] = [calcular_superficie(gdf_ndwi.iloc[[idx]]).iloc[0] for idx in range(len(gdf_ndwi))]
+        gdf_ndwi['area_ha'] = [calcular_superficie(gdf_ndwi.iloc[[idx]]) for idx in range(len(gdf_ndwi))]
     
     if 'ndwi_suelo' in gdf_ndwi.columns:
         mapa_ndwi = crear_mapa_interactivo_esri(
@@ -4088,7 +4101,7 @@ def mostrar_configuracion_parcela():
         st.success("✅ Parcela cargada correctamente")
     
     # Calcular estadísticas
-    area_total = calcular_superficie(gdf_original).sum()
+    area_total = calcular_superficie(gdf_original)
     num_poligonos = len(gdf_original)
     
     col1, col2, col3 = st.columns(3)
