@@ -363,7 +363,7 @@ RECOMENDACIONES_AGROECOLOGICAS = {
         'BIOFERTILIZANTES': [
             "Compost de pseudotallo: 4-5 ton/ha",
             "Bocashi bananero: 3 ton/ha",
-            "Biofertilizante a base de micorrizas"
+            "Bioferlicizante a base de micorrizas"
         ],
         'MANEJO_ECOLOGICO': [
             "Trampas cromáticas para picudos",
@@ -988,22 +988,58 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
     
     return m
 
-# FUNCIÓN PARA CREAR MAPA VISUALIZADOR DE PARCELA
+# FUNCIÓN PARA CREAR MAPA VISUALIZADOR DE PARCELA - VERSIÓN CORREGIDA
 def crear_mapa_visualizador_parcela(gdf):
-    """Crea mapa interactivo para visualizar la parcela original con ESRI Satélite"""
+    """Crea mapa interactivo para visualizar la parcela original con ESRI Satélite - VERSIÓN CORREGIDA"""
     
-    # Obtener centro y bounds
-    centroid = gdf.geometry.centroid.iloc[0]
-    bounds = gdf.total_bounds
+    # Verificar que el GeoDataFrame no esté vacío y tenga geometrías válidas
+    if gdf is None or gdf.empty or gdf.geometry.isnull().all():
+        # Crear un mapa por defecto con mensaje
+        m = folium.Map(location=[0, 0], zoom_start=2)
+        folium.Marker(
+            [0, 0],
+            popup="No hay datos válidos para mostrar",
+            icon=folium.Icon(color='red', icon='warning')
+        ).add_to(m)
+        return m
     
-    # Crear mapa con ESRI Satélite por defecto
-    m = folium.Map(
-        location=[centroid.y, centroid.x],
-        zoom_start=14,
-        tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attr='Esri',
-        name='Esri Satélite'
-    )
+    # Intentar obtener centro y bounds con manejo de errores
+    try:
+        # Verificar que las geometrías sean válidas
+        if not gdf.geometry.is_valid.all():
+            gdf = gdf.copy()
+            gdf.geometry = gdf.geometry.make_valid()
+        
+        # Obtener centroide con verificación
+        try:
+            centroid = gdf.geometry.centroid.iloc[0]
+            center_location = [centroid.y, centroid.x]
+        except:
+            # Si no se puede obtener el centroide, usar bounds
+            bounds = gdf.total_bounds
+            if len(bounds) >= 4 and not any(np.isnan(bounds)):
+                center_location = [(bounds[1] + bounds[3]) / 2, (bounds[0] + bounds[2]) / 2]
+            else:
+                center_location = [0, 0]
+        
+        # Crear mapa
+        m = folium.Map(
+            location=center_location,
+            zoom_start=14,
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='Esri',
+            name='Esri Satélite'
+        )
+        
+    except Exception as e:
+        # Fallback: mapa simple
+        m = folium.Map(location=[0, 0], zoom_start=2)
+        folium.Marker(
+            [0, 0],
+            popup=f"Error al crear mapa: {str(e)[:100]}",
+            icon=folium.Icon(color='red', icon='warning')
+        ).add_to(m)
+        return m
     
     # Añadir otras bases
     folium.TileLayer(
@@ -1019,34 +1055,84 @@ def crear_mapa_visualizador_parcela(gdf):
         overlay=False
     ).add_to(m)
     
-    # Añadir polígonos de la parcela
+    # Añadir polígonos de la parcela con verificación
+    layers_added = 0
     for idx, row in gdf.iterrows():
-        area_ha = calcular_superficie(gdf.iloc[[idx]])
-        
-        folium.GeoJson(
-            row.geometry.__geo_interface__,
-            style_function=lambda x: {
-                'fillColor': '#1f77b4',
-                'color': '#2ca02c',
-                'weight': 3,
-                'fillOpacity': 0.4,
-                'opacity': 0.8
-            },
-            popup=folium.Popup(
-                f"<b>Parcela {idx + 1}</b><br>"
-                f"<b>Área:</b> {area_ha:.2f} ha<br>"
-                f"<b>Coordenadas:</b> {centroid.y:.4f}, {centroid.x:.4f}",
-                max_width=300
-            ),
-            tooltip=f"Parcela {idx + 1} - {area_ha:.2f} ha"
+        try:
+            # Verificar que la geometría no sea nula
+            if row.geometry is None or row.geometry.is_empty:
+                continue
+            
+            # Crear una representación simple de la geometría
+            # Evitar usar __geo_interface__ directamente
+            if hasattr(row.geometry, '__geo_interface__'):
+                geo_interface = row.geometry.__geo_interface__
+            else:
+                # Si no tiene __geo_interface__, crear uno simple
+                if hasattr(row.geometry, 'bounds'):
+                    bounds = row.geometry.bounds
+                    # Crear un polígono simple desde bounds
+                    from shapely.geometry import Polygon
+                    simple_poly = Polygon([
+                        (bounds[0], bounds[1]),
+                        (bounds[2], bounds[1]),
+                        (bounds[2], bounds[3]),
+                        (bounds[0], bounds[3]),
+                        (bounds[0], bounds[1])
+                    ])
+                    geo_interface = simple_poly.__geo_interface__
+                else:
+                    continue
+            
+            # Calcular área con manejo de errores
+            try:
+                area_ha = calcular_superficie(gdf.iloc[[idx]])
+            except:
+                area_ha = 0.0
+            
+            # Crear popup con información
+            popup_text = f"<b>Parcela {idx + 1}</b><br>"
+            popup_text += f"<b>Área:</b> {area_ha:.2f} ha<br>"
+            
+            # Añadir al mapa
+            folium.GeoJson(
+                geo_interface,
+                style_function=lambda x: {
+                    'fillColor': '#1f77b4',
+                    'color': '#2ca02c',
+                    'weight': 3,
+                    'fillOpacity': 0.4,
+                    'opacity': 0.8
+                },
+                popup=folium.Popup(popup_text, max_width=300),
+                tooltip=f"Parcela {idx + 1} - {area_ha:.2f} ha"
+            ).add_to(m)
+            
+            layers_added += 1
+            
+        except Exception as e:
+            # Continuar con el siguiente polígono si hay error
+            continue
+    
+    # Si no se añadió ninguna capa, agregar un marcador de advertencia
+    if layers_added == 0:
+        folium.Marker(
+            center_location,
+            popup="No se pudieron cargar las geometrías de la parcela",
+            icon=folium.Icon(color='red', icon='warning')
         ).add_to(m)
     
-    # Ajustar bounds
-    m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+    # Intentar ajustar bounds si hay geometrías válidas
+    try:
+        if layers_added > 0:
+            bounds = gdf.total_bounds
+            if len(bounds) >= 4 and not any(np.isnan(bounds)):
+                m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+    except:
+        pass  # Si falla, continuar sin ajustar bounds
     
     # Añadir controles
     folium.LayerControl().add_to(m)
-    plugins.MeasureControl(position='bottomleft').add_to(m)
     plugins.MiniMap(toggle_display=True).add_to(m)
     plugins.Fullscreen(position='topright').add_to(m)
     
@@ -1315,7 +1401,7 @@ def mostrar_recomendaciones_agroecologicas(cultivo, categoria, area_ha, analisis
         • Réplica en otras zonas
         """)
 
-# FUNCIÓN PARA PROCESAR ARCHIVO SUBIDO - VERSIÓN MODIFICADA PARA UNIR POLÍGONOS
+# FUNCIÓN PARA PROCESAR ARCHIVO SUBIDO - VERSIÓN MODIFICADA PARA UNIR POLÍGONOS Y CON VALIDACIÓN MEJORADA
 def procesar_archivo(uploaded_file, unir_poligonos=True):
     """Procesa el archivo ZIP con shapefile o archivo KML y une todos los polígonos en uno solo"""
     try:
@@ -1354,28 +1440,62 @@ def procesar_archivo(uploaded_file, unir_poligonos=True):
             if not gdf.is_valid.all():
                 gdf = gdf.make_valid()
             
+            # Filtrar solo polígonos (ignorar puntos y líneas)
+            gdf = gdf[gdf.geometry.type.isin(['Polygon', 'MultiPolygon'])]
+            
+            # Si no quedan geometrías después del filtrado
+            if gdf.empty:
+                st.error("❌ El archivo no contiene polígonos válidos")
+                return None
+            
+            # Asegurar que todas las geometrías sean válidas
+            gdf.geometry = gdf.geometry.make_valid()
+            
+            # Eliminar geometrías nulas o vacías
+            gdf = gdf[~gdf.geometry.is_empty & ~gdf.geometry.isna()]
+            
+            if gdf.empty:
+                st.error("❌ El archivo no contiene geometrías válidas después de limpiar")
+                return None
+            
             # UNIR TODOS LOS POLÍGONOS EN UN SOLO POLÍGONO (si la opción está activada)
             if unir_poligonos and len(gdf) > 1:
                 st.info(f"📊 Se detectaron {len(gdf)} polígonos. Uniendo en una sola parcela...")
                 
                 # Crear unión de todos los polígonos
-                union_geom = gdf.unary_union
-                
-                # Si la unión resulta en múltiples polígonos no conectados, tomar el convex hull
-                if union_geom.geom_type == 'MultiPolygon':
-                    st.warning("⚠️ Los polígonos no están conectados. Creando envolvente convexa...")
-                    union_geom = union_geom.convex_hull
-                
-                # Crear nuevo GeoDataFrame con un solo polígono
-                gdf = gpd.GeoDataFrame(
-                    {'id': [1], 'nombre': ['Parcela Unificada']},
-                    geometry=[union_geom],
-                    crs=gdf.crs
-                )
+                try:
+                    union_geom = gdf.unary_union
+                    
+                    # Si la unión resulta en múltiples polígonos no conectados, tomar el convex hull
+                    if union_geom.geom_type == 'MultiPolygon':
+                        st.warning("⚠️ Los polígonos no están conectados. Creando envolvente convexa...")
+                        union_geom = union_geom.convex_hull
+                    
+                    # Crear nuevo GeoDataFrame con un solo polígono
+                    gdf = gpd.GeoDataFrame(
+                        {'id': [1], 'nombre': ['Parcela Unificada']},
+                        geometry=[union_geom],
+                        crs=gdf.crs
+                    )
+                except Exception as e:
+                    st.warning(f"⚠️ Error al unir polígonos: {str(e)}. Usando el primer polígono.")
+                    # Usar el primer polígono como fallback
+                    gdf = gdf.iloc[[0]].copy()
+                    gdf['nombre'] = ['Parcela Principal']
             
             # Verificar que el polígono resultante sea válido
-            if len(gdf) > 0 and not gdf.iloc[0].geometry.is_valid:
-                gdf.iloc[0].geometry = gdf.iloc[0].geometry.buffer(0)
+            if len(gdf) > 0:
+                if not gdf.iloc[0].geometry.is_valid:
+                    try:
+                        gdf.iloc[0].geometry = gdf.iloc[0].geometry.buffer(0)
+                    except:
+                        st.error("❌ No se pudo reparar la geometría del polígono")
+                        return None
+                
+                # Verificar que no sea un polígono vacío
+                if gdf.iloc[0].geometry.is_empty:
+                    st.error("❌ La geometría resultante está vacía")
+                    return None
             
             return gdf
             
@@ -2187,7 +2307,6 @@ def calcular_curvas_nivel(gdf, intervalo=5.0, resolucion=10.0):
         
         return gdf_curvas, X, Y, Z, pendiente, aspecto, bounds
 
-
 def generar_curvas_directas_simplificado(grid_x, grid_y, grid_z, niveles, poligono_principal):
     """Genera curvas de nivel simplificadas directamente desde el grid"""
     curvas = []
@@ -2245,7 +2364,6 @@ def generar_curvas_directas_simplificado(grid_x, grid_y, grid_z, niveles, poligo
             curvas.append(poligono_principal.exterior)
     
     return curvas
-
 
 # FUNCIÓN CORREGIDA PARA CREAR MAPA DE CURVAS DE NIVEL
 def crear_mapa_curvas_nivel(gdf_original, gdf_curvas, dem_data=None):
@@ -3850,12 +3968,15 @@ def mostrar_resultados_principales():
         return
 
     st.markdown("## 📈 RESULTADOS DEL ANÁLISIS PRINCIPAL")
+    
     # Botón para volver atrás
     if st.button("⬅️ Volver a Configuración", key="volver_principal"):
         st.session_state.analisis_completado = False
         st.rerun()
+    
     # Estadísticas resumen
     st.subheader("📊 Estadísticas del Análisis")
+    
     if analisis_tipo == "FERTILIDAD ACTUAL":
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -3870,6 +3991,7 @@ def mostrar_resultados_principales():
         with col4:
             avg_k = gdf_analisis['potasio'].mean()
             st.metric("⚡ Potasio Promedio", f"{avg_k:.1f} kg/ha")
+        
         # Estadísticas adicionales
         col5, col6, col7 = st.columns(3)
         with col5:
@@ -3885,9 +4007,11 @@ def mostrar_resultados_principales():
             else:
                 zona_prioridad = gdf_analisis['prioridad'].value_counts().index[0]
                 st.metric("🎯 Prioridad Predominante", zona_prioridad)
+        
         st.subheader("📋 Distribución de Categorías de Fertilidad")
         cat_dist = gdf_analisis['categoria'].value_counts()
         st.bar_chart(cat_dist)
+    
     else:  # RECOMENDACIONES NPK
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -3899,6 +4023,7 @@ def mostrar_resultados_principales():
         with col3:
             zona_prioridad = gdf_analisis['prioridad'].value_counts().index[0]
             st.metric("🎯 Prioridad Aplicación", zona_prioridad)
+        
         st.subheader("🌿 Estado Actual de Nutrientes")
         col_n, col_p, col_k, col_mo = st.columns(4)
         with col_n:
@@ -3913,8 +4038,10 @@ def mostrar_resultados_principales():
         with col_mo:
             avg_mo = gdf_analisis['materia_organica'].mean()
             st.metric("Materia Orgánica", f"{avg_mo:.1f}%")
+    
     # MAPAS INTERACTIVOS
     st.markdown("### 🗺️ Mapas de Análisis")
+    
     # Seleccionar columna para visualizar
     if analisis_tipo == "FERTILIDAD ACTUAL":
         columna_visualizar = 'indice_fertilidad'
@@ -3922,11 +4049,13 @@ def mostrar_resultados_principales():
     else:
         columna_visualizar = 'recomendacion_npk'
         titulo_mapa = f"Recomendación {nutriente} - {cultivo.replace('_', ' ').title()}"
+    
     # Crear y mostrar mapa interactivo
     mapa_analisis = crear_mapa_interactivo_esri(
         gdf_analisis, titulo_mapa, columna_visualizar, analisis_tipo, nutriente
     )
     st_folium(mapa_analisis, width=800, height=500)
+    
     # MAPA ESTÁTICO PARA DESCARGA
     st.markdown("### 📄 Mapa para Reporte")
     mapa_estatico = crear_mapa_estatico(
@@ -3934,18 +4063,23 @@ def mostrar_resultados_principales():
     )
     if mapa_estatico:
         st.image(mapa_estatico, caption=titulo_mapa, use_column_width=True)
+    
     # TABLA DETALLADA
     st.markdown("### 📋 Tabla de Resultados por Zona")
+    
     # Preparar datos para tabla
     columnas_tabla = ['id_zona', 'area_ha', 'categoria', 'prioridad']
+    
     if analisis_tipo == "FERTILIDAD ACTUAL":
         columnas_tabla.extend(['indice_fertilidad', 'nitrogeno', 'fosforo', 'potasio', 'materia_organica', 'ndvi'])
         if 'ndwi_suelo' in gdf_analisis.columns:
             columnas_tabla.extend(['ndwi_suelo', 'estado_humedad_suelo'])
     else:
         columnas_tabla.extend(['recomendacion_npk', 'deficit_npk', 'nitrogeno', 'fosforo', 'potasio'])
+    
     df_tabla = gdf_analisis[columnas_tabla].copy()
     df_tabla['area_ha'] = df_tabla['area_ha'].round(3)
+    
     if analisis_tipo == "FERTILIDAD ACTUAL":
         df_tabla['indice_fertilidad'] = df_tabla['indice_fertilidad'].round(3)
         df_tabla['nitrogeno'] = df_tabla['nitrogeno'].round(1)
@@ -3958,15 +4092,20 @@ def mostrar_resultados_principales():
     else:
         df_tabla['recomendacion_npk'] = df_tabla['recomendacion_npk'].round(1)
         df_tabla['deficit_npk'] = df_tabla['deficit_npk'].round(1)
+    
     st.dataframe(df_tabla, use_container_width=True)
+    
     # RECOMENDACIONES AGROECOLÓGICAS
     categoria_promedio = gdf_analisis['categoria'].mode()[0] if len(gdf_analisis) > 0 else "MEDIA"
     mostrar_recomendaciones_agroecologicas(
         cultivo, categoria_promedio, area_total, analisis_tipo, nutriente
     )
+    
     # DESCARGAR RESULTADOS
     st.markdown("### 💾 Descargar Resultados")
+    
     col1, col2, col3 = st.columns(3)
+    
     with col1:
         # Descargar CSV
         csv = df_tabla.to_csv(index=False)
@@ -3976,6 +4115,7 @@ def mostrar_resultados_principales():
             file_name=f"resultados_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
             mime="text/csv"
         )
+    
     with col2:
         # Descargar GeoJSON
         geojson = gdf_analisis.to_json()
@@ -3985,6 +4125,7 @@ def mostrar_resultados_principales():
             file_name=f"zonas_analisis_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.geojson",
             mime="application/json"
         )
+    
     with col3:
         # Descargar PDF
         if st.button("📄 Generar Informe PDF", type="primary", key="pdf_principal"):
@@ -3998,6 +4139,7 @@ def mostrar_resultados_principales():
                     file_name=f"informe_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
                     mime="application/pdf"
                 )
+
 # INTERFAZ PRINCIPAL
 def main():
     # Mostrar información de la aplicación
