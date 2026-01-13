@@ -309,7 +309,7 @@ RECOMENDACIONES_AGROECOLOGICAS = {
         'BIOFERTILIZANTES': [
             "Bocashi: 2-3 ton/ha cada 6 meses",
             "Compost de racimo vacío: 1-2 ton/ha",
-            "Biofertilizante líquido: Aplicación foliar mensual"
+            "Bioferlicizante líquido: Aplicación foliar mensual"
         ],
         'MANEJO_ECOLOGICO': [
             "Uso de trampas amarillas para insectos",
@@ -505,6 +505,11 @@ with st.sidebar:
     
     st.subheader("🎯 División de Parcela")
     n_divisiones = st.slider("Número de zonas de manejo:", min_value=16, max_value=32, value=24)
+    
+    # NUEVA OPCIÓN: Manejo de múltiples polígonos
+    st.subheader("🔗 Manejo de Múltiples Polígonos")
+    unir_poligonos = st.checkbox("Unir todos los polígonos en una sola parcela", value=True, 
+                                help="Si está activado, todos los polígonos del KML/shapefile se unirán en una sola parcela para análisis")
     
     # Configuración adicional para curvas de nivel
     if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
@@ -1310,19 +1315,100 @@ def mostrar_recomendaciones_agroecologicas(cultivo, categoria, area_ha, analisis
         • Réplica en otras zonas
         """)
 
-# FUNCIÓN MEJORADA PARA DIVIDIR PARCELA
+# FUNCIÓN PARA PROCESAR ARCHIVO SUBIDO - VERSIÓN MODIFICADA PARA UNIR POLÍGONOS
+def procesar_archivo(uploaded_file, unir_poligonos=True):
+    """Procesa el archivo ZIP con shapefile o archivo KML y une todos los polígonos en uno solo"""
+    try:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Guardar archivo
+            file_path = os.path.join(tmp_dir, uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getvalue())
+            
+            # Verificar tipo de archivo
+            if uploaded_file.name.lower().endswith('.kml'):
+                # Cargar archivo KML
+                gdf = gpd.read_file(file_path, driver='KML')
+            else:
+                # Procesar como ZIP con shapefile
+                with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                    zip_ref.extractall(tmp_dir)
+                
+                # Buscar archivos shapefile o KML
+                shp_files = [f for f in os.listdir(tmp_dir) if f.endswith('.shp')]
+                kml_files = [f for f in os.listdir(tmp_dir) if f.endswith('.kml')]
+                
+                if shp_files:
+                    # Cargar shapefile
+                    shp_path = os.path.join(tmp_dir, shp_files[0])
+                    gdf = gpd.read_file(shp_path)
+                elif kml_files:
+                    # Cargar KML
+                    kml_path = os.path.join(tmp_dir, kml_files[0])
+                    gdf = gpd.read_file(kml_path, driver='KML')
+                else:
+                    st.error("❌ No se encontró archivo .shp o .kml en el ZIP")
+                    return None
+            
+            # Verificar y reparar geometrías
+            if not gdf.is_valid.all():
+                gdf = gdf.make_valid()
+            
+            # UNIR TODOS LOS POLÍGONOS EN UN SOLO POLÍGONO (si la opción está activada)
+            if unir_poligonos and len(gdf) > 1:
+                st.info(f"📊 Se detectaron {len(gdf)} polígonos. Uniendo en una sola parcela...")
+                
+                # Crear unión de todos los polígonos
+                union_geom = gdf.unary_union
+                
+                # Si la unión resulta en múltiples polígonos no conectados, tomar el convex hull
+                if union_geom.geom_type == 'MultiPolygon':
+                    st.warning("⚠️ Los polígonos no están conectados. Creando envolvente convexa...")
+                    union_geom = union_geom.convex_hull
+                
+                # Crear nuevo GeoDataFrame con un solo polígono
+                gdf = gpd.GeoDataFrame(
+                    {'id': [1], 'nombre': ['Parcela Unificada']},
+                    geometry=[union_geom],
+                    crs=gdf.crs
+                )
+            
+            # Verificar que el polígono resultante sea válido
+            if len(gdf) > 0 and not gdf.iloc[0].geometry.is_valid:
+                gdf.iloc[0].geometry = gdf.iloc[0].geometry.buffer(0)
+            
+            return gdf
+            
+    except Exception as e:
+        st.error(f"❌ Error procesando archivo: {str(e)}")
+        return None
+
+# FUNCIÓN MEJORADA PARA DIVIDIR PARCELA EN ZONAS - VERSIÓN QUE MANEJA MULTIPOLÍGONOS
 def dividir_parcela_en_zonas(gdf, n_zonas):
-    """Divide la parcela en zonas de manejo con manejo robusto de errores"""
+    """Divide la parcela en zonas de manejo, manejando MultiPolygon si es necesario"""
     try:
         if len(gdf) == 0:
             return gdf
         
-        # Usar el primer polígono como parcela principal
+        # Obtener la geometría principal
         parcela_principal = gdf.iloc[0].geometry
+        
+        # Si es MultiPolygon, tomar el polígono más grande
+        if parcela_principal.geom_type == 'MultiPolygon':
+            st.info("🔄 Detectado MultiPolygon. Usando el polígono más grande...")
+            # Encontrar el polígono con mayor área
+            max_area = 0
+            main_poly = None
+            for polygon in parcela_principal.geoms:
+                area = polygon.area
+                if area > max_area:
+                    max_area = area
+                    main_poly = polygon
+            parcela_principal = main_poly
         
         # Verificar que la geometría sea válida
         if not parcela_principal.is_valid:
-            parcela_principal = parcela_principal.buffer(0)  # Reparar geometría
+            parcela_principal = parcela_principal.buffer(0)
         
         bounds = parcela_principal.bounds
         if len(bounds) < 4:
@@ -1378,7 +1464,7 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
                         if not intersection.is_empty and intersection.area > 0:
                             # Simplificar geometría si es necesario
                             if intersection.geom_type == 'MultiPolygon':
-                                # Tomar el polígono más grande
+                                # Tomar el polígono más grande de la intersección
                                 largest = max(intersection.geoms, key=lambda p: p.area)
                                 sub_poligonos.append(largest)
                             else:
@@ -1391,6 +1477,12 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
                 'id_zona': range(1, len(sub_poligonos) + 1),
                 'geometry': sub_poligonos
             }, crs=gdf.crs)
+            
+            # Calcular y mostrar área total de zonas
+            area_total_zonas = sum(calcular_superficie(nuevo_gdf.iloc[[idx]]) for idx in range(len(nuevo_gdf)))
+            area_parcela = calcular_superficie(gdf)
+            st.info(f"📏 Área parcela: {area_parcela:.2f} ha | Área en zonas: {area_total_zonas:.2f} ha | Cobertura: {(area_total_zonas/area_parcela*100):.1f}%")
+            
             return nuevo_gdf
         else:
             st.warning("No se pudieron crear zonas, retornando parcela original")
@@ -2396,51 +2488,6 @@ def crear_mapa_pendientes(grid_x, grid_y, pendiente_grid, gdf_original):
     plt.close()
     
     return buf
-
-# FUNCIÓN PARA PROCESAR ARCHIVO SUBIDO
-def procesar_archivo(uploaded_file):
-    """Procesa el archivo ZIP con shapefile o archivo KML"""
-    try:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Guardar archivo
-            file_path = os.path.join(tmp_dir, uploaded_file.name)
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getvalue())
-            
-            # Verificar tipo de archivo
-            if uploaded_file.name.lower().endswith('.kml'):
-                # Cargar archivo KML
-                gdf = gpd.read_file(file_path, driver='KML')
-            else:
-                # Procesar como ZIP con shapefile
-                with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                    zip_ref.extractall(tmp_dir)
-                
-                # Buscar archivos shapefile o KML
-                shp_files = [f for f in os.listdir(tmp_dir) if f.endswith('.shp')]
-                kml_files = [f for f in os.listdir(tmp_dir) if f.endswith('.kml')]
-                
-                if shp_files:
-                    # Cargar shapefile
-                    shp_path = os.path.join(tmp_dir, shp_files[0])
-                    gdf = gpd.read_file(shp_path)
-                elif kml_files:
-                    # Cargar KML
-                    kml_path = os.path.join(tmp_dir, kml_files[0])
-                    gdf = gpd.read_file(kml_path, driver='KML')
-                else:
-                    st.error("❌ No se encontró archivo .shp o .kml en el ZIP")
-                    return None
-            
-            # Verificar y reparar geometrías
-            if not gdf.is_valid.all():
-                gdf = gdf.make_valid()
-            
-            return gdf
-            
-    except Exception as e:
-        st.error(f"❌ Error procesando archivo: {str(e)}")
-        return None
 
 # FUNCIÓN PARA GENERAR PDF
 def generar_informe_pdf(gdf_analisis, cultivo, analisis_tipo, nutriente, mes_analisis, area_total, gdf_textura=None):
@@ -3970,7 +4017,8 @@ def main():
     # Procesar archivo subido si existe
     if uploaded_file is not None and not st.session_state.analisis_completado:
         with st.spinner("🔄 Procesando archivo..."):
-            gdf_original = procesar_archivo(uploaded_file)
+            # Usar la opción de unir polígonos del sidebar
+            gdf_original = procesar_archivo(uploaded_file, unir_poligonos)
             if gdf_original is not None:
                 st.session_state.gdf_original = gdf_original
                 st.session_state.datos_demo = False
@@ -4085,18 +4133,22 @@ def mostrar_configuracion_parcela():
     
     # Calcular estadísticas
     area_total = calcular_superficie(gdf_original)
-    num_poligonos = len(gdf_original)
+    num_poligonos_original = len(gdf_original)
+    
+    # Información sobre la unión
+    if num_poligonos_original > 1:
+        st.info(f"🔗 Se unieron {num_poligonos_original} polígonos en una sola parcela")
     
     col1, col2, col3 = st.columns(3)
     with col1:
         st.metric("📐 Área Total", f"{area_total:.2f} ha")
     with col2:
-        st.metric("🔢 Número de Polígonos", num_poligonos)
+        st.metric("🔢 Polígonos Originales", num_poligonos_original)
     with col3:
         st.metric("🌱 Cultivo", cultivo.replace('_', ' ').title())
     
     # VISUALIZADOR DE PARCELA ORIGINAL
-    st.markdown("### 🗺️ Visualizador de Parcela")
+    st.markdown("### 🗺️ Visualizador de Parcela (Unificada)")
     
     # Crear y mostrar mapa interactivo
     mapa_parcela = crear_mapa_visualizador_parcela(gdf_original)
@@ -4104,7 +4156,7 @@ def mostrar_configuracion_parcela():
     
     # DIVIDIR PARCELA EN ZONAS
     st.markdown("### 📊 División en Zonas de Manejo")
-    st.info(f"La parcela se dividirá en **{n_divisiones} zonas** para análisis detallado")
+    st.info(f"La parcela unificada se dividirá en **{n_divisiones} zonas** para análisis detallado")
     
     # Botón para ejecutar análisis
     if st.button("🚀 Ejecutar Análisis GEE Completo", type="primary"):
@@ -4122,11 +4174,8 @@ def mostrar_configuracion_parcela():
                 gdf_analisis = analizar_ndwi_suelo(gdf_zonas, cultivo, mes_analisis)
                 st.session_state.gdf_analisis = gdf_analisis
             elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
-                # Para curvas de nivel usamos la parcela original, no las zonas
-                # Obtener parámetros del sidebar
                 intervalo = intervalo_curvas if 'intervalo_curvas' in locals() else 5.0
                 resolucion = resolucion_dem if 'resolucion_dem' in locals() else 10.0
-                
                 gdf_analisis = ejecutar_analisis_curvas_nivel(gdf_original, intervalo, resolucion)
                 st.session_state.gdf_analisis = gdf_analisis
             else:
@@ -4135,7 +4184,7 @@ def mostrar_configuracion_parcela():
                 )
                 st.session_state.gdf_analisis = gdf_analisis
             
-            # Siempre ejecutar análisis de textura también (excepto cuando ya es análisis de textura)
+            # Siempre ejecutar análisis de textura también
             if analisis_tipo != "ANÁLISIS DE TEXTURA" and analisis_tipo != "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
                 with st.spinner("🏗️ Realizando análisis de textura..."):
                     gdf_textura = analizar_textura_suelo(gdf_zonas, cultivo, mes_analisis)
