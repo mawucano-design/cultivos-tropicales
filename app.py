@@ -591,6 +591,12 @@ def calcular_superficie(gdf):
 def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=None, nutriente=None):
     """Crea mapa interactivo con base ESRI Satélite"""
     
+    # Verificar si el GeoDataFrame está vacío
+    if gdf.empty:
+        # Crear un mapa vacío si no hay datos
+        m = folium.Map(location=[0, 0], zoom_start=2)
+        return m
+    
     # Obtener centro y bounds del GeoDataFrame
     centroid = gdf.geometry.centroid.iloc[0]
     bounds = gdf.total_bounds
@@ -677,6 +683,14 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
         
         # Añadir cada polígono con estilo mejorado
         for idx, row in gdf.iterrows():
+            # Determinar el identificador de zona basado en el tipo de análisis
+            if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                zona_id = row.get('id_curva', idx)
+            elif 'id_zona' in gdf.columns:
+                zona_id = row['id_zona']
+            else:
+                zona_id = idx + 1
+                
             if analisis_tipo == "ANÁLISIS DE TEXTURA":
                 # Manejo especial para textura (valores categóricos)
                 textura = row[columna_valor]
@@ -693,11 +707,11 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                 else:
                     valor_display = f"{valor:.1f}"
             
-            # Popup más informativo
+            # Popup más informativo - CON GET SEGURO PARA TODAS LAS COLUMNAS
             if analisis_tipo == "FERTILIDAD ACTUAL":
                 popup_text = f"""
                 <div style="font-family: Arial; font-size: 12px;">
-                    <h4>Zona {row['id_zona']}</h4>
+                    <h4>Zona {zona_id}</h4>
                     <b>Índice Fertilidad:</b> {valor_display}<br>
                     <b>Área:</b> {row.get('area_ha', 0):.2f} ha<br>
                     <b>Categoría:</b> {row.get('categoria', 'N/A')}<br>
@@ -713,7 +727,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             elif analisis_tipo == "ANÁLISIS DE TEXTURA":
                 popup_text = f"""
                 <div style="font-family: Arial; font-size: 12px;">
-                    <h4>Zona {row['id_zona']}</h4>
+                    <h4>Zona {zona_id}</h4>
                     <b>Textura:</b> {valor_display}<br>
                     <b>Adecuación:</b> {row.get('adecuacion_textura', 0):.1%}<br>
                     <b>Área:</b> {row.get('area_ha', 0):.2f} ha<br>
@@ -728,7 +742,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             elif analisis_tipo == "ANÁLISIS NDWI SUELO":
                 popup_text = f"""
                 <div style="font-family: Arial; font-size: 12px;">
-                    <h4>Zona {row['id_zona']}</h4>
+                    <h4>Zona {zona_id}</h4>
                     <b>NDWI Suelo:</b> {valor_display}<br>
                     <b>Estado Humedad:</b> {row.get('estado_humedad_suelo', 'N/A')}<br>
                     <b>Riesgo Sequía:</b> {row.get('riesgo_sequia', 'N/A')}<br>
@@ -743,7 +757,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             elif analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
                 popup_text = f"""
                 <div style="font-family: Arial; font-size: 12px;">
-                    <h4>Curva {row['id_curva']}</h4>
+                    <h4>Curva {zona_id}</h4>
                     <b>Elevación:</b> {valor_display} m<br>
                     <b>Longitud:</b> {row.get('longitud_m', 0):.1f} m<br>
                     <hr>
@@ -754,7 +768,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             else:
                 popup_text = f"""
                 <div style="font-family: Arial; font-size: 12px;">
-                    <h4>Zona {row['id_zona']}</h4>
+                    <h4>Zona {zona_id}</h4>
                     <b>Recomendación {nutriente}:</b> {valor_display} {unidad}<br>
                     <b>Área:</b> {row.get('area_ha', 0):.2f} ha<br>
                     <b>Categoría Fertilidad:</b> {row.get('categoria', 'N/A')}<br>
@@ -778,7 +792,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                     'opacity': 0.9
                 },
                 popup=folium.Popup(popup_text, max_width=300),
-                tooltip=f"Zona {row['id_zona']}: {valor_display}"
+                tooltip=f"Zona {zona_id}: {valor_display}"
             ).add_to(m)
             
             # Marcador con número de zona mejorado
@@ -800,10 +814,10 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
                             font-weight: bold; 
                             font-size: 11px;
                             color: black;
-                        ">{row["id_zona"]}</div>
+                        ">{zona_id}</div>
                         '''
                     ),
-                    tooltip=f"Zona {row['id_zona']} - Click para detalles"
+                    tooltip=f"Zona {zona_id} - Click para detalles"
                 ).add_to(m)
     else:
         # Mapa simple del polígono original
@@ -860,7 +874,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             for i in range(steps):
                 value = i / (steps - 1)
                 color_idx = int((i / (steps - 1)) * (len(PALETAS_GEE['FERTILIDAD']) - 1))
-                color = PALETAS_GEE['FERTILIDAD'][color_idx]
+                color = PALETAS_GEE['FERTILidad'][color_idx]
                 categoria = ["Muy Baja", "Baja", "Media-Baja", "Media", "Media-Alta", "Alta", "Muy Alta"][min(i, 6)] if i < 7 else "Óptima"
                 legend_html += f'<div style="margin:2px 0;"><span style="background:{color}; width:20px; height:15px; display:inline-block; margin-right:5px; border:1px solid #000;"></span> {value:.1f} ({categoria})</div>'
         elif analisis_tipo == "ANÁLISIS DE TEXTURA":
@@ -1052,7 +1066,15 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
                 else:
                     texto_valor = f"{row[columna_valor]:.0f} kg"
                 
-                ax.annotate(f"Z{row['id_zona']}\n{texto_valor}", 
+                # Obtener el ID de zona de manera segura
+                if analisis_tipo == "ANÁLISIS DE CURVAS DE NIVEL (LIDAR/DEM)":
+                    zona_id = row.get('id_curva', idx)
+                elif 'id_zona' in gdf.columns:
+                    zona_id = row['id_zona']
+                else:
+                    zona_id = idx + 1
+                
+                ax.annotate(f"Z{zona_id}\n{texto_valor}", 
                            (centroid.x, centroid.y), 
                            xytext=(3, 3), textcoords="offset points", 
                            fontsize=6, color='black', weight='bold',
