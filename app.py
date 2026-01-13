@@ -874,7 +874,7 @@ def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=N
             for i in range(steps):
                 value = i / (steps - 1)
                 color_idx = int((i / (steps - 1)) * (len(PALETAS_GEE['FERTILIDAD']) - 1))
-                color = PALETAS_GEE['FERTILidad'][color_idx]
+                color = PALETAS_GEE['FERTILIDAD'][color_idx]
                 categoria = ["Muy Baja", "Baja", "Media-Baja", "Media", "Media-Alta", "Alta", "Muy Alta"][min(i, 6)] if i < 7 else "Óptima"
                 legend_html += f'<div style="margin:2px 0;"><span style="background:{color}; width:20px; height:15px; display:inline-block; margin-right:5px; border:1px solid #000;"></span> {value:.1f} ({categoria})</div>'
         elif analisis_tipo == "ANÁLISIS DE TEXTURA":
