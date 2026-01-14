@@ -495,7 +495,7 @@ with st.sidebar:
             del st.session_state[key]
         st.rerun()
 
-# === FUNCIONES CORREGIDAS ===
+# === FUNCIONES AUXILIARES ===
 
 def clasificar_textura_suelo(arena, limo, arcilla):
     try:
@@ -584,41 +584,37 @@ def calcular_superficie(gdf):
         except:
             return 0.0
 
-# 🔧 FUNCIÓN CORREGIDA: dividir_parcela_en_zonas
+# 🔧 FUNCIÓN CORREGIDA: dividir_parcela_en_zonas (SIEMPRE DEVUELVE id_zona)
 def dividir_parcela_en_zonas(gdf, n_zonas):
+    """Divide la parcela en zonas de manejo con manejo robusto de errores"""
     try:
         if len(gdf) == 0:
             return gdf
+
+        # Usar el primer polígono como parcela principal
         parcela_principal = gdf.iloc[0].geometry
         if not parcela_principal.is_valid:
-            parcela_principal = parcela_principal.buffer(0)
+            parcela_principal = parcela_principal.buffer(0)  # Reparar geometría
+
         bounds = parcela_principal.bounds
-        if len(bounds) < 4:
-            st.error("No se pueden obtener los límites de la parcela")
-            return gdf
-        minx, miny, maxx, maxy = bounds
-        if minx >= maxx or miny >= maxy:
-            st.error("Límites de parcela inválidos")
-            return gdf
+        if len(bounds) < 4 or bounds[0] >= bounds[2] or bounds[1] >= bounds[3]:
+            raise ValueError("Límites de parcela inválidos")
+
         sub_poligonos = []
         n_cols = math.ceil(math.sqrt(n_zonas))
         n_rows = math.ceil(n_zonas / n_cols)
-        width = (maxx - minx) / n_cols
-        height = (maxy - miny) / n_rows
-        if width < 0.0001 or height < 0.0001:
-            n_zonas = min(n_zonas, 16)
-            n_cols = math.ceil(math.sqrt(n_zonas))
-            n_rows = math.ceil(n_zonas / n_cols)
-            width = (maxx - minx) / n_cols
-            height = (maxy - miny) / n_rows
+        width = (bounds[2] - bounds[0]) / n_cols
+        height = (bounds[3] - bounds[1]) / n_rows
+
         for i in range(n_rows):
             for j in range(n_cols):
                 if len(sub_poligonos) >= n_zonas:
                     break
-                cell_minx = minx + (j * width)
-                cell_maxx = minx + ((j + 1) * width)
-                cell_miny = miny + (i * height)
-                cell_maxy = miny + ((i + 1) * height)
+                cell_minx = bounds[0] + (j * width)
+                cell_maxx = bounds[0] + ((j + 1) * width)
+                cell_miny = bounds[1] + (i * height)
+                cell_maxy = bounds[1] + ((i + 1) * height)
+
                 try:
                     cell_poly = Polygon([
                         (cell_minx, cell_miny),
@@ -636,25 +632,16 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
                                 sub_poligonos.append(intersection)
                 except:
                     continue
+
         if sub_poligonos:
             nuevo_gdf = gpd.GeoDataFrame({
                 'id_zona': range(1, len(sub_poligonos) + 1),
                 'geometry': sub_poligonos
             }, crs=gdf.crs)
             return nuevo_gdf
-        else:
-            # === 🔒 SIEMPRE DEVUELVE id_zona ===
-            st.warning("⚠️ No se pudieron crear zonas. Usando parcela completa como zona única.")
-            geom_union = gdf.geometry.unary_union
-            if geom_union.is_empty:
-                geom_union = gdf.geometry.iloc[0]
-            gdf_single = gpd.GeoDataFrame({
-                'id_zona': [1],
-                'geometry': [geom_union]
-            }, crs=gdf.crs)
-            return gdf_single
-    except Exception as e:
-        st.error(f"Error dividiendo parcela: {str(e)}")
+
+        # === Fallback seguro: siempre devolver al menos una zona con id_zona ===
+        st.warning("⚠️ No se pudieron crear zonas. Usando parcela completa como zona única.")
         geom_union = gdf.geometry.unary_union
         if geom_union.is_empty:
             geom_union = gdf.geometry.iloc[0]
@@ -664,8 +651,32 @@ def dividir_parcela_en_zonas(gdf, n_zonas):
         }, crs=gdf.crs)
         return gdf_single
 
-# 🔧 FUNCIÓN CORREGIDA: crear_mapa_interactivo_esri
+    except Exception as e:
+        st.error(f"Error dividiendo parcela: {str(e)}")
+        # === Fallback final ===
+        geom_union = gdf.geometry.unary_union
+        if geom_union.is_empty:
+            geom_union = gdf.geometry.iloc[0]
+        gdf_single = gpd.GeoDataFrame({
+            'id_zona': [1],
+            'geometry': [geom_union]
+        }, crs=gdf.crs)
+        return gdf_single
+
+# 🔧 FUNCIÓN MEJORADA: asegurar_id_zona (función auxiliar)
+def asegurar_id_zona(gdf):
+    """Asegura que el GeoDataFrame tenga la columna 'id_zona'"""
+    if 'id_zona' not in gdf.columns:
+        gdf = gdf.copy()
+        gdf['id_zona'] = range(1, len(gdf) + 1)
+    return gdf
+
+# 🔧 FUNCIÓN CORREGIDA: crear_mapa_interactivo_esri (uso defensivo)
 def crear_mapa_interactivo_esri(gdf, titulo, columna_valor=None, analisis_tipo=None, nutriente=None):
+    # Asegurar que gdf tenga 'id_zona'
+    if 'id_zona' not in gdf.columns:
+        gdf = asegurar_id_zona(gdf)
+
     centroid = gdf.geometry.centroid.iloc[0]
     bounds = gdf.total_bounds
     m = folium.Map(
@@ -1110,7 +1121,7 @@ def crear_mapa_estatico(gdf, titulo, columna_valor=None, analisis_tipo=None, nut
 
 def mostrar_recomendaciones_agroecologicas(cultivo, categoria, area_ha, analisis_tipo, nutriente=None, textura_data=None):
     st.markdown("### 🌿 RECOMENDACIONES ESPECÍFICAS")
-    if analisis_tipo == "ANÁLISIS DE TEXTURA" and textura_data:
+    if analisis_tipo == "ANÁLISIS DE TEXTURA" and textura_data is not None:
         textura_predominante = textura_data.get('textura_predominante', 'Franco')
         adecuacion_promedio = textura_data.get('adecuacion_promedio', 0.5)
         st.markdown(f"#### 🏗️ **{textura_predominante.upper()}**")
@@ -1201,6 +1212,9 @@ def mostrar_recomendaciones_agroecologicas(cultivo, categoria, area_ha, analisis
 # === FUNCIONES DE ANÁLISIS ===
 
 def analizar_textura_suelo(gdf, cultivo, mes_analisis):
+    # 🔒 Asegurar que gdf tenga 'id_zona'
+    gdf = asegurar_id_zona(gdf)
+    
     params_textura = TEXTURA_SUELO_OPTIMA[cultivo]
     zonas_gdf = gdf.copy()
     cols = ['area_ha', 'arena', 'limo', 'arcilla', 'textura_suelo', 'adecuacion_textura', 'categoria_adecuacion',
@@ -1256,6 +1270,9 @@ def analizar_textura_suelo(gdf, cultivo, mes_analisis):
     return zonas_gdf
 
 def analizar_ndwi_suelo(gdf, cultivo, mes_analisis):
+    # 🔒 Asegurar que gdf tenga 'id_zona'
+    gdf = asegurar_id_zona(gdf)
+    
     params_ndwi = PARAMETROS_NDWI_SUELO[cultivo]
     zonas_gdf = gdf.copy()
     cols = ['ndwi_suelo', 'estado_humedad_suelo', 'deficit_humedad', 'recomendacion_riego', 'riesgo_sequia']
@@ -1318,6 +1335,9 @@ def analizar_ndwi_suelo(gdf, cultivo, mes_analisis):
     return zonas_gdf
 
 def calcular_indices_gee(gdf, cultivo, mes_analisis, analisis_tipo, nutriente):
+    # 🔒 Asegurar que gdf tenga 'id_zona'
+    gdf = asegurar_id_zona(gdf)
+    
     params = PARAMETROS_CULTIVOS[cultivo]
     params_ndwi = PARAMETROS_NDWI_SUELO[cultivo]
     zonas_gdf = gdf.copy()
@@ -2131,7 +2151,7 @@ def generar_informe_ndwi_pdf(gdf_ndwi, cultivo, mes_analisis, area_total):
     stats_table.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
         ('FONTSIZE', (0, 0), (-1, -1), 10),
         ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
@@ -2560,7 +2580,7 @@ def mostrar_resultados_curvas_nivel():
     else:
         st.warning("No se pudieron generar curvas de nivel para esta parcela")
     st.subheader("📈 Distribución de Pendientes")
-    if 'pendiente_grid' in dem_data:
+    if 'pendiente_grid' in dem_
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
         pendiente_flat = pendiente_grid.flatten()
         pendiente_flat = pendiente_flat[~np.isnan(pendiente_flat)]
@@ -2957,6 +2977,12 @@ def mostrar_configuracion_parcela():
     if st.button("🚀 Ejecutar Análisis GEE Completo", type="primary"):
         with st.spinner("🔄 Dividiendo parcela en zonas..."):
             gdf_zonas = dividir_parcela_en_zonas(gdf_original, n_divisiones)
+            
+            # 🔒 VALIDACIÓN CRÍTICA: asegurar que gdf_zonas tenga 'id_zona'
+            if 'id_zona' not in gdf_zonas.columns:
+                st.error("❌ Error crítico: No se pudo generar la columna 'id_zona'. Verifique la geometría de su parcela.")
+                st.stop()
+                
             st.session_state.gdf_zonas = gdf_zonas
         with st.spinner("🔬 Realizando análisis GEE..."):
             if analisis_tipo == "ANÁLISIS DE TEXTURA":
