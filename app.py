@@ -2677,6 +2677,6 @@ with col_footer3:
 - Versión: 5.0 - Cultivos Extensivos
 - Última actualización: Enero 2026
 """)
-st.markdown(
+st.markdown)
     '<div style="text-align: center; color: #94a3b8; font-size: 0.9em; margin-top: 2em;">'
     '© 2026 Analizador Multi-Cultivo Satelital. Todos los derechos reservados.'
