@@ -2680,7 +2680,3 @@ with col_footer3:
 st.markdown(
     '<div style="text-align: center; color: #94a3b8; font-size: 0.9em; margin-top: 2em;">'
     '© 2026 Analizador Multi-Cultivo Satelital. Todos los derechos reservados.'
-    '</div>',
-    unsafe_allow_html=True
-)
-[file content end]
