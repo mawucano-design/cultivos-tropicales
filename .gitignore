@@ -1,33 +1,22 @@
 # Streamlit
-.streamlit/secrets.toml
-
-# Datos temporales y archivos geoespaciales
-data/temp/
-*.geojson
-*.shp
-*.shx
-*.dbf
-*.prj
-*.cpg
-*.zip
-*.csv
-*.xlsx
-*.pdf
-
-# Earth Engine cache
-.earthengine/
-
-# Python
 __pycache__/
-*.py[cod]
-*$py.class
+*.pyc
+*.pyo
+*.pyd
+.Python
 *.so
 
-# Entornos virtuales
-.venv/
-venv/
+# Virtual environments
+.env
+.venv
 env/
+venv/
 ENV/
+
+# System files
+.DS_Store
+Thumbs.db
+desktop.ini
 
 # IDE
 .vscode/
@@ -35,27 +24,14 @@ ENV/
 *.swp
 *.swo
 
-# Jupyter
-.ipynb_checkpoints/
+# Data
+data/usuario/
+resultados/
+*.geojson
 
 # Logs
 *.log
 logs/
 
-# Archivos del sistema
-.DS_Store
-Thumbs.db
-
-# Distribución
-build/
-dist/
-*.egg-info/
-
-# Cache de Python
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-
-# Archivos temporales
-temp/
-tmp/
+# Sentinel Hub cache
+.sentinelhub/
