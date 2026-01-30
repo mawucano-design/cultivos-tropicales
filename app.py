@@ -76,31 +76,79 @@ def buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config):
         # Configurar catálogo
         catalog = SentinelHubCatalog(config=config)
         
-        # Buscar escenas
-        time_interval = (fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d'))
+        # Formatear fechas
+        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
+        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
         
-        query = catalog.search(
-            DataCollection.SENTINEL2_L2A,
+        # Buscar escenas usando el nuevo formato CQL2 con filter
+        # Usamos el nuevo parámetro filter en lugar de query
+        filter_cql = "eo:cloud_cover < 20"
+        
+        # Buscar escenas con el nuevo parámetro filter
+        search_iterator = catalog.search(
+            collection=DataCollection.SENTINEL2_L2A,
             bbox=bbox,
-            time=time_interval,
-            query={'eo:cloud_cover': {'lt': 20}}  # Menos de 20% nubes
+            time=(fecha_inicio_str, fecha_fin_str),
+            filter=filter_cql,
+            fields=["id", "properties.datetime", "properties.eo:cloud_cover", 
+                   "properties.processing_baseline", "properties.tile_id"],
+            limit=50  # Limitar resultados para mayor eficiencia
         )
         
-        escenas = list(query)
+        escenas = list(search_iterator)
         
         if not escenas:
             st.warning("⚠️ No se encontraron escenas disponibles en el rango de fechas")
+            st.info(f"Búsqueda: {fecha_inicio_str} a {fecha_fin_str}")
+            
+            # Intentar búsqueda sin filtro de nubes para verificar disponibilidad
+            st.info("🔍 Intentando búsqueda sin filtro de nubes...")
+            search_iterator_no_filter = catalog.search(
+                collection=DataCollection.SENTINEL2_L2A,
+                bbox=bbox,
+                time=(fecha_inicio_str, fecha_fin_str),
+                fields=["id", "properties.datetime", "properties.eo:cloud_cover"],
+                limit=10
+            )
+            
+            escenas_no_filter = list(search_iterator_no_filter)
+            
+            if escenas_no_filter:
+                st.warning(f"⚠️ Se encontraron {len(escenas_no_filter)} escenas, pero con alta cobertura de nubes")
+                for escena in escenas_no_filter[:3]:
+                    fecha = escena['properties']['datetime']
+                    nubes = escena['properties'].get('eo:cloud_cover', 'Desconocido')
+                    st.info(f"  - {fecha[:10]}: {nubes}% nubes")
+            
             return None
         
+        # Log de escenas encontradas
+        st.info(f"✅ Se encontraron {len(escenas)} escenas con menos del 20% de nubes")
+        
         # Seleccionar la escena con menos nubes
-        escena_seleccionada = min(escenas, key=lambda x: x['properties']['eo:cloud_cover'])
+        escena_seleccionada = min(escenas, key=lambda x: x['properties'].get('eo:cloud_cover', 100))
+        
+        # Extraer fecha de manera segura
+        fecha_escena = escena_seleccionada['properties']['datetime']
+        if isinstance(fecha_escena, str):
+            fecha_formateada = fecha_escena[:10]
+        else:
+            fecha_formateada = fecha_escena.strftime('%Y-%m-%d') if hasattr(fecha_escena, 'strftime') else str(fecha_escena)
+        
+        nubes = escena_seleccionada['properties'].get('eo:cloud_cover', 0)
+        
+        # Información adicional sobre la escena seleccionada
+        st.success(f"📅 Escena seleccionada: {fecha_formateada}")
+        st.info(f"☁️  Cobertura de nubes: {nubes:.1f}%")
+        st.info(f"🆔 ID: {escena_seleccionada['id']}")
         
         return {
             'id': escena_seleccionada['id'],
-            'fecha': escena_seleccionada['properties']['datetime'][:10],
-            'nubes': escena_seleccionada['properties']['eo:cloud_cover'],
+            'fecha': fecha_formateada,
+            'nubes': nubes,
             'bbox': bbox,
-            'bounds': bounds
+            'bounds': bounds,
+            'todas_escenas': escenas[:5]  # Guardar primeras 5 escenas para referencia
         }
         
     except Exception as e:
@@ -108,6 +156,299 @@ def buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config):
         import traceback
         st.error(f"Detalle: {traceback.format_exc()}")
         return None
+
+
+# ===== FUNCIÓN ALTERNATIVA PARA BUSCAR ESCENAS (más robusta) =====
+def buscar_escenas_sentinel2_alternativa(gdf, fecha_inicio, fecha_fin, config):
+    """Versión alternativa para buscar escenas de Sentinel-2 con diferentes enfoques"""
+    try:
+        st.info("🔍 Buscando escenas Sentinel-2 (enfoque alternativo)...")
+        
+        # Obtener bounding box de la parcela
+        gdf_wgs84 = gdf.to_crs('EPSG:4326')
+        bounds = gdf_wgs84.total_bounds
+        min_lon, min_lat, max_lon, max_lat = bounds
+        
+        # Crear un BBox ligeramente más grande para asegurar cobertura
+        buffer = 0.01  # Aproximadamente 1km
+        bbox = BBox(
+            bbox=[
+                max(min_lon - buffer, -180),  # No exceder límites
+                max(min_lat - buffer, -90),
+                min(max_lon + buffer, 180),
+                min(max_lat + buffer, 90)
+            ],
+            crs=CRS.WGS84
+        )
+        
+        st.info(f"📐 BBox (con buffer): {bbox}")
+        
+        # Configurar catálogo
+        catalog = SentinelHubCatalog(config=config)
+        
+        # Formatear fechas
+        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
+        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
+        
+        # Intentar diferentes filtros
+        filtros_intentos = [
+            "eo:cloud_cover < 30",
+            "eo:cloud_cover < 50",
+            "eo:cloud_cover < 80",
+            ""  # Sin filtro
+        ]
+        
+        escenas_encontradas = []
+        
+        for filtro in filtros_intentos:
+            try:
+                if filtro:
+                    st.info(f"🔍 Intentando con filtro: {filtro}")
+                else:
+                    st.info("🔍 Intentando sin filtro de nubes")
+                
+                search_params = {
+                    'collection': DataCollection.SENTINEL2_L2A,
+                    'bbox': bbox,
+                    'time': (fecha_inicio_str, fecha_fin_str),
+                    'fields': ["id", "properties.datetime", "properties.eo:cloud_cover"],
+                    'limit': 30
+                }
+                
+                if filtro:
+                    search_params['filter'] = filtro
+                
+                search_iterator = catalog.search(**search_params)
+                escenas_lote = list(search_iterator)
+                
+                if escenas_lote:
+                    st.info(f"✅ Encontradas {len(escenas_lote)} escenas con filtro: {filtro if filtro else 'ninguno'}")
+                    escenas_encontradas.extend(escenas_lote)
+                    break  # Detener en el primer intento exitoso
+                    
+            except Exception as e:
+                st.warning(f"⚠️ Intento con filtro '{filtro}' falló: {str(e)[:100]}")
+                continue
+        
+        if not escenas_encontradas:
+            st.warning("⚠️ No se encontraron escenas con ningún filtro")
+            return None
+        
+        # Eliminar duplicados por ID
+        escenas_unicas = {}
+        for escena in escenas_encontradas:
+            escena_id = escena['id']
+            if escena_id not in escenas_unicas:
+                escenas_unicas[escena_id] = escena
+            elif escena['properties'].get('eo:cloud_cover', 100) < escenas_unicas[escena_id]['properties'].get('eo:cloud_cover', 100):
+                escenas_unicas[escena_id] = escena
+        
+        escenas = list(escenas_unicas.values())
+        
+        # Ordenar por cobertura de nubes (menos nubes primero)
+        escenas_ordenadas = sorted(
+            escenas, 
+            key=lambda x: x['properties'].get('eo:cloud_cover', 100)
+        )
+        
+        # Seleccionar la mejor (menos nubes)
+        escena_seleccionada = escenas_ordenadas[0]
+        
+        # Extraer información
+        fecha = escena_seleccionada['properties']['datetime']
+        if isinstance(fecha, str):
+            fecha_str = fecha[:10]
+        else:
+            fecha_str = fecha.strftime('%Y-%m-%d') if hasattr(fecha, 'strftime') else fecha_inicio_str
+        
+        nubes = escena_seleccionada['properties'].get('eo:cloud_cover', 0)
+        
+        st.success(f"✅ Escena encontrada: {fecha_str} (nubes: {nubes:.1f}%)")
+        st.info(f"📊 Total de escenas únicas encontradas: {len(escenas)}")
+        
+        # Mostrar las 3 mejores opciones
+        st.info("🏆 Mejores escenas encontradas:")
+        for i, escena in enumerate(escenas_ordenadas[:3]):
+            fecha_esc = escena['properties']['datetime']
+            if isinstance(fecha_esc, str):
+                fecha_str_esc = fecha_esc[:10]
+            else:
+                fecha_str_esc = fecha_esc.strftime('%Y-%m-%d') if hasattr(fecha_esc, 'strftime') else "Fecha desconocida"
+            
+            nubes_esc = escena['properties'].get('eo:cloud_cover', 0)
+            st.info(f"  {i+1}. {fecha_str_esc} - {nubes_esc:.1f}% nubes")
+        
+        return {
+            'id': escena_seleccionada['id'],
+            'fecha': fecha_str,
+            'nubes': nubes,
+            'bbox': bbox,
+            'bounds': bounds,
+            'total_escenas': len(escenas),
+            'mejores_escenas': escenas_ordenadas[:5]
+        }
+        
+    except Exception as e:
+        st.error(f"❌ Error en búsqueda alternativa: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
+        return None
+
+
+# ===== FUNCIÓN PARA VERIFICAR DISPONIBILIDAD DE DATOS =====
+def verificar_disponibilidad_sentinel2(gdf, fecha_inicio, fecha_fin, config):
+    """Verifica la disponibilidad de datos Sentinel-2 para la parcela"""
+    try:
+        st.info("🔍 Verificando disponibilidad de datos Sentinel-2...")
+        
+        # Convertir a WGS84
+        gdf_wgs84 = gdf.to_crs('EPSG:4326')
+        bounds = gdf_wgs84.total_bounds
+        min_lon, min_lat, max_lon, max_lat = bounds
+        
+        # Crear catálogo
+        catalog = SentinelHubCatalog(config=config)
+        
+        # Crear BBox
+        bbox = BBox(bbox=[min_lon, min_lat, max_lon, max_lat], crs=CRS.WGS84)
+        
+        # Buscar sin filtro primero para ver qué hay disponible
+        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
+        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
+        
+        try:
+            search_iterator = catalog.search(
+                collection=DataCollection.SENTINEL2_L2A,
+                bbox=bbox,
+                time=(fecha_inicio_str, fecha_fin_str),
+                fields=["id", "properties.datetime", "properties.eo:cloud_cover"],
+                limit=10
+            )
+            
+            escenas = list(search_iterator)
+            
+            if not escenas:
+                st.warning("❌ No hay datos Sentinel-2 disponibles para este período")
+                st.info(f"Período: {fecha_inicio_str} a {fecha_fin_str}")
+                return False
+            
+            # Mostrar información sobre las escenas encontradas
+            st.success(f"✅ Se encontraron {len(escenas)} escenas disponibles")
+            
+            for i, escena in enumerate(escenas[:3]):  # Mostrar solo las 3 primeras
+                fecha = escena['properties']['datetime']
+                if isinstance(fecha, str):
+                    fecha_str = fecha[:10]
+                else:
+                    fecha_str = fecha.strftime('%Y-%m-%d') if hasattr(fecha, 'strftime') else str(fecha)
+                
+                nubes = escena['properties'].get('eo:cloud_cover', 'Desconocido')
+                st.info(f"  {i+1}. {fecha_str} - Nubes: {nubes}%")
+            
+            return True
+            
+        except Exception as search_error:
+            st.error(f"❌ Error en búsqueda de disponibilidad: {str(search_error)}")
+            return False
+        
+    except Exception as e:
+        st.error(f"❌ Error verificando disponibilidad: {str(e)}")
+        return False
+
+
+# ===== FUNCIÓN PARA OBTENER METADATOS DE ESCENA =====
+def obtener_metadatos_escena(escena_id, config):
+    """Obtiene metadatos detallados de una escena específica"""
+    try:
+        catalog = SentinelHubCatalog(config=config)
+        
+        # Buscar escena por ID
+        escena = next(catalog.search(
+            collection=DataCollection.SENTINEL2_L2A,
+            filter=f"id = '{escena_id}'",
+            limit=1
+        ))
+        
+        if escena:
+            metadatos = {
+                'id': escena_id,
+                'fecha': escena['properties']['datetime'][:10] if isinstance(escena['properties']['datetime'], str) else escena['properties']['datetime'].strftime('%Y-%m-%d'),
+                'nubes': escena['properties'].get('eo:cloud_cover', 0),
+                'tile_id': escena['properties'].get('tile_id', 'Desconocido'),
+                'processing_baseline': escena['properties'].get('processing_baseline', 'Desconocido'),
+                'utm_zone': escena['properties'].get('utm_zone', 'Desconocido'),
+                'latitude_band': escena['properties'].get('latitude_band', 'Desconocido'),
+                'grid_square': escena['properties'].get('grid_square', 'Desconocido')
+            }
+            return metadatos
+        else:
+            st.warning(f"⚠️ No se encontraron metadatos para la escena {escena_id}")
+            return None
+            
+    except Exception as e:
+        st.error(f"❌ Error obteniendo metadatos: {str(e)}")
+        return None
+
+
+# ===== FUNCIÓN PARA OBTENER LISTA DE ESCENAS DISPONIBLES =====
+def obtener_lista_escenas(gdf, fecha_inicio, fecha_fin, config, max_resultados=20):
+    """Obtiene una lista de todas las escenas disponibles con sus metadatos"""
+    try:
+        # Obtener bounding box
+        gdf_wgs84 = gdf.to_crs('EPSG:4326')
+        bounds = gdf_wgs84.total_bounds
+        min_lon, min_lat, max_lon, max_lat = bounds
+        
+        bbox = BBox(bbox=[min_lon, min_lat, max_lon, max_lat], crs=CRS.WGS84)
+        
+        # Crear catálogo
+        catalog = SentinelHubCatalog(config=config)
+        
+        # Formatear fechas
+        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
+        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
+        
+        # Buscar escenas
+        search_iterator = catalog.search(
+            collection=DataCollection.SENTINEL2_L2A,
+            bbox=bbox,
+            time=(fecha_inicio_str, fecha_fin_str),
+            fields=["id", "properties.datetime", "properties.eo:cloud_cover", 
+                   "properties.tile_id", "properties.processing_baseline"],
+            filter="eo:cloud_cover < 100",  # Todas las escenas con datos de nubes
+            limit=max_resultados
+        )
+        
+        escenas = list(search_iterator)
+        
+        if not escenas:
+            return []
+        
+        # Procesar y ordenar escenas
+        lista_escenas = []
+        for escena in escenas:
+            fecha = escena['properties']['datetime']
+            if isinstance(fecha, str):
+                fecha_str = fecha[:10]
+            else:
+                fecha_str = fecha.strftime('%Y-%m-%d') if hasattr(fecha, 'strftime') else "Desconocida"
+            
+            lista_escenas.append({
+                'id': escena['id'],
+                'fecha': fecha_str,
+                'nubes': escena['properties'].get('eo:cloud_cover', 0),
+                'tile_id': escena['properties'].get('tile_id', 'Desconocido'),
+                'seleccionada': False
+            })
+        
+        # Ordenar por fecha (más reciente primero) y luego por nubes
+        lista_escenas.sort(key=lambda x: (x['fecha'], x['nubes']), reverse=True)
+        
+        return lista_escenas
+        
+    except Exception as e:
+        st.error(f"❌ Error obteniendo lista de escenas: {str(e)}")
+        return []
 # ===== FUNCIÓN PARA CALCULAR ÍNDICES CON SENTINEL HUB =====
 def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', config=None):
     """Calcula índices de vegetación usando Sentinel Hub Process API"""
