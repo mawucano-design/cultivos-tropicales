@@ -42,7 +42,7 @@ def configurar_sentinel_hub():
     config = SHConfig()
     
     # Tus credenciales (reemplaza con tus valores reales)
-    config.sh_client_id = "358474d6-2326-4637-bf8e-30a709b2d6a6
+    config.sh_client_id = "358474d6-2326-4637-bf8e-30a709b2d6a6"
     config.sh_client_secret = "b296cf70-c9d2-4e69-91f4-f7be80b99ed1"
     config.instance_id = "PLAK81593ed161694ad48faa8065411d2539"
     
