@@ -2737,36 +2737,21 @@ if uploaded_file:
                     buf_vista = io.BytesIO()
                     plt.savefig(buf_vista, format='png', dpi=150, bbox_inches='tight')
                     buf_vista.seek(0)
-                    crear_boton_descarga_png(
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**📊 INFORMACIÓN DE LA PARCELA:**")
-                    st.write(f"- Polígonos: {len(gdf)}")
-                    st.write(f"- Área total: {area_total:.1f} ha")
-                    st.write(f"- CRS: {gdf.crs}")
-                    st.write(f"- Formato: {uploaded_file.name.split('.')[-1].upper()}")
                     
-                    fig, ax = plt.subplots(figsize=(8, 6))
-                    gdf.plot(ax=ax, color='lightgreen', edgecolor='darkgreen', alpha=0.7)
-                    ax.set_title(f"Parcela: {uploaded_file.name}")
-                    ax.set_xlabel("Longitud")
-                    ax.set_ylabel("Latitud")
-                    ax.grid(True, alpha=0.3)
-                    st.pyplot(fig)
-                    
-                    buf_vista = io.BytesIO()
-                    plt.savefig(buf_vista, format='png', dpi=150, bbox_inches='tight')
-                    buf_vista.seek(0)
-                    crear_boton_descarga_png(
-                        buf_vista,
-                        f"vista_previa_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
-                        "📥 Descargar Vista Previa PNG"
-                    )
+                    # Botón de descarga corregido
+                    if buf_vista:
+                        st.download_button(
+                            label="📥 Descargar Vista Previa PNG",
+                            data=buf_vista,
+                            file_name=f"vista_previa_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                            mime="image/png"
+                        )
                 
                 with col2:
                     st.write("**🎯 CONFIGURACIÓN**")
                     st.write(f"- Cultivo: {ICONOS_CULTIVOS[cultivo]} {cultivo}")
-                    st.write(f"- Variedad: {st.session_state.variedad_seleccionada}")
+                    # Nota: variedad_seleccionada no está definida en el código anterior
+                    # st.write(f"- Variedad: {st.session_state.variedad_seleccionada}")
                     st.write(f"- Zonas: {n_divisiones}")
                     st.write(f"- Satélite: {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}")
                     st.write(f"- Período: {fecha_inicio} a {fecha_fin}")
