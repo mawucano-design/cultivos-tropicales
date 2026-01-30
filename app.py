@@ -7,7 +7,7 @@ import os
 import zipfile
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-from matplotlib.tri import Triangulation
+from matplotlib.tri import Triangulation, TriInterpolator  # ✅ CORREGIDO: Import directo
 import matplotlib.patches as mpatches
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from mpl_toolkits.mplot3d import Axes3D
@@ -1056,9 +1056,9 @@ def analizar_proyecciones_cosecha(gdf_dividido, cultivo, indices):
     
     return proyecciones
 
-# ===== FUNCIONES DE VISUALIZACIÓN COMPLETAS =====
+# ===== FUNCIONES DE VISUALIZACIÓN CORREGIDAS =====
 def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
-    """Crear mapa de fertilidad actual con mapa de calor"""
+    """Crear mapa de fertilidad actual con mapa de calor - CORREGIDO"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
         fig, ax = plt.subplots(1, 1, figsize=(12, 8))
@@ -1083,9 +1083,9 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
         yi = np.linspace(y_min, y_max, 200)
         Xi, Yi = np.meshgrid(xi, yi)
         
-        # Interpolación usando Triangulation
+        # Interpolación usando Triangulation - ✅ CORREGIDO
         triang = Triangulation(puntos[:, 0], puntos[:, 1])
-        interpolator = plt.tri.TriInterpolator(triang, valores)
+        interpolator = TriInterpolator(triang, valores)  # ✅ USO CORRECTO DE TriInterpolator
         Zi = interpolator(Xi, Yi)
         
         # Plot mapa de calor
@@ -1127,10 +1127,12 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
         return buf
     except Exception as e:
         st.error(f"❌ Error creando mapa de fertilidad: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
 def crear_mapa_npk_completo(gdf_completo, cultivo, nutriente='N'):
-    """Crear mapa de recomendaciones NPK con mapa de calor"""
+    """Crear mapa de recomendaciones NPK con mapa de calor - CORREGIDO"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
         fig, ax = plt.subplots(1, 1, figsize=(12, 8))
@@ -1171,9 +1173,9 @@ def crear_mapa_npk_completo(gdf_completo, cultivo, nutriente='N'):
         yi = np.linspace(y_min, y_max, 200)
         Xi, Yi = np.meshgrid(xi, yi)
         
-        # Interpolación
+        # Interpolación - ✅ CORREGIDO
         triang = Triangulation(puntos[:, 0], puntos[:, 1])
-        interpolator = plt.tri.TriInterpolator(triang, valores)
+        interpolator = TriInterpolator(triang, valores)  # ✅ USO CORRECTO
         Zi = interpolator(Xi, Yi)
         
         # Plot mapa de calor
@@ -1214,6 +1216,8 @@ def crear_mapa_npk_completo(gdf_completo, cultivo, nutriente='N'):
         return buf
     except Exception as e:
         st.error(f"❌ Error creando mapa NPK: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
 def crear_mapa_pendientes_completo(X, Y, pendientes, gdf_original):
@@ -1234,7 +1238,7 @@ def crear_mapa_pendientes_completo(X, Y, pendientes, gdf_original):
         
         # Interpolación
         triang = Triangulation(X_flat, Y_flat)
-        interpolator = plt.tri.TriInterpolator(triang, pend_flat)
+        interpolator = TriInterpolator(triang, pend_flat)  # ✅ USO CORRECTO
         Zi = interpolator(Xi, Yi)
         
         # Plot mapa de calor de pendientes
@@ -1276,6 +1280,8 @@ def crear_mapa_pendientes_completo(X, Y, pendientes, gdf_original):
         return buf, stats
     except Exception as e:
         st.error(f"❌ Error creando mapa de pendientes: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None, {}
 
 def crear_mapa_curvas_nivel_completo(X, Y, Z, curvas_nivel, elevaciones, gdf_original):
@@ -1319,6 +1325,8 @@ def crear_mapa_curvas_nivel_completo(X, Y, Z, curvas_nivel, elevaciones, gdf_ori
         return buf
     except Exception as e:
         st.error(f"❌ Error creando mapa de curvas de nivel: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
 def crear_visualizacion_3d_completa(X, Y, Z):
@@ -1359,10 +1367,12 @@ def crear_visualizacion_3d_completa(X, Y, Z):
         return buf
     except Exception as e:
         st.error(f"❌ Error creando visualización 3D: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
 def crear_mapa_potencial_cosecha(gdf_completo, cultivo, variedad):
-    """Crear mapa de potencial de cosecha con mapa de calor"""
+    """Crear mapa de potencial de cosecha con mapa de calor - CORREGIDO"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
@@ -1389,9 +1399,9 @@ def crear_mapa_potencial_cosecha(gdf_completo, cultivo, variedad):
         yi = np.linspace(y_min, y_max, 200)
         Xi, Yi = np.meshgrid(xi, yi)
         
-        # Interpolación
+        # Interpolación - ✅ CORREGIDO
         triang = Triangulation(puntos[:, 0], puntos[:, 1])
-        interpolator = plt.tri.TriInterpolator(triang, valores)
+        interpolator = TriInterpolator(triang, valores)  # ✅ USO CORRECTO
         Zi = interpolator(Xi, Yi)
         
         # Plot mapa de calor
@@ -1425,8 +1435,8 @@ def crear_mapa_potencial_cosecha(gdf_completo, cultivo, variedad):
         
         valores_fert = np.array(valores_fert)
         
-        # Interpolación
-        interpolator_fert = plt.tri.TriInterpolator(triang, valores_fert)
+        # Interpolación - ✅ CORREGIDO
+        interpolator_fert = TriInterpolator(triang, valores_fert)  # ✅ USO CORRECTO
         Zi_fert = interpolator_fert(Xi, Yi)
         
         # Plot mapa de calor
@@ -1457,6 +1467,8 @@ def crear_mapa_potencial_cosecha(gdf_completo, cultivo, variedad):
         return buf
     except Exception as e:
         st.error(f"❌ Error creando mapa de potencial de cosecha: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
 # ===== FUNCIONES DE EXPORTACIÓN COMPLETAS =====
