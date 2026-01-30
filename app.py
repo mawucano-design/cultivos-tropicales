@@ -27,81 +27,32 @@ import geojson
 import requests
 import contextily as ctx
 
-# Importar Sentinel Hub si está disponible
-try:
-    from sentinelhub import SHConfig, SentinelHubRequest, DataCollection, \
-        MimeType, BBox, CRS, bbox_to_dimensions, Geometry
-    SENTINEL_HUB_AVAILABLE = True
-except ImportError:
-    SENTINEL_HUB_AVAILABLE = False
-    st.warning("⚠️ Sentinel Hub no está instalado. Para usar datos satelitales reales, instala con: pip install sentinelhub")
-
-warnings.filterwarnings('ignore')
-
-# === INICIALIZACIÓN DE VARIABLES DE SESIÓN ===
-if 'reporte_completo' not in st.session_state:
-    st.session_state.reporte_completo = None
-if 'geojson_data' not in st.session_state:
-    st.session_state.geojson_data = None
-if 'nombre_geojson' not in st.session_state:
-    st.session_state.nombre_geojson = ""
-if 'nombre_reporte' not in st.session_state:
-    st.session_state.nombre_reporte = ""
-if 'resultados_todos' not in st.session_state:
-    st.session_state.resultados_todos = {}
-if 'analisis_completado' not in st.session_state:
-    st.session_state.analisis_completado = False
-if 'mapas_generados' not in st.session_state:
-    st.session_state.mapas_generados = {}
-if 'dem_data' not in st.session_state:
-    st.session_state.dem_data = {}
-if 'sh_config' not in st.session_state:
-    st.session_state.sh_config = None
-if 'sentinel_authenticated' not in st.session_state:
-    st.session_state.sentinel_authenticated = False
-if 'sh_client_id' not in st.session_state:
-    st.session_state.sh_client_id = ''
-if 'sh_client_secret' not in st.session_state:
-    st.session_state.sh_client_secret = ''
-if 'sh_instance_id' not in st.session_state:
-    st.session_state.sh_instance_id = ''
-
-# Cargar credenciales de Sentinel Hub desde secrets si están disponibles
-if SENTINEL_HUB_AVAILABLE:
+# ===== CONFIGURACIÓN DE SENTINEL HUB (CREDENCIALES INCLUIDAS) =====
+def configurar_sentinel_hub_predefinido():
+    """Configurar Sentinel Hub con credenciales predefinidas"""
+    if not SENTINEL_HUB_AVAILABLE:
+        return None
+    
     try:
-        # Intentar cargar desde secrets.toml
-        if 'sentinel_hub' in st.secrets:
-            sh_secrets = st.secrets['sentinel_hub']
-            client_id = sh_secrets.get('client_id')
-            client_secret = sh_secrets.get('client_secret')
-            instance_id = sh_secrets.get('instance_id')
-            
-            if client_id and client_secret and instance_id:
-                # Guardar en session_state para mostrar
-                st.session_state.sh_client_id = client_id
-                st.session_state.sh_client_secret = client_secret
-                st.session_state.sh_instance_id = instance_id
-                
-                # Configurar si no está ya configurado
-                if not st.session_state.sentinel_authenticated:
-                    def configurar_sentinel_desde_secrets():
-                        config = configurar_sentinel_hub(client_id, client_secret, instance_id)
-                        if config:
-                            autenticado = verificar_autenticacion_sentinel_hub(config)
-                            if autenticado:
-                                st.session_state.sh_config = config
-                                st.session_state.sentinel_authenticated = True
-                                return True
-                        return False
-                    
-                    # Ejecutar en background sin bloquear
-                    import threading
-                    thread = threading.Thread(target=configurar_sentinel_desde_secrets)
-                    thread.start()
+        config = SHConfig()
+        
+        # ⚠️ ⚠️ ⚠️ ADVERTENCIA: NO COMPARTAS ESTE CÓDIGO CON TUS CREDENCIALES ⚠️ ⚠️ ⚠️
+        # ⚠️ Reemplaza estos valores con tus credenciales reales de Sentinel Hub
+        config.sh_client_id = "358474d6-2326-4637-bf8e-30a709b2d6a6"
+        config.sh_client_secret = "b296cf70-c9d2-4e69-91f4-f7be80b99ed1"
+        config.instance_id = "PLAK81593ed161694ad48faa8065411d2539"
+        
+        # Verificar que las credenciales no sean las de ejemplo
+        if (config.sh_client_id == 'TU_CLIENT_ID_AQUI' or 
+            config.sh_client_secret == 'TU_CLIENT_SECRET_AQUI' or
+            config.instance_id == 'TU_INSTANCE_ID_AQUI'):
+            st.warning("⚠️ Credenciales de Sentinel Hub no configuradas. Usa tus credenciales reales.")
+            return None
+        
+        return config
     except Exception as e:
-        # Silenciar error si no hay secrets
-        pass
-
+        st.error(f"❌ Error configurando Sentinel Hub: {str(e)}")
+        return None
 # === ESTILOS PERSONALIZADOS - VERSIÓN PREMIUM MODERNA ===
 st.markdown("""
 <style>
