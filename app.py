@@ -57,10 +57,21 @@ def configurar_sentinel_hub():
 def buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config):
     """Busca escenas de Sentinel-2 disponibles en el rango temporal"""
     try:
-        # Obtener bounding box de la parcela
+        # Obtener bounding box de la parcela en WGS84
         gdf_wgs84 = gdf.to_crs('EPSG:4326')
         bounds = gdf_wgs84.total_bounds
-        bbox = BBox(bbox=bounds, crs=CRS.WGS84)
+        
+        # Verificar que el bounding box sea válido
+        min_lon, min_lat, max_lon, max_lat = bounds
+        
+        # Asegurarse de que las coordenadas estén en el rango correcto
+        if min_lon < -180 or max_lon > 180 or min_lat < -90 or max_lat > 90:
+            st.warning("⚠️ Coordenadas fuera del rango válido para WGS84")
+            st.info(f"Bounds: {bounds}")
+            return None
+        
+        # Crear BBox con el formato correcto
+        bbox = BBox(bbox=[min_lon, min_lat, max_lon, max_lat], crs=CRS.WGS84)
         
         # Configurar catálogo
         catalog = SentinelHubCatalog(config=config)
@@ -94,26 +105,46 @@ def buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config):
         
     except Exception as e:
         st.error(f"❌ Error buscando escenas Sentinel-2: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None
-
 # ===== FUNCIÓN PARA CALCULAR ÍNDICES CON SENTINEL HUB =====
 def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', config=None):
     """Calcula índices de vegetación usando Sentinel Hub Process API"""
     try:
+        st.info(f"🔍 Iniciando cálculo de índice {indice}...")
+        
         if config is None:
             config = configurar_sentinel_hub()
             if config is None:
+                st.error("❌ No se pudo configurar Sentinel Hub")
                 return None
         
         # Buscar escena disponible
         escena = buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config)
         if escena is None:
+            st.warning(f"⚠️ No se encontraron escenas válidas para el período {fecha_inicio} a {fecha_fin}")
             return None
         
         bbox = escena['bbox']
+        st.info(f"🔍 BBox utilizado: {bbox}")
         
-        # Definir resolución (10m para Sentinel-2)
-        size = bbox_to_dimensions(bbox, resolution=10)
+        try:
+            # Definir resolución (10m para Sentinel-2)
+            size = bbox_to_dimensions(bbox, resolution=10)
+            st.info(f"🔍 Tamaño de imagen: {size}")
+            
+            # Asegurar tamaño mínimo de 1x1 píxeles
+            if size[0] < 1 or size[1] < 1:
+                st.warning("⚠️ El área es muy pequeña. Ajustando resolución...")
+                size = bbox_to_dimensions(bbox, resolution=5)
+                st.info(f"🔍 Nuevo tamaño: {size}")
+        
+        except Exception as size_error:
+            st.error(f"❌ Error calculando dimensiones: {str(size_error)}")
+            # Usar tamaño por defecto si falla el cálculo
+            size = (100, 100)
+            st.info(f"🔍 Usando tamaño por defecto: {size}")
         
         # Evalscript para calcular índices
         if indice == 'NDVI':
@@ -121,12 +152,20 @@ def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', confi
                 //VERSION=3
                 function setup() {
                     return {
-                        input: ["B04", "B08"],
+                        input: ["B04", "B08", "dataMask"],
                         output: { bands: 1, sampleType: "FLOAT32" }
                     };
                 }
                 function evaluatePixel(sample) {
+                    // Solo calcular si hay datos válidos
+                    if (sample.dataMask == 0) {
+                        return [NaN];
+                    }
                     let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
+                    // Validar rango de NDVI
+                    if (ndvi < -1 || ndvi > 1) {
+                        return [NaN];
+                    }
                     return [ndvi];
                 }
             """
@@ -135,12 +174,18 @@ def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', confi
                 //VERSION=3
                 function setup() {
                     return {
-                        input: ["B05", "B08"],
+                        input: ["B05", "B08", "dataMask"],
                         output: { bands: 1, sampleType: "FLOAT32" }
                     };
                 }
                 function evaluatePixel(sample) {
+                    if (sample.dataMask == 0) {
+                        return [NaN];
+                    }
                     let ndre = (sample.B08 - sample.B05) / (sample.B08 + sample.B05);
+                    if (ndre < -1 || ndre > 1) {
+                        return [NaN];
+                    }
                     return [ndre];
                 }
             """
@@ -149,12 +194,18 @@ def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', confi
                 //VERSION=3
                 function setup() {
                     return {
-                        input: ["B03", "B08"],
+                        input: ["B03", "B08", "dataMask"],
                         output: { bands: 1, sampleType: "FLOAT32" }
                     };
                 }
                 function evaluatePixel(sample) {
+                    if (sample.dataMask == 0) {
+                        return [NaN];
+                    }
                     let gndvi = (sample.B08 - sample.B03) / (sample.B08 + sample.B03);
+                    if (gndvi < -1 || gndvi > 1) {
+                        return [NaN];
+                    }
                     return [gndvi];
                 }
             """
@@ -163,13 +214,19 @@ def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', confi
                 //VERSION=3
                 function setup() {
                     return {
-                        input: ["B02", "B04", "B08"],
+                        input: ["B02", "B04", "B08", "dataMask"],
                         output: { bands: 1, sampleType: "FLOAT32" }
                     };
                 }
                 function evaluatePixel(sample) {
+                    if (sample.dataMask == 0) {
+                        return [NaN];
+                    }
                     let evi = 2.5 * (sample.B08 - sample.B04) / 
                               (sample.B08 + 6 * sample.B04 - 7.5 * sample.B02 + 1);
+                    if (evi < -1 || evi > 1) {
+                        return [NaN];
+                    }
                     return [evi];
                 }
             """
@@ -178,13 +235,19 @@ def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', confi
                 //VERSION=3
                 function setup() {
                     return {
-                        input: ["B04", "B08"],
+                        input: ["B04", "B08", "dataMask"],
                         output: { bands: 1, sampleType: "FLOAT32" }
                     };
                 }
                 function evaluatePixel(sample) {
+                    if (sample.dataMask == 0) {
+                        return [NaN];
+                    }
                     let L = 0.5;
                     let savi = ((sample.B08 - sample.B04) / (sample.B08 + sample.B04 + L)) * (1 + L);
+                    if (savi < -1 || savi > 1) {
+                        return [NaN];
+                    }
                     return [savi];
                 }
             """
@@ -194,12 +257,18 @@ def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', confi
                 //VERSION=3
                 function setup() {
                     return {
-                        input: ["B04", "B08"],
+                        input: ["B04", "B08", "dataMask"],
                         output: { bands: 1, sampleType: "FLOAT32" }
                     };
                 }
                 function evaluatePixel(sample) {
+                    if (sample.dataMask == 0) {
+                        return [NaN];
+                    }
                     let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
+                    if (ndvi < -1 || ndvi > 1) {
+                        return [NaN];
+                    }
                     return [ndvi];
                 }
             """
@@ -222,22 +291,42 @@ def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', confi
             config=config
         )
         
-        # Descargar datos
+        # Descargar datos con timeout
+        import time
+        start_time = time.time()
+        timeout = 120  # 2 minutos
+        
         with st.spinner(f"🛰️ Descargando datos Sentinel-2 para {indice}..."):
-            img_data = request.get_data()
+            try:
+                img_data = request.get_data()
+                
+                if time.time() - start_time > timeout:
+                    st.warning("⚠️ La descarga tomó más tiempo del esperado")
+                
+            except Exception as download_error:
+                st.error(f"❌ Error en la descarga: {str(download_error)}")
+                return None
         
         if not img_data or len(img_data) == 0:
-            st.error("❌ No se pudieron descargar los datos")
+            st.error("❌ No se recibieron datos del servidor")
             return None
         
         # Procesar imagen
         img_array = img_data[0]
+        st.info(f"🔍 Dimensiones de la imagen: {img_array.shape}")
         
         # Calcular estadísticas (ignorar valores NaN y fuera de rango)
-        valid_values = img_array[~np.isnan(img_array) & (img_array != 0)]
+        valid_mask = ~np.isnan(img_array) & (img_array != 0)
+        valid_values = img_array[valid_mask]
+        
+        st.info(f"🔍 Valores válidos encontrados: {len(valid_values)} de {img_array.size} píxeles")
         
         if len(valid_values) == 0:
             st.warning("⚠️ No se encontraron valores válidos en la imagen")
+            # Mostrar estadísticas de NaN
+            nan_count = np.sum(np.isnan(img_array))
+            zero_count = np.sum(img_array == 0)
+            st.info(f"🔍 NaN: {nan_count}, Ceros: {zero_count}")
             return None
         
         # Calcular estadísticas
@@ -246,69 +335,117 @@ def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', confi
         valor_max = np.max(valid_values)
         valor_std = np.std(valid_values)
         
+        # Información adicional
+        percentiles = {
+            'p10': np.percentile(valid_values, 10),
+            'p25': np.percentile(valid_values, 25),
+            'p50': np.percentile(valid_values, 50),
+            'p75': np.percentile(valid_values, 75),
+            'p90': np.percentile(valid_values, 90)
+        }
+        
+        st.success(f"✅ {indice} calculado exitosamente")
+        st.info(f"""
+        📊 Estadísticas de {indice}:
+        • Promedio: {valor_promedio:.3f}
+        • Mínimo: {valor_min:.3f}
+        • Máximo: {valor_max:.3f}
+        • Desviación: {valor_std:.3f}
+        • Percentil 50: {percentiles['p50']:.3f}
+        """)
+        
         return {
             'indice': indice,
             'valor_promedio': float(valor_promedio),
             'valor_min': float(valor_min),
             'valor_max': float(valor_max),
             'valor_std': float(valor_std),
+            'percentiles': percentiles,
             'fuente': 'Sentinel-2 (Sentinel Hub)',
             'fecha': escena['fecha'],
             'id_escena': escena['id'],
             'cobertura_nubes': f"{escena['nubes']:.1f}%",
             'resolucion': '10m',
-            'bounds': escena['bounds']
+            'bounds': escena['bounds'],
+            'n_pixeles_validos': int(len(valid_values)),
+            'tamano_imagen': size,
+            'bbox': bbox
         }
         
     except Exception as e:
         st.error(f"❌ Error procesando Sentinel-2 con Sentinel Hub: {str(e)}")
         import traceback
-        st.error(f"Detalle: {traceback.format_exc()}")
+        error_details = traceback.format_exc()
+        st.error(f"🔍 Detalle del error:\n```\n{error_details[:500]}...\n```")
         return None
 
-# ===== FUNCIÓN PARA OBTENER MULTIPLES ÍNDICES =====
+
+# ===== FUNCIÓN PARA OBTENER MÚLTIPLES ÍNDICES =====
 def obtener_multiples_indices_sentinel2(gdf, fecha_inicio, fecha_fin, indices=['NDVI', 'NDRE'], config=None):
     """Obtiene múltiples índices de vegetación en una sola llamada"""
     try:
+        st.info(f"🔍 Iniciando obtención de múltiples índices: {', '.join(indices)}")
+        
         if config is None:
             config = configurar_sentinel_hub()
             if config is None:
+                st.error("❌ No se pudo configurar Sentinel Hub")
                 return None
         
         # Buscar escena
         escena = buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config)
         if escena is None:
+            st.warning("⚠️ No se encontró escena válida")
             return None
         
         bbox = escena['bbox']
-        size = bbox_to_dimensions(bbox, resolution=10)
+        
+        try:
+            # Definir resolución
+            size = bbox_to_dimensions(bbox, resolution=10)
+            # Asegurar tamaño mínimo
+            size = (max(1, size[0]), max(1, size[1]))
+            st.info(f"🔍 Tamaño de imagen: {size}")
+        except Exception as e:
+            st.error(f"❌ Error calculando dimensiones: {str(e)}")
+            size = (100, 100)
         
         # Crear evalscript para múltiples índices
         evalscript = """
             //VERSION=3
             function setup() {
                 return {
-                    input: ["B02", "B03", "B04", "B05", "B08"],
+                    input: ["B02", "B03", "B04", "B05", "B08", "dataMask"],
                     output: { bands: 5, sampleType: "FLOAT32" }
                 };
             }
             function evaluatePixel(sample) {
+                // Solo procesar si hay datos válidos
+                if (sample.dataMask == 0) {
+                    return [NaN, NaN, NaN, NaN, NaN];
+                }
+                
                 // NDVI
                 let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
+                if (ndvi < -1 || ndvi > 1) ndvi = NaN;
                 
                 // NDRE
                 let ndre = (sample.B08 - sample.B05) / (sample.B08 + sample.B05);
+                if (ndre < -1 || ndre > 1) ndre = NaN;
                 
                 // GNDVI
                 let gndvi = (sample.B08 - sample.B03) / (sample.B08 + sample.B03);
+                if (gndvi < -1 || gndvi > 1) gndvi = NaN;
                 
                 // EVI
                 let evi = 2.5 * (sample.B08 - sample.B04) / 
                           (sample.B08 + 6 * sample.B04 - 7.5 * sample.B02 + 1);
+                if (evi < -1 || evi > 1) evi = NaN;
                 
                 // SAVI
                 let L = 0.5;
                 let savi = ((sample.B08 - sample.B04) / (sample.B08 + sample.B04 + L)) * (1 + L);
+                if (savi < -1 || savi > 1) savi = NaN;
                 
                 return [ndvi, ndre, gndvi, evi, savi];
             }
@@ -332,14 +469,25 @@ def obtener_multiples_indices_sentinel2(gdf, fecha_inicio, fecha_fin, indices=['
             config=config
         )
         
-        # Descargar
+        # Descargar con manejo de tiempo
+        import time
+        start_time = time.time()
+        
         with st.spinner("🛰️ Descargando múltiples índices de Sentinel-2..."):
-            img_data = request.get_data()
+            try:
+                img_data = request.get_data()
+                download_time = time.time() - start_time
+                st.info(f"🔍 Descarga completada en {download_time:.1f} segundos")
+            except Exception as e:
+                st.error(f"❌ Error en la descarga: {str(e)}")
+                return None
         
         if not img_data or len(img_data) == 0:
+            st.error("❌ No se recibieron datos")
             return None
         
         img_array = img_data[0]
+        st.info(f"🔍 Dimensiones de imagen multibanda: {img_array.shape}")
         
         # Mapear índices a sus posiciones
         indices_map = {
@@ -368,19 +516,33 @@ def obtener_multiples_indices_sentinel2(gdf, fecha_inicio, fecha_fin, indices=['
                         'fecha': escena['fecha'],
                         'id_escena': escena['id'],
                         'cobertura_nubes': f"{escena['nubes']:.1f}%",
-                        'resolucion': '10m'
+                        'resolucion': '10m',
+                        'n_pixeles_validos': int(len(valid_values))
                     }
+                    st.success(f"✅ {idx_name} calculado: {np.mean(valid_values):.3f}")
+                else:
+                    st.warning(f"⚠️ No se encontraron valores válidos para {idx_name}")
+        
+        if resultados:
+            st.success(f"✅ {len(resultados)} índices calculados exitosamente")
+        else:
+            st.warning("⚠️ No se pudieron calcular índices válidos")
         
         return resultados
         
     except Exception as e:
         st.error(f"❌ Error obteniendo múltiples índices: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None
+
 
 # ===== FUNCIÓN PARA OBTENER IMAGEN RGB REAL =====
 def obtener_imagen_rgb_sentinel2(gdf, fecha_inicio, fecha_fin, config=None):
     """Obtiene imagen RGB natural de Sentinel-2"""
     try:
+        st.info("🔍 Solicitando imagen RGB de Sentinel-2...")
+        
         if config is None:
             config = configurar_sentinel_hub()
             if config is None:
@@ -392,19 +554,48 @@ def obtener_imagen_rgb_sentinel2(gdf, fecha_inicio, fecha_fin, config=None):
             return None
         
         bbox = escena['bbox']
-        size = bbox_to_dimensions(bbox, resolution=10)
         
-        # Evalscript para RGB natural
+        try:
+            # Usar resolución más baja para imágenes RGB (20m para mejor rendimiento)
+            size = bbox_to_dimensions(bbox, resolution=20)
+            size = (max(1, size[0]), max(1, size[1]))
+            st.info(f"🔍 Tamaño RGB: {size}")
+        except Exception as e:
+            st.error(f"❌ Error en tamaño RGB: {str(e)}")
+            size = (100, 100)
+        
+        # Evalscript para RGB natural mejorado
         evalscript_rgb = """
             //VERSION=3
             function setup() {
                 return {
-                    input: ["B04", "B03", "B02"],
+                    input: ["B04", "B03", "B02", "dataMask"],
                     output: { bands: 3 }
                 };
             }
             function evaluatePixel(sample) {
-                return [2.5*sample.B04, 2.5*sample.B03, 2.5*sample.B02];
+                // Solo procesar píxeles válidos
+                if (sample.dataMask == 0) {
+                    return [0, 0, 0];  // Negro para áreas sin datos
+                }
+                
+                // Ajuste de ganancia para mejor visualización
+                let gain = 2.5;
+                
+                // Corrección gamma para mejor contraste
+                let gamma = 0.8;
+                
+                // Aplicar corrección
+                let red = Math.pow(sample.B04 * gain, gamma);
+                let green = Math.pow(sample.B03 * gain, gamma);
+                let blue = Math.pow(sample.B02 * gain, gamma);
+                
+                // Normalizar a rango 0-255
+                red = Math.min(255, Math.max(0, red * 255));
+                green = Math.min(255, Math.max(0, green * 255));
+                blue = Math.min(255, Math.max(0, blue * 255));
+                
+                return [red, green, blue];
             }
         """
         
@@ -426,20 +617,33 @@ def obtener_imagen_rgb_sentinel2(gdf, fecha_inicio, fecha_fin, config=None):
         )
         
         with st.spinner("🛰️ Descargando imagen RGB de Sentinel-2..."):
-            img_data = request.get_data()
+            import time
+            start_time = time.time()
+            
+            try:
+                img_data = request.get_data()
+                st.info(f"🔍 RGB descargado en {time.time() - start_time:.1f}s")
+            except Exception as e:
+                st.error(f"❌ Error descargando RGB: {str(e)}")
+                return None
         
         if img_data and len(img_data) > 0:
+            st.success("✅ Imagen RGB descargada exitosamente")
             return {
                 'imagen': img_data[0],
                 'fecha': escena['fecha'],
                 'nubes': escena['nubes'],
-                'bounds': escena['bounds']
+                'bounds': escena['bounds'],
+                'size': size,
+                'bbox': bbox
             }
         
         return None
         
     except Exception as e:
         st.error(f"❌ Error obteniendo imagen RGB: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
 # ===== INICIALIZACIÓN DE VARIABLES DE SESIÓN =====
