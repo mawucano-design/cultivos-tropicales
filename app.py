@@ -36,6 +36,7 @@ except ImportError:
     SENTINEL_HUB_AVAILABLE = False
     st.warning("⚠️ Sentinel Hub no está instalado. Para usar datos satelitales reales, instala con: pip install sentinelhub")
 
+# === NO HAY INICIALIZACIÓN DE GEE NI ELEVATION ===
 warnings.filterwarnings('ignore')
 
 # === INICIALIZACIÓN DE VARIABLES DE SESIÓN ===
@@ -59,45 +60,6 @@ if 'sh_config' not in st.session_state:
     st.session_state.sh_config = None
 if 'sentinel_authenticated' not in st.session_state:
     st.session_state.sentinel_authenticated = False
-if 'sh_client_id' not in st.session_state:
-    st.session_state.sh_client_id = ''
-if 'sh_client_secret' not in st.session_state:
-    st.session_state.sh_client_secret = ''
-if 'sh_instance_id' not in st.session_state:
-    st.session_state.sh_instance_id = ''
-
-# === CONFIGURACIÓN DE SENTINEL HUB CON CREDENCIALES INCLUIDAS ===
-def configurar_sentinel_hub_predefinido():
-    """Configurar Sentinel Hub con credenciales incluidas en el código"""
-    if not SENTINEL_HUB_AVAILABLE:
-        return None
-    
-    try:
-        config = SHConfig()
-        
-        # ⚠️ ⚠️ ⚠️ IMPORTANTE: REEMPLAZA ESTAS CREDENCIALES CON LAS TUS ⚠️ ⚠️ ⚠️
-        # ⚠️ Obtén tus credenciales de: https://apps.sentinel-hub.com/dashboard/
-        
-        # Client ID de Sentinel Hub
-        config.sh_client_id = "358474d6-2326-4637-bf8e-30a709b2d6a6"
-        
-        # Client Secret de Sentinel Hub
-        config.sh_client_secret = "b296cf70-c9d2-4e69-91f4-f7be80b99ed1"
-        
-        # Instance ID de Sentinel Hub
-        config.instance_id = "PLAK81593ed161694ad48faa8065411d2539"
-        
-        # Verificar que las credenciales no sean las de ejemplo
-        if (config.sh_client_id == 'TU_CLIENT_ID_AQUI' or 
-            config.sh_client_secret == 'TU_CLIENT_SECRET_AQUI' or
-            config.instance_id == 'TU_INSTANCE_ID_AQUI'):
-            st.warning("⚠️ Credenciales de Sentinel Hub no configuradas. Usa tus credenciales reales.")
-            return None
-        
-        return config
-    except Exception as e:
-        st.error(f"❌ Error configurando Sentinel Hub: {str(e)}")
-        return None
 
 # === ESTILOS PERSONALIZADOS - VERSIÓN PREMIUM MODERNA ===
 st.markdown("""
@@ -817,27 +779,16 @@ def mostrar_info_cultivo(cultivo):
         """, unsafe_allow_html=True)
 
 # ===== FUNCIONES SENTINEL HUB =====
-def configurar_sentinel_hub(client_id=None, client_secret=None, instance_id=None):
-    """Configurar Sentinel Hub con credenciales (manual o automática)"""
+def configurar_sentinel_hub(client_id, client_secret, instance_id):
+    """Configurar Sentinel Hub con credenciales"""
     if not SENTINEL_HUB_AVAILABLE:
         return None
     
     try:
         config = SHConfig()
-        
-        # Si se proporcionan credenciales manualmente, usarlas
-        if client_id and client_secret and instance_id:
-            config.sh_client_id = client_id
-            config.sh_client_secret = client_secret
-            config.instance_id = instance_id
-        else:
-            # Usar las credenciales predefinidas
-            config_predefinido = configurar_sentinel_hub_predefinido()
-            if config_predefinido:
-                return config_predefinido
-            else:
-                return None
-                
+        config.sh_client_id = client_id
+        config.sh_client_secret = client_secret
+        config.instance_id = instance_id
         return config
     except Exception as e:
         st.error(f"❌ Error configurando Sentinel Hub: {str(e)}")
@@ -862,7 +813,7 @@ def verificar_autenticacion_sentinel_hub(config):
             };
         }
         function evaluatePixel(sample) {
-            return [2.5 * sample.B04, 2.5 * sample.B03, 2.5 * sample.B02];
+            return [sample.B04, sample.B03, sample.B02];
         }
         """
         
@@ -872,7 +823,6 @@ def verificar_autenticacion_sentinel_hub(config):
                 SentinelHubRequest.input_data(
                     data_collection=DataCollection.SENTINEL2_L2A,
                     time_interval=("2023-01-01", "2023-01-02"),
-                    maxcc=0.1  # Máximo 10% de nubes
                 )
             ],
             responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
@@ -882,21 +832,10 @@ def verificar_autenticacion_sentinel_hub(config):
         )
         
         # Intentar obtener datos (puede fallar si las credenciales son inválidas)
-        data = request.get_data()
-        
-        # Si llegamos aquí sin excepciones, la autenticación es exitosa
+        request.get_data(save_data=False)
         return True
     except Exception as e:
-        # Mostrar error más específico
-        error_msg = str(e)
-        if "401" in error_msg or "Unauthorized" in error_msg or "authentication" in error_msg.lower():
-            st.error("❌ Error de autenticación: Credenciales inválidas o expiradas")
-        elif "403" in error_msg or "Forbidden" in error_msg:
-            st.error("❌ Error de permisos: Verifica tu instance_id y permisos")
-        elif "404" in error_msg:
-            st.error("❌ Recurso no encontrado: Verifica tu configuración")
-        else:
-            st.error(f"❌ Error de conexión con Sentinel Hub: {error_msg[:200]}")
+        st.error(f"❌ Error de autenticación Sentinel Hub: {str(e)}")
         return False
 
 def obtener_datos_sentinel2_real(gdf, fecha_inicio, fecha_fin, config, indice='NDVI'):
@@ -1138,93 +1077,59 @@ with st.sidebar:
     else:
         variedad = "No especificada"
     
-    # Configuración Sentinel Hub - Versión simplificada
+    # Configuración Sentinel Hub
     if SENTINEL_HUB_AVAILABLE:
-        with st.expander("🔐 Configuración Sentinel Hub"):
+        with st.expander("🔐 Configuración Sentinel Hub (Opcional)"):
+            st.info("Para datos satelitales reales, ingresa tus credenciales de Sentinel Hub")
             
-            # Mostrar estado actual
-            if st.session_state.sentinel_authenticated:
-                st.success("✅ Sentinel Hub autenticado")
-                if st.button("🗑️ Limpiar autenticación", key="clear_sentinel_auth"):
+            sh_client_id = st.text_input("Client ID", 
+                                         value=st.session_state.get('sh_client_id', ''),
+                                         type="password")
+            sh_client_secret = st.text_input("Client Secret", 
+                                            value=st.session_state.get('sh_client_secret', ''),
+                                            type="password")
+            sh_instance_id = st.text_input("Instance ID", 
+                                          value=st.session_state.get('sh_instance_id', ''),
+                                          type="password")
+            
+            col_auth1, col_auth2 = st.columns(2)
+            with col_auth1:
+                if st.button("🔑 Autenticar"):
+                    if sh_client_id and sh_client_secret and sh_instance_id:
+                        with st.spinner("Autenticando con Sentinel Hub..."):
+                            config = configurar_sentinel_hub(sh_client_id, sh_client_secret, sh_instance_id)
+                            if config:
+                                autenticado = verificar_autenticacion_sentinel_hub(config)
+                                if autenticado:
+                                    st.session_state.sh_config = config
+                                    st.session_state.sentinel_authenticated = True
+                                    st.session_state.sh_client_id = sh_client_id
+                                    st.session_state.sh_client_secret = sh_client_secret
+                                    st.session_state.sh_instance_id = sh_instance_id
+                                    st.success("✅ Autenticación exitosa!")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Error de autenticación. Verifica tus credenciales.")
+                            else:
+                                st.error("❌ Error configurando Sentinel Hub")
+                    else:
+                        st.warning("⚠️ Por favor, completa todos los campos")
+            
+            with col_auth2:
+                if st.button("🗑️ Limpiar"):
                     st.session_state.sh_config = None
                     st.session_state.sentinel_authenticated = False
                     st.session_state.sh_client_id = ''
                     st.session_state.sh_client_secret = ''
                     st.session_state.sh_instance_id = ''
-                    st.success("Autenticación limpiada")
+                    st.success("Credenciales limpiadas")
                     st.rerun()
+            
+            # Mostrar estado de autenticación
+            if st.session_state.sentinel_authenticated:
+                st.success("✅ Sentinel Hub autenticado")
             else:
-                st.info("Credenciales configuradas en el código. Haz clic en 'Autenticar' para conectar.")
-                
-                # Botón para autenticar con credenciales predefinidas
-                if st.button("🔑 Autenticar con Credenciales Predefinidas", key="auth_predefined", type="primary"):
-                    with st.spinner("Autenticando con Sentinel Hub..."):
-                        config = configurar_sentinel_hub_predefinido()
-                        if config:
-                            autenticado = verificar_autenticacion_sentinel_hub(config)
-                            if autenticado:
-                                st.session_state.sh_config = config
-                                st.session_state.sentinel_authenticated = True
-                                st.success("✅ Autenticación exitosa!")
-                                st.rerun()
-                            else:
-                                st.error("❌ Error de autenticación. Verifica las credenciales en el código.")
-                        else:
-                            st.error("❌ Error configurando Sentinel Hub. Verifica las credenciales.")
-                
-                # Instrucciones para configurar credenciales
-                st.markdown("---")
-                st.markdown("**📝 Para configurar tus credenciales:**")
-                st.markdown("""
-                1. Ve a: https://apps.sentinel-hub.com/dashboard/
-                2. Crea una cuenta o inicia sesión
-                3. Obtén tu **Client ID**, **Client Secret** e **Instance ID**
-                4. Reemplaza las credenciales en el archivo `app.py`:
-                """)
-                st.code("""
-# En la función configurar_sentinel_hub_predefinido():
-config.sh_client_id = 'TU_CLIENT_ID_REAL'       # ⚠️ Reemplazar
-config.sh_client_secret = 'TU_CLIENT_SECRET_REAL' # ⚠️ Reemplazar
-config.instance_id = 'TU_INSTANCE_ID_REAL'     # ⚠️ Reemplazar
-                """, language="python")
-                
-                # Opción para ingresar credenciales manualmente (alternativa)
-                st.markdown("---")
-                st.markdown("**O ingresa credenciales manualmente:**")
-                
-                sh_client_id = st.text_input("Client ID", type="password")
-                sh_client_secret = st.text_input("Client Secret", type="password")
-                sh_instance_id = st.text_input("Instance ID", type="password")
-                
-                col_auth1, col_auth2 = st.columns(2)
-                with col_auth1:
-                    if st.button("🔑 Autenticar Manualmente", key="auth_manual"):
-                        if sh_client_id and sh_client_secret and sh_instance_id:
-                            with st.spinner("Autenticando con Sentinel Hub..."):
-                                config = configurar_sentinel_hub(sh_client_id, sh_client_secret, sh_instance_id)
-                                if config:
-                                    autenticado = verificar_autenticacion_sentinel_hub(config)
-                                    if autenticado:
-                                        st.session_state.sh_config = config
-                                        st.session_state.sentinel_authenticated = True
-                                        st.session_state.sh_client_id = sh_client_id
-                                        st.session_state.sh_client_secret = sh_client_secret
-                                        st.session_state.sh_instance_id = sh_instance_id
-                                        st.success("✅ Autenticación manual exitosa!")
-                                        st.rerun()
-                                    else:
-                                        st.error("❌ Error de autenticación. Verifica tus credenciales.")
-                                else:
-                                    st.error("❌ Error configurando Sentinel Hub")
-                        else:
-                            st.warning("⚠️ Por favor, completa todos los campos")
-                
-                with col_auth2:
-                    if st.button("🗑️ Limpiar Campos", key="clear_fields"):
-                        st.session_state.sh_client_id = ''
-                        st.session_state.sh_client_secret = ''
-                        st.session_state.sh_instance_id = ''
-                        st.rerun()
+                st.warning("⚠️ Sentinel Hub no autenticado")
     
     else:
         st.warning("⚠️ Sentinel Hub no disponible. Instala con: pip install sentinelhub")
@@ -1237,17 +1142,10 @@ config.instance_id = 'TU_INSTANCE_ID_REAL'     # ⚠️ Reemplazar
         opciones_satelites.append("SENTINEL-2_REAL")
     opciones_satelites.extend(["SENTINEL-2", "LANDSAT-8", "DATOS_SIMULADOS"])
     
-    # Si Sentinel-2 Real está seleccionado pero no hay autenticación, mostrar advertencia
-    if satelite_seleccionado == "SENTINEL-2_REAL" and not st.session_state.sentinel_authenticated:
-        st.warning("⚠️ Para usar Sentinel-2 Real, primero autentícate con Sentinel Hub")
-        # Cambiar a datos simulados por defecto
-        satelite_seleccionado = "SENTINEL-2"
-    
     satelite_seleccionado = st.selectbox(
         "Satélite:",
         opciones_satelites,
-        help="Selecciona la fuente de datos satelitales",
-        index=opciones_satelites.index(satelite_seleccionado) if satelite_seleccionado in opciones_satelites else 0
+        help="Selecciona la fuente de datos satelitales"
     )
     
     # Mostrar información del satélite seleccionado
@@ -2737,14 +2635,10 @@ if uploaded_file:
                 
                 if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True):
                     with st.spinner("Ejecutando análisis completo..."):
-                        # Pasar la configuración de Sentinel Hub si está disponible
-                        config_sentinel_hub = st.session_state.sh_config if st.session_state.sentinel_authenticated else None
-                        
                         resultados = ejecutar_analisis_completo(
                             gdf, cultivo, n_divisiones, 
                             satelite_seleccionado, fecha_inicio, fecha_fin,
-                            intervalo_curvas, resolucion_dem,
-                            config_sentinel_hub=config_sentinel_hub
+                            intervalo_curvas, resolucion_dem
                         )
                         
                         if resultados['exitoso']:
@@ -3184,6 +3078,8 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
             st.session_state.nombre_reporte = ""
             st.success("Reportes limpiados correctamente")
             st.rerun()
+
+# ... (todo el código anterior se mantiene igual hasta la sección de exportación) ...
 
 else:
     st.info("👈 Por favor, sube un archivo de parcela y ejecuta el análisis para comenzar.")
