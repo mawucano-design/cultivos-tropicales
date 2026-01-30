@@ -27,6 +27,15 @@ import geojson
 import requests
 import contextily as ctx
 
+# Importar Sentinel Hub si está disponible
+try:
+    from sentinelhub import SHConfig, SentinelHubRequest, DataCollection, \
+        MimeType, BBox, CRS, bbox_to_dimensions, Geometry
+    SENTINEL_HUB_AVAILABLE = True
+except ImportError:
+    SENTINEL_HUB_AVAILABLE = False
+    st.warning("⚠️ Sentinel Hub no está instalado. Para usar datos satelitales reales, instala con: pip install sentinelhub")
+
 # === NO HAY INICIALIZACIÓN DE GEE NI ELEVATION ===
 warnings.filterwarnings('ignore')
 
@@ -47,6 +56,10 @@ if 'mapas_generados' not in st.session_state:
     st.session_state.mapas_generados = {}
 if 'dem_data' not in st.session_state:
     st.session_state.dem_data = {}
+if 'sh_config' not in st.session_state:
+    st.session_state.sh_config = None
+if 'sentinel_authenticated' not in st.session_state:
+    st.session_state.sentinel_authenticated = False
 
 # === ESTILOS PERSONALIZADOS - VERSIÓN PREMIUM MODERNA ===
 st.markdown("""
@@ -432,7 +445,7 @@ st.markdown("""
 <div class="hero-banner">
 <div class="hero-content">
 <h1 class="hero-title">ANALIZADOR MULTI-CULTIVO SATELITAL</h1>
-<p class="hero-subtitle">Potenciado con NASA POWER y datos SRTM de la NASA para agricultura de precisión</p>
+<p class="hero-subtitle">Potenciado con NASA POWER, Sentinel Hub y datos SRTM para agricultura de precisión</p>
 </div>
 </div>
 """, unsafe_allow_html=True)
@@ -455,6 +468,15 @@ SATELITES_DISPONIBLES = {
 'indices': ['NDVI', 'NDWI', 'EVI', 'SAVI', 'MSAVI'],
 'icono': '🛰️'
 },
+'SENTINEL-2_REAL': {
+'nombre': 'Sentinel-2 (Real)',
+'resolucion': '10m',
+'revisita': '5 días',
+'bandas': ['B02', 'B03', 'B04', 'B05', 'B08', 'B11'],
+'indices': ['NDVI', 'NDRE', 'GNDVI', 'OSAVI', 'MCARI'],
+'icono': '🌍',
+'requerimiento': 'Sentinel Hub'
+},
 'DATOS_SIMULADOS': {
 'nombre': 'Datos Simulados',
 'resolucion': '10m',
@@ -463,6 +485,40 @@ SATELITES_DISPONIBLES = {
 'indices': ['NDVI', 'NDRE', 'GNDVI'],
 'icono': '🔬'
 }
+}
+
+# ===== CONFIGURACIÓN VARIEDADES ARGENTINAS =====
+VARIEDADES_ARGENTINA = {
+    'TRIGO': [
+        'ACA 303', 'ACA 315', 'Baguette Premium 11', 'Baguette Premium 13', 
+        'Biointa 1005', 'Biointa 2004', 'Klein Don Enrique', 'Klein Guerrero', 
+        'Buck Meteoro', 'Buck Poncho', 'SY 110', 'SY 200'
+    ],
+    'MAIZ': [
+        'DK 72-10', 'DK 73-20', 'Pioneer 30F53', 'Pioneer 30F35', 
+        'Syngenta AG 6800', 'Syngenta AG 8088', 'Dow 2A610', 'Dow 2B710', 
+        'Nidera 8710', 'Nidera 8800', 'Morgan 360', 'Morgan 390'
+    ],
+    'SORGO': [
+        'Advanta AS 5405', 'Advanta AS 5505', 'Pioneer 84G62', 'Pioneer 85G96', 
+        'DEKALB 53-67', 'DEKALB 55-00', 'MACER S-10', 'MACER S-15', 
+        'Sorgocer 105', 'Sorgocer 110', 'Río IV 100', 'Río IV 110'
+    ],
+    'SOJA': [
+        'DM 53i52', 'DM 58i62', 'Nidera 49X', 'Nidera 52X', 
+        'Don Mario 49X', 'Don Mario 52X', 'SYNGENTA 4.9i', 'SYNGENTA 5.2i', 
+        'Biosoys 4.9', 'Biosoys 5.2', 'ACA 49', 'ACA 52'
+    ],
+    'GIRASOL': [
+        'ACA 884', 'ACA 887', 'Nidera 7120', 'Nidera 7150', 
+        'Syngenta 390', 'Syngenta 410', 'Pioneer 64A15', 'Pioneer 65A25', 
+        'Advanta G 100', 'Advanta G 110', 'Biosun 400', 'Biosun 420'
+    ],
+    'MANI': [
+        'ASEM 400', 'ASEM 500', 'Granoleico', 'Guasu', 
+        'Florman INTA', 'Elena', 'Colorado Irradiado', 'Overo Colorado', 
+        'Runner 886', 'Runner 890', 'Tegua', 'Virginia 98R'
+    ]
 }
 
 # ===== CONFIGURACIÓN NUEVOS CULTIVOS =====
@@ -477,7 +533,9 @@ PARAMETROS_CULTIVOS = {
 'NDRE_OPTIMO': 0.40,
 'RENDIMIENTO_OPTIMO': 4500,
 'COSTO_FERTILIZACION': 350,
-'PRECIO_VENTA': 0.25
+'PRECIO_VENTA': 0.25,
+'VARIEDADES': VARIEDADES_ARGENTINA['TRIGO'],
+'ZONAS_ARGENTINA': ['Pampeana', 'Noroeste', 'Noreste']
 },
 'MAIZ': {
 'NITROGENO': {'min': 150, 'max': 250},
@@ -489,7 +547,9 @@ PARAMETROS_CULTIVOS = {
 'NDRE_OPTIMO': 0.45,
 'RENDIMIENTO_OPTIMO': 8500,
 'COSTO_FERTILIZACION': 550,
-'PRECIO_VENTA': 0.20
+'PRECIO_VENTA': 0.20,
+'VARIEDADES': VARIEDADES_ARGENTINA['MAIZ'],
+'ZONAS_ARGENTINA': ['Pampeana', 'Noroeste', 'Noreste', 'Cuyo']
 },
 'SORGO': {
 'NITROGENO': {'min': 80, 'max': 140},
@@ -501,7 +561,9 @@ PARAMETROS_CULTIVOS = {
 'NDRE_OPTIMO': 0.35,
 'RENDIMIENTO_OPTIMO': 5000,
 'COSTO_FERTILIZACION': 300,
-'PRECIO_VENTA': 0.18
+'PRECIO_VENTA': 0.18,
+'VARIEDADES': VARIEDADES_ARGENTINA['SORGO'],
+'ZONAS_ARGENTINA': ['Pampeana', 'Noroeste', 'Noreste']
 },
 'SOJA': {
 'NITROGENO': {'min': 20, 'max': 40},
@@ -513,7 +575,9 @@ PARAMETROS_CULTIVOS = {
 'NDRE_OPTIMO': 0.42,
 'RENDIMIENTO_OPTIMO': 3200,
 'COSTO_FERTILIZACION': 400,
-'PRECIO_VENTA': 0.45
+'PRECIO_VENTA': 0.45,
+'VARIEDADES': VARIEDADES_ARGENTINA['SOJA'],
+'ZONAS_ARGENTINA': ['Pampeana', 'Noroeste', 'Noreste']
 },
 'GIRASOL': {
 'NITROGENO': {'min': 70, 'max': 120},
@@ -525,7 +589,9 @@ PARAMETROS_CULTIVOS = {
 'NDRE_OPTIMO': 0.38,
 'RENDIMIENTO_OPTIMO': 2800,
 'COSTO_FERTILIZACION': 320,
-'PRECIO_VENTA': 0.35
+'PRECIO_VENTA': 0.35,
+'VARIEDADES': VARIEDADES_ARGENTINA['GIRASOL'],
+'ZONAS_ARGENTINA': ['Pampeana', 'Noroeste', 'Noreste']
 },
 'MANI': {
 'NITROGENO': {'min': 15, 'max': 30},
@@ -537,7 +603,9 @@ PARAMETROS_CULTIVOS = {
 'NDRE_OPTIMO': 0.32,
 'RENDIMIENTO_OPTIMO': 3800,
 'COSTO_FERTILIZACION': 380,
-'PRECIO_VENTA': 0.60
+'PRECIO_VENTA': 0.60,
+'VARIEDADES': VARIEDADES_ARGENTINA['MANI'],
+'ZONAS_ARGENTINA': ['Córdoba', 'San Luis', 'La Pampa']
 }
 }
 
@@ -685,9 +753,307 @@ PALETAS_GEE = {
 'PENDIENTE': ['#4daf4a', '#a6d96a', '#ffffbf', '#fdae61', '#f46d43', '#d73027']
 }
 
+# ===== FUNCIÓN PARA MOSTRAR INFORMACIÓN DEL CULTIVO =====
+def mostrar_info_cultivo(cultivo):
+    """Muestra información específica del cultivo seleccionado"""
+    if cultivo in PARAMETROS_CULTIVOS:
+        params = PARAMETROS_CULTIVOS[cultivo]
+        
+        st.markdown(f"""
+        <div class="cultivo-card">
+            <h3>{ICONOS_CULTIVOS[cultivo]} {cultivo} - Información Argentina</h3>
+            <p><strong>Zonas principales:</strong> {', '.join(params.get('ZONAS_ARGENTINA', []))}</p>
+            <p><strong>Variedades comunes:</strong></p>
+            <ul>
+        """, unsafe_allow_html=True)
+        
+        for variedad in params.get('VARIEDADES', [])[:5]:  # Mostrar solo las primeras 5
+            st.markdown(f"<li>{variedad}</li>", unsafe_allow_html=True)
+        
+        if len(params.get('VARIEDADES', [])) > 5:
+            st.markdown(f"<li>... y {len(params.get('VARIEDADES', [])) - 5} más</li>", unsafe_allow_html=True)
+        
+        st.markdown("""
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+# ===== FUNCIONES SENTINEL HUB =====
+def configurar_sentinel_hub(client_id, client_secret, instance_id):
+    """Configurar Sentinel Hub con credenciales"""
+    if not SENTINEL_HUB_AVAILABLE:
+        return None
+    
+    try:
+        config = SHConfig()
+        config.sh_client_id = client_id
+        config.sh_client_secret = client_secret
+        config.instance_id = instance_id
+        return config
+    except Exception as e:
+        st.error(f"❌ Error configurando Sentinel Hub: {str(e)}")
+        return None
+
+def verificar_autenticacion_sentinel_hub(config):
+    """Verificar si las credenciales de Sentinel Hub son válidas"""
+    if not SENTINEL_HUB_AVAILABLE or config is None:
+        return False
+    
+    try:
+        # Intentar una solicitud simple para verificar las credenciales
+        bbox = BBox(bbox=[-58.5, -34.6, -58.4, -34.5], crs=CRS.WGS84)
+        size = bbox_to_dimensions(bbox, resolution=10)
+        
+        evalscript = """
+        //VERSION=3
+        function setup() {
+            return {
+                input: ["B02", "B03", "B04"],
+                output: { bands: 3 }
+            };
+        }
+        function evaluatePixel(sample) {
+            return [sample.B04, sample.B03, sample.B02];
+        }
+        """
+        
+        request = SentinelHubRequest(
+            evalscript=evalscript,
+            input_data=[
+                SentinelHubRequest.input_data(
+                    data_collection=DataCollection.SENTINEL2_L2A,
+                    time_interval=("2023-01-01", "2023-01-02"),
+                )
+            ],
+            responses=[SentinelHubRequest.output_response("default", MimeType.PNG)],
+            bbox=bbox,
+            size=size,
+            config=config
+        )
+        
+        # Intentar obtener datos (puede fallar si las credenciales son inválidas)
+        request.get_data(save_data=False)
+        return True
+    except Exception as e:
+        st.error(f"❌ Error de autenticación Sentinel Hub: {str(e)}")
+        return False
+
+def obtener_datos_sentinel2_real(gdf, fecha_inicio, fecha_fin, config, indice='NDVI'):
+    """Obtener datos reales de Sentinel-2 usando Sentinel Hub"""
+    if not SENTINEL_HUB_AVAILABLE or config is None:
+        return None
+    
+    try:
+        # Obtener bounding box de la parcela
+        bounds = gdf.total_bounds
+        bbox = BBox(bbox=bounds, crs=CRS.WGS84)
+        
+        # Configurar tamaño de imagen
+        resolution = 10  # 10 metros
+        size = bbox_to_dimensions(bbox, resolution=resolution)
+        
+        # Definir evalscript según el índice
+        if indice == 'NDVI':
+            evalscript = """
+            //VERSION=3
+            function setup() {
+                return {
+                    input: [{
+                        bands: ["B04", "B08"],
+                        units: "REFLECTANCE"
+                    }],
+                    output: {
+                        bands: 1,
+                        sampleType: "FLOAT32"
+                    }
+                };
+            }
+            function evaluatePixel(sample) {
+                let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
+                return [ndvi];
+            }
+            """
+        elif indice == 'NDRE':
+            evalscript = """
+            //VERSION=3
+            function setup() {
+                return {
+                    input: [{
+                        bands: ["B05", "B08"],
+                        units: "REFLECTANCE"
+                    }],
+                    output: {
+                        bands: 1,
+                        sampleType: "FLOAT32"
+                    }
+                };
+            }
+            function evaluatePixel(sample) {
+                let ndre = (sample.B08 - sample.B05) / (sample.B08 + sample.B05);
+                return [ndre];
+            }
+            """
+        else:
+            evalscript = """
+            //VERSION=3
+            function setup() {
+                return {
+                    input: [{
+                        bands: ["B02", "B03", "B04", "B05", "B08", "B11"],
+                        units: "REFLECTANCE"
+                    }],
+                    output: {
+                        bands: 1,
+                        sampleType: "FLOAT32"
+                    }
+                };
+            }
+            function evaluatePixel(sample) {
+                let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
+                return [ndvi];
+            }
+            """
+        
+        # Crear solicitud
+        request = SentinelHubRequest(
+            evalscript=evalscript,
+            input_data=[
+                SentinelHubRequest.input_data(
+                    data_collection=DataCollection.SENTINEL2_L2A,
+                    time_interval=(fecha_inicio.strftime("%Y-%m-%d"), fecha_fin.strftime("%Y-%m-%d")),
+                    maxcc=0.3  # Máximo 30% de nubes
+                )
+            ],
+            responses=[SentinelHubRequest.output_response("default", MimeType.TIFF)],
+            bbox=bbox,
+            size=size,
+            config=config
+        )
+        
+        # Obtener datos
+        datos = request.get_data()
+        
+        if datos and len(datos) > 0:
+            # Procesar datos para obtener estadísticas
+            datos_array = np.array(datos[0])
+            datos_validos = datos_array[~np.isnan(datos_array)]
+            
+            if len(datos_validos) > 0:
+                valor_promedio = float(np.mean(datos_validos))
+                valor_min = float(np.min(datos_validos))
+                valor_max = float(np.max(datos_validos))
+                valor_std = float(np.std(datos_validos))
+                
+                return {
+                    'indice': indice,
+                    'valor_promedio': valor_promedio,
+                    'valor_min': valor_min,
+                    'valor_max': valor_max,
+                    'valor_std': valor_std,
+                    'fuente': 'Sentinel-2 (Sentinel Hub)',
+                    'fecha_descarga': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'resolucion': f'{resolution}m',
+                    'estado': 'exitosa',
+                    'datos_brutos': datos_array.tolist() if datos_array.size < 1000 else None
+                }
+        
+        return None
+        
+    except Exception as e:
+        st.error(f"❌ Error obteniendo datos de Sentinel Hub: {str(e)}")
+        return None
+
+def descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, config=None, indice='NDVI'):
+    """Descargar datos de Sentinel-2 (real o simulado)"""
+    # Intentar obtener datos reales si hay configuración
+    if config is not None and SENTINEL_HUB_AVAILABLE:
+        datos_reales = obtener_datos_sentinel2_real(gdf, fecha_inicio, fecha_fin, config, indice)
+        if datos_reales:
+            return datos_reales
+        else:
+            st.warning("⚠️ No se pudieron obtener datos reales. Usando datos simulados.")
+    
+    # Datos simulados como fallback
+    return descargar_datos_sentinel2_simulado(gdf, fecha_inicio, fecha_fin, indice)
+
+def descargar_datos_sentinel2_simulado(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
+    """Datos simulados de Sentinel-2"""
+    try:
+        # Generar datos simulados basados en ubicación y fecha
+        centroid = gdf.geometry.unary_union.centroid
+        lat = centroid.y
+        lon = centroid.x
+        
+        # Variación estacional
+        mes = fecha_inicio.month
+        if mes in [12, 1, 2]:  # Verano (hemisferio sur)
+            base_ndvi = 0.7
+        elif mes in [3, 4, 5]:  # Otoño
+            base_ndvi = 0.6
+        elif mes in [6, 7, 8]:  # Invierno
+            base_ndvi = 0.4
+        else:  # Primavera
+            base_ndvi = 0.8
+        
+        # Variación por latitud
+        lat_factor = 1.0 - abs(lat) / 90 * 0.2
+        
+        # Ruido aleatorio
+        np.random.seed(int(lat * 10000 + lon * 10000))
+        ruido = np.random.normal(0, 0.1)
+        
+        valor_promedio = max(0.1, min(0.9, base_ndvi * lat_factor + ruido))
+        
+        datos_simulados = {
+            'indice': indice,
+            'valor_promedio': valor_promedio,
+            'valor_min': max(0.05, valor_promedio - 0.2),
+            'valor_max': min(0.95, valor_promedio + 0.2),
+            'valor_std': 0.08,
+            'fuente': 'Sentinel-2 (Simulado)',
+            'fecha_descarga': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'resolucion': '10m',
+            'estado': 'simulado',
+            'nota': 'Datos simulados para demostración. Para datos reales, configure Sentinel Hub.'
+        }
+        return datos_simulados
+    except Exception as e:
+        st.error(f"❌ Error generando datos simulados: {str(e)}")
+        return None
+
+def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
+    """Datos simulados de Landsat-8"""
+    try:
+        datos_simulados = {
+            'indice': indice,
+            'valor_promedio': 0.65 + np.random.normal(0, 0.1),
+            'fuente': 'Landsat-8 (Simulado)',
+            'fecha': datetime.now().strftime('%Y-%m-%d'),
+            'id_escena': f"LC08_{np.random.randint(1000000, 9999999)}",
+            'cobertura_nubes': f"{np.random.randint(0, 15)}%",
+            'resolucion': '30m',
+            'estado': 'simulado'
+        }
+        return datos_simulados
+    except Exception as e:
+        st.error(f"❌ Error procesando Landsat 8: {str(e)}")
+        return None
+
+def generar_datos_simulados(gdf, cultivo, indice='NDVI'):
+    """Generar datos simulados para demostración"""
+    datos_simulados = {
+        'indice': indice,
+        'valor_promedio': PARAMETROS_CULTIVOS[cultivo]['NDVI_OPTIMO'] * 0.8 + np.random.normal(0, 0.1),
+        'fuente': 'Simulación',
+        'fecha': datetime.now().strftime('%Y-%m-%d'),
+        'resolucion': '10m',
+        'estado': 'simulado'
+    }
+    return datos_simulados
+
 # ===== INICIALIZACIÓN SEGURA DE VARIABLES =====
 nutriente = None
-satelite_seleccionado = "SENTINEL-2"
+satelite_seleccionado = "SENTINEL-2_REAL" if SENTINEL_HUB_AVAILABLE else "SENTINEL-2"
 indice_seleccionado = "NDVI"
 fecha_inicio = datetime.now() - timedelta(days=30)
 fecha_fin = datetime.now()
@@ -697,12 +1063,101 @@ with st.sidebar:
     st.markdown('<div class="sidebar-title">⚙️ CONFIGURACIÓN</div>', unsafe_allow_html=True)
     cultivo = st.selectbox("Cultivo:", ["TRIGO", "MAIZ", "SORGO", "SOJA", "GIRASOL", "MANI"])
     
+    # Mostrar información del cultivo
+    mostrar_info_cultivo(cultivo)
+    
+    # Selector de variedad
+    variedades = VARIEDADES_ARGENTINA.get(cultivo, [])
+    if variedades:
+        variedad = st.selectbox(
+            "Variedad/Cultivar:",
+            ["No especificada"] + variedades,
+            help="Selecciona la variedad o cultivar específico"
+        )
+    else:
+        variedad = "No especificada"
+    
+    # Configuración Sentinel Hub
+    if SENTINEL_HUB_AVAILABLE:
+        with st.expander("🔐 Configuración Sentinel Hub (Opcional)"):
+            st.info("Para datos satelitales reales, ingresa tus credenciales de Sentinel Hub")
+            
+            sh_client_id = st.text_input("Client ID", 
+                                         value=st.session_state.get('sh_client_id', ''),
+                                         type="password")
+            sh_client_secret = st.text_input("Client Secret", 
+                                            value=st.session_state.get('sh_client_secret', ''),
+                                            type="password")
+            sh_instance_id = st.text_input("Instance ID", 
+                                          value=st.session_state.get('sh_instance_id', ''),
+                                          type="password")
+            
+            col_auth1, col_auth2 = st.columns(2)
+            with col_auth1:
+                if st.button("🔑 Autenticar"):
+                    if sh_client_id and sh_client_secret and sh_instance_id:
+                        with st.spinner("Autenticando con Sentinel Hub..."):
+                            config = configurar_sentinel_hub(sh_client_id, sh_client_secret, sh_instance_id)
+                            if config:
+                                autenticado = verificar_autenticacion_sentinel_hub(config)
+                                if autenticado:
+                                    st.session_state.sh_config = config
+                                    st.session_state.sentinel_authenticated = True
+                                    st.session_state.sh_client_id = sh_client_id
+                                    st.session_state.sh_client_secret = sh_client_secret
+                                    st.session_state.sh_instance_id = sh_instance_id
+                                    st.success("✅ Autenticación exitosa!")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Error de autenticación. Verifica tus credenciales.")
+                            else:
+                                st.error("❌ Error configurando Sentinel Hub")
+                    else:
+                        st.warning("⚠️ Por favor, completa todos los campos")
+            
+            with col_auth2:
+                if st.button("🗑️ Limpiar"):
+                    st.session_state.sh_config = None
+                    st.session_state.sentinel_authenticated = False
+                    st.session_state.sh_client_id = ''
+                    st.session_state.sh_client_secret = ''
+                    st.session_state.sh_instance_id = ''
+                    st.success("Credenciales limpiadas")
+                    st.rerun()
+            
+            # Mostrar estado de autenticación
+            if st.session_state.sentinel_authenticated:
+                st.success("✅ Sentinel Hub autenticado")
+            else:
+                st.warning("⚠️ Sentinel Hub no autenticado")
+    
+    else:
+        st.warning("⚠️ Sentinel Hub no disponible. Instala con: pip install sentinelhub")
+    
     st.subheader("🛰️ Fuente de Datos Satelitales")
+    
+    # Opciones de satélites disponibles
+    opciones_satelites = []
+    if SENTINEL_HUB_AVAILABLE:
+        opciones_satelites.append("SENTINEL-2_REAL")
+    opciones_satelites.extend(["SENTINEL-2", "LANDSAT-8", "DATOS_SIMULADOS"])
+    
     satelite_seleccionado = st.selectbox(
         "Satélite:",
-        ["SENTINEL-2", "LANDSAT-8", "DATOS_SIMULADOS"],
+        opciones_satelites,
         help="Selecciona la fuente de datos satelitales"
     )
+    
+    # Mostrar información del satélite seleccionado
+    if satelite_seleccionado in SATELITES_DISPONIBLES:
+        info_satelite = SATELITES_DISPONIBLES[satelite_seleccionado]
+        st.caption(f"{info_satelite['icono']} {info_satelite['nombre']} - {info_satelite['resolucion']}")
+    
+    # Selector de índice
+    st.subheader("📊 Índice de Vegetación")
+    if satelite_seleccionado in SATELITES_DISPONIBLES:
+        indices_disponibles = SATELITES_DISPONIBLES[satelite_seleccionado]['indices']
+        indice_seleccionado = st.selectbox("Índice:", indices_disponibles)
     
     st.subheader("📅 Rango Temporal")
     fecha_fin = st.date_input("Fecha fin", datetime.now())
@@ -935,49 +1390,6 @@ def cargar_archivo_parcela(uploaded_file):
         import traceback
         st.error(f"Detalle: {traceback.format_exc()}")
         return None
-
-# ===== FUNCIONES PARA DATOS SATELITALES =====
-def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
-    try:
-        datos_simulados = {
-            'indice': indice,
-            'valor_promedio': 0.65 + np.random.normal(0, 0.1),
-            'fuente': 'Landsat-8',
-            'fecha': datetime.now().strftime('%Y-%m-%d'),
-            'id_escena': f"LC08_{np.random.randint(1000000, 9999999)}",
-            'cobertura_nubes': f"{np.random.randint(0, 15)}%",
-            'resolucion': '30m'
-        }
-        return datos_simulados
-    except Exception as e:
-        st.error(f"❌ Error procesando Landsat 8: {str(e)}")
-        return None
-
-def descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
-    try:
-        datos_simulados = {
-            'indice': indice,
-            'valor_promedio': 0.72 + np.random.normal(0, 0.08),
-            'fuente': 'Sentinel-2',
-            'fecha': datetime.now().strftime('%Y-%m-%d'),
-            'id_escena': f"S2A_{np.random.randint(1000000, 9999999)}",
-            'cobertura_nubes': f"{np.random.randint(0, 10)}%",
-            'resolucion': '10m'
-        }
-        return datos_simulados
-    except Exception as e:
-        st.error(f"❌ Error procesando Sentinel-2: {str(e)}")
-        return None
-
-def generar_datos_simulados(gdf, cultivo, indice='NDVI'):
-    datos_simulados = {
-        'indice': indice,
-        'valor_promedio': PARAMETROS_CULTIVOS[cultivo]['NDVI_OPTIMO'] * 0.8 + np.random.normal(0, 0.1),
-        'fuente': 'Simulación',
-        'fecha': datetime.now().strftime('%Y-%m-%d'),
-        'resolucion': '10m'
-    }
-    return datos_simulados
 
 # ===== FUNCIÓN PARA OBTENER DATOS DE NASA POWER =====
 def obtener_datos_nasa_power(gdf, fecha_inicio, fecha_fin):
@@ -1373,7 +1785,8 @@ def analizar_textura_suelo(gdf_dividido, cultivo):
     return gdf_dividido
 
 # ===== FUNCIÓN PARA EJECUTAR TODOS LOS ANÁLISIS =====
-def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inicio, fecha_fin, intervalo_curvas=5.0, resolucion_dem=10.0):
+def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inicio, fecha_fin, 
+                              intervalo_curvas=5.0, resolucion_dem=10.0, config_sentinel_hub=None):
     """Ejecuta todos los análisis y guarda los resultados"""
     
     resultados = {
@@ -1389,7 +1802,8 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         'mapas': {},
         'dem_data': {},
         'curvas_nivel': None,
-        'pendientes': None
+        'pendientes': None,
+        'datos_satelitales': None
     }
     
     try:
@@ -1400,12 +1814,14 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         
         # Obtener datos satelitales
         datos_satelitales = None
-        if satelite == "SENTINEL-2":
-            datos_satelitales = descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, "NDVI")
+        if satelite == "SENTINEL-2_REAL" or satelite == "SENTINEL-2":
+            datos_satelitales = descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, config_sentinel_hub, indice_seleccionado)
         elif satelite == "LANDSAT-8":
-            datos_satelitales = descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, "NDVI")
+            datos_satelitales = descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice_seleccionado)
         else:
-            datos_satelitales = generar_datos_simulados(gdf, cultivo, "NDVI")
+            datos_satelitales = generar_datos_simulados(gdf, cultivo, indice_seleccionado)
+        
+        resultados['datos_satelitales'] = datos_satelitales
         
         # Obtener datos meteorológicos
         df_power = obtener_datos_nasa_power(gdf, fecha_inicio, fecha_fin)
@@ -1921,7 +2337,7 @@ def exportar_a_geojson(gdf, nombre_base="parcela"):
         st.error(f"❌ Error exportando a GeoJSON: {str(e)}")
         return None, None
 
-def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_fin):
+def generar_reporte_completo(resultados, cultivo, variedad, satelite, fecha_inicio, fecha_fin):
     """Generar reporte DOCX con todos los análisis"""
     try:
         doc = Document()
@@ -1930,26 +2346,40 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
         title = doc.add_heading(f'REPORTE COMPLETO DE ANÁLISIS - {cultivo}', 0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
-        # Subtítulo
-        subtitle = doc.add_paragraph(f'Fecha: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
+        # Subtítulo con variedad
+        subtitle = doc.add_paragraph(f'Variedad: {variedad} | Fecha: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
         subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
         
         doc.add_paragraph()
         
         # 1. INFORMACIÓN GENERAL
         doc.add_heading('1. INFORMACIÓN GENERAL', level=1)
-        info_table = doc.add_table(rows=5, cols=2)
+        info_table = doc.add_table(rows=6, cols=2)  # Aumentado a 6 filas
         info_table.style = 'Table Grid'
         info_table.cell(0, 0).text = 'Cultivo'
         info_table.cell(0, 1).text = cultivo
-        info_table.cell(1, 0).text = 'Área Total'
-        info_table.cell(1, 1).text = f'{resultados["area_total"]:.2f} ha'
-        info_table.cell(2, 0).text = 'Zonas Analizadas'
-        info_table.cell(2, 1).text = str(len(resultados['gdf_completo']))
-        info_table.cell(3, 0).text = 'Satélite'
-        info_table.cell(3, 1).text = satelite
-        info_table.cell(4, 0).text = 'Período de Análisis'
-        info_table.cell(4, 1).text = f'{fecha_inicio.strftime("%d/%m/%Y")} a {fecha_fin.strftime("%d/%m/%Y")}'
+        info_table.cell(1, 0).text = 'Variedad/Cultivar'
+        info_table.cell(1, 1).text = variedad
+        info_table.cell(2, 0).text = 'Área Total'
+        info_table.cell(2, 1).text = f'{resultados["area_total"]:.2f} ha'
+        info_table.cell(3, 0).text = 'Zonas Analizadas'
+        info_table.cell(3, 1).text = str(len(resultados['gdf_completo']))
+        info_table.cell(4, 0).text = 'Satélite'
+        info_table.cell(4, 1).text = satelite
+        info_table.cell(5, 0).text = 'Período de Análisis'
+        info_table.cell(5, 1).text = f'{fecha_inicio.strftime("%d/%m/%Y")} a {fecha_fin.strftime("%d/%m/%Y")}'
+        
+        # Información de datos satelitales
+        if 'datos_satelitales' in resultados and resultados['datos_satelitales']:
+            datos_sat = resultados['datos_satelitales']
+            doc.add_paragraph()
+            doc.add_heading('1.1. DATOS SATELITALES', level=2)
+            doc.add_paragraph(f'Fuente: {datos_sat.get("fuente", "N/D")}')
+            doc.add_paragraph(f'Índice: {datos_sat.get("indice", "N/D")}')
+            doc.add_paragraph(f'Valor promedio: {datos_sat.get("valor_promedio", 0):.3f}')
+            doc.add_paragraph(f'Estado: {datos_sat.get("estado", "N/D")}')
+            if datos_sat.get("nota"):
+                doc.add_paragraph(f'Nota: {datos_sat.get("nota")}')
         
         doc.add_paragraph()
         
