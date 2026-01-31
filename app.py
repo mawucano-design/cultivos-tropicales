@@ -7,7 +7,7 @@ import os
 import zipfile
 from datetime import datetime, timedelta
 import matplotlib.pyplot as plt
-from matplotlib.tri import Triangulation, LinearTriInterpolator  # ✅ CORREGIDO: LinearTriInterpolator en lugar de TriInterpolator
+from matplotlib.tri import Triangulation, LinearTriInterpolator
 import matplotlib.patches as mpatches
 from matplotlib.colors import LinearSegmentedColormap, Normalize
 from mpl_toolkits.mplot3d import Axes3D
@@ -27,321 +27,308 @@ import requests
 import contextily as ctx
 from scipy import ndimage
 
-# ===== MANEJO SEGURO DE SENTINEL HUB =====
+# ===== CONFIGURACIÓN DE GOOGLE EARTH ENGINE =====
 try:
-    from sentinelhub import (
-        SHConfig, BBox, CRS, SentinelHubRequest, 
-        DataCollection, MimeType, bbox_to_dimensions,
-        SentinelHubCatalog
-    )
-    SENTINELHUB_AVAILABLE = True
+    import ee
+    GEE_AVAILABLE = True
+    
+    # Intenta inicializar Google Earth Engine
+    try:
+        ee.Initialize(project='ee-multicultivo')
+        st.sidebar.success("✅ Google Earth Engine inicializado")
+    except ee.EEException:
+        # Si no está inicializado, muestra instrucciones
+        st.sidebar.warning("⚠️ GEE no inicializado. Necesitas autenticarte.")
+        st.sidebar.info("Para autenticarte, ejecuta en tu terminal:")
+        st.sidebar.code("earthengine authenticate")
+        GEE_AVAILABLE = False
 except ImportError:
-    SENTINELHUB_AVAILABLE = False
-    st.sidebar.warning("⚠️ Paquete 'sentinelhub' no instalado. Usando datos simulados.")
+    GEE_AVAILABLE = False
+    st.sidebar.warning("⚠️ Paquete 'earthengine-api' no instalado. Usando datos simulados.")
 
 warnings.filterwarnings('ignore')
 
-# ===== CONFIGURACIÓN DE SENTINEL HUB (HARDCODED PARA DEMO) =====
-def configurar_sentinel_hub():
-    """Configura las credenciales de Sentinel Hub - VERSIÓN HARDCODED PARA DEMO"""
+# ===== FUNCIONES PARA GOOGLE EARTH ENGINE =====
+def autenticar_gee():
+    """Autenticar con Google Earth Engine"""
     try:
-        config = SHConfig()
+        if not GEE_AVAILABLE:
+            return False
         
-        # ⚠️ CREDENCIALES HARDCODED - SOLO PARA DEMO/PRUEBAS
-        config.sh_client_id = "358474d6-2326-4637-bf8e-30a709b2d6a6"
-        config.sh_client_secret = "b296cf70-c9d2-4e69-91f4-f7be80b99ed1"
-        config.instance_id = "PLAK81593ed161694ad48faa8065411d2539"
-        
-        # Verificación mínima
-        if not config.sh_client_id or not config.sh_client_secret:
-            st.sidebar.error("❌ Error: Credenciales incompletas")
-            return None
-        
-        st.sidebar.success("✅ Sentinel Hub configurado (hardcoded)")
-        return config
-        
+        # Verificar si ya está inicializado
+        try:
+            ee.Initialize(project='ee-multicultivo')
+            return True
+        except:
+            # Intentar inicializar
+            ee.Initialize()
+            return True
+            
     except Exception as e:
-        st.sidebar.error(f"❌ Error configurando Sentinel Hub: {str(e)}")
-        return None
+        st.sidebar.error(f"❌ Error autenticando GEE: {str(e)}")
+        st.sidebar.info("""
+        **Instrucciones para autenticar:**
+        1. Instala: `pip install earthengine-api`
+        2. Ejecuta en terminal: `earthengine authenticate`
+        3. Sigue las instrucciones en el navegador
+        """)
+        return False
 
-# ===== FUNCIONES PARA SENTINEL HUB =====
-def buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config):
-    """Busca escenas de Sentinel-2 disponibles en el rango temporal"""
-    if not SENTINELHUB_AVAILABLE or config is None:
+def calcular_indices_gee(gdf, fecha_inicio, fecha_fin, indices=['NDVI']):
+    """Calcula índices de vegetación usando Google Earth Engine"""
+    if not GEE_AVAILABLE:
         return None
     
     try:
+        # Autenticar
+        if not autenticar_gee():
+            return None
+        
+        # Convertir GeoDataFrame a geometría de GEE
         gdf_wgs84 = gdf.to_crs('EPSG:4326')
-        bounds = gdf_wgs84.total_bounds
-        bbox = BBox(bbox=bounds, crs=CRS.WGS84)
+        geometria = gdf_wgs84.geometry.unary_union
         
-        catalog = SentinelHubCatalog(config=config)
-        time_interval = (fecha_inicio.strftime('%Y-%m-%d'), fecha_fin.strftime('%Y-%m-%d'))
-        
-        query = catalog.search(
-            DataCollection.SENTINEL2_L2A,
-            bbox=bbox,
-            time=time_interval,
-            query={'eo:cloud_cover': {'lt': 20}}
-        )
-        
-        escenas = list(query)
-        if not escenas:
-            st.warning("⚠️ No se encontraron escenas disponibles")
-            return None
-        
-        escena_seleccionada = min(escenas, key=lambda x: x['properties']['eo:cloud_cover'])
-        
-        return {
-            'id': escena_seleccionada['id'],
-            'fecha': escena_seleccionada['properties']['datetime'][:10],
-            'nubes': escena_seleccionada['properties']['eo:cloud_cover'],
-            'bbox': bbox,
-            'bounds': bounds
-        }
-        
-    except Exception as e:
-        st.error(f"❌ Error buscando escenas: {str(e)}")
-        return None
-
-def calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI', config=None):
-    """Calcula índices de vegetación usando Sentinel Hub Process API"""
-    if not SENTINELHUB_AVAILABLE or config is None:
-        return None
-    
-    try:
-        escena = buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config)
-        if escena is None:
-            return None
-        
-        bbox = escena['bbox']
-        size = bbox_to_dimensions(bbox, resolution=10)
-        
-        # Evalscript según el índice
-        if indice == 'NDVI':
-            evalscript = """
-                //VERSION=3
-                function setup() {
-                    return {
-                        input: ["B04", "B08"],
-                        output: { bands: 1, sampleType: "FLOAT32" }
-                    };
-                }
-                function evaluatePixel(sample) {
-                    let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
-                    return [ndvi];
-                }
-            """
-        elif indice == 'NDRE':
-            evalscript = """
-                //VERSION=3
-                function setup() {
-                    return {
-                        input: ["B05", "B08"],
-                        output: { bands: 1, sampleType: "FLOAT32" }
-                    };
-                }
-                function evaluatePixel(sample) {
-                    let ndre = (sample.B08 - sample.B05) / (sample.B08 + sample.B05);
-                    return [ndre];
-                }
-            """
-        elif indice == 'GNDVI':
-            evalscript = """
-                //VERSION=3
-                function setup() {
-                    return {
-                        input: ["B03", "B08"],
-                        output: { bands: 1, sampleType: "FLOAT32" }
-                    };
-                }
-                function evaluatePixel(sample) {
-                    let gndvi = (sample.B08 - sample.B03) / (sample.B08 + sample.B03);
-                    return [gndvi];
-                }
-            """
-        elif indice == 'EVI':
-            evalscript = """
-                //VERSION=3
-                function setup() {
-                    return {
-                        input: ["B02", "B04", "B08"],
-                        output: { bands: 1, sampleType: "FLOAT32" }
-                    };
-                }
-                function evaluatePixel(sample) {
-                    let evi = 2.5 * (sample.B08 - sample.B04) / 
-                              (sample.B08 + 6 * sample.B04 - 7.5 * sample.B02 + 1);
-                    return [evi];
-                }
-            """
-        elif indice == 'SAVI':
-            evalscript = """
-                //VERSION=3
-                function setup() {
-                    return {
-                        input: ["B04", "B08"],
-                        output: { bands: 1, sampleType: "FLOAT32" }
-                    };
-                }
-                function evaluatePixel(sample) {
-                    let L = 0.5;
-                    let savi = ((sample.B08 - sample.B04) / (sample.B08 + sample.B04 + L)) * (1 + L);
-                    return [savi];
-                }
-            """
+        # Crear polígono de GEE
+        if geometria.geom_type == 'Polygon':
+            coords = list(geometria.exterior.coords)
+            ee_polygon = ee.Geometry.Polygon(coords)
+        elif geometria.geom_type == 'MultiPolygon':
+            polygons = []
+            for poly in geometria.geoms:
+                coords = list(poly.exterior.coords)
+                polygons.append(coords)
+            ee_polygon = ee.Geometry.MultiPolygon(polygons)
         else:
-            evalscript = """
-                //VERSION=3
-                function setup() {
-                    return {
-                        input: ["B04", "B08"],
-                        output: { bands: 1, sampleType: "FLOAT32" }
-                    };
+            st.error("❌ Tipo de geometría no soportado")
+            return None
+        
+        # Definir período temporal
+        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
+        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
+        
+        # Cargar colección de Sentinel-2
+        coleccion = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
+            .filterDate(fecha_inicio_str, fecha_fin_str) \
+            .filterBounds(ee_polygon) \
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+        
+        # Seleccionar la imagen con menos nubes
+        imagen = coleccion.sort('CLOUDY_PIXEL_PERCENTAGE').first()
+        
+        if imagen is None:
+            st.warning("⚠️ No se encontraron imágenes Sentinel-2 sin nubes")
+            return None
+        
+        # Función para calcular NDVI
+        def calcular_ndvi(img):
+            return img.normalizedDifference(['B8', 'B4']).rename('NDVI')
+        
+        # Función para calcular NDRE
+        def calcular_ndre(img):
+            return img.normalizedDifference(['B8', 'B5']).rename('NDRE')
+        
+        # Función para calcular GNDVI
+        def calcular_gndvi(img):
+            return img.normalizedDifference(['B8', 'B3']).rename('GNDVI')
+        
+        # Función para calcular EVI
+        def calcular_evi(img):
+            evi = img.expression(
+                '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
+                {
+                    'NIR': img.select('B8'),
+                    'RED': img.select('B4'),
+                    'BLUE': img.select('B2')
                 }
-                function evaluatePixel(sample) {
-                    let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
-                    return [ndvi];
+            ).rename('EVI')
+            return evi
+        
+        # Función para calcular SAVI
+        def calcular_savi(img):
+            L = 0.5
+            savi = img.expression(
+                '((NIR - RED) / (NIR + RED + L)) * (1 + L)',
+                {
+                    'NIR': img.select('B8'),
+                    'RED': img.select('B4')
                 }
-            """
+            ).rename('SAVI')
+            return savi
         
-        request = SentinelHubRequest(
-            evalscript=evalscript,
-            input_data=[
-                SentinelHubRequest.input_data(
-                    data_collection=DataCollection.SENTINEL2_L2A,
-                    time_interval=(escena['fecha'], escena['fecha']),
-                    mosaicking_order='leastCC'
-                )
-            ],
-            responses=[
-                SentinelHubRequest.output_response('default', MimeType.TIFF)
-            ],
-            bbox=bbox,
-            size=size,
-            config=config
-        )
-        
-        with st.spinner(f"🛰️ Descargando datos Sentinel-2 para {indice}..."):
-            img_data = request.get_data()
-        
-        if not img_data or len(img_data) == 0:
-            st.error("❌ No se pudieron descargar los datos")
-            return None
-        
-        img_array = img_data[0]
-        valid_values = img_array[~np.isnan(img_array) & (img_array != 0)]
-        
-        if len(valid_values) == 0:
-            st.warning("⚠️ No se encontraron valores válidos")
-            return None
-        
-        valor_promedio = np.mean(valid_values)
-        valor_min = np.min(valid_values)
-        valor_max = np.max(valid_values)
-        valor_std = np.std(valid_values)
-        
-        return {
-            'indice': indice,
-            'valor_promedio': float(valor_promedio),
-            'valor_min': float(valor_min),
-            'valor_max': float(valor_max),
-            'valor_std': float(valor_std),
-            'fuente': 'Sentinel-2 (Sentinel Hub)',
-            'fecha': escena['fecha'],
-            'id_escena': escena['id'],
-            'cobertura_nubes': f"{escena['nubes']:.1f}%",
-            'resolucion': '10m',
-            'bounds': escena['bounds']
-        }
-        
-    except Exception as e:
-        st.error(f"❌ Error procesando Sentinel-2: {str(e)}")
-        return None
-
-def obtener_multiples_indices_sentinel2(gdf, fecha_inicio, fecha_fin, indices=['NDVI', 'NDRE'], config=None):
-    """Obtiene múltiples índices de vegetación en una sola llamada"""
-    if not SENTINELHUB_AVAILABLE or config is None:
-        return None
-    
-    try:
-        escena = buscar_escenas_sentinel2(gdf, fecha_inicio, fecha_fin, config)
-        if escena is None:
-            return None
-        
-        bbox = escena['bbox']
-        size = bbox_to_dimensions(bbox, resolution=10)
-        
-        evalscript = """
-            //VERSION=3
-            function setup() {
-                return {
-                    input: ["B02", "B03", "B04", "B05", "B08"],
-                    output: { bands: 5, sampleType: "FLOAT32" }
-                };
-            }
-            function evaluatePixel(sample) {
-                let ndvi = (sample.B08 - sample.B04) / (sample.B08 + sample.B04);
-                let ndre = (sample.B08 - sample.B05) / (sample.B08 + sample.B05);
-                let gndvi = (sample.B08 - sample.B03) / (sample.B08 + sample.B03);
-                let evi = 2.5 * (sample.B08 - sample.B04) / 
-                          (sample.B08 + 6 * sample.B04 - 7.5 * sample.B02 + 1);
-                let L = 0.5;
-                let savi = ((sample.B08 - sample.B04) / (sample.B08 + sample.B04 + L)) * (1 + L);
-                return [ndvi, ndre, gndvi, evi, savi];
-            }
-        """
-        
-        request = SentinelHubRequest(
-            evalscript=evalscript,
-            input_data=[
-                SentinelHubRequest.input_data(
-                    data_collection=DataCollection.SENTINEL2_L2A,
-                    time_interval=(escena['fecha'], escena['fecha']),
-                    mosaicking_order='leastCC'
-                )
-            ],
-            responses=[
-                SentinelHubRequest.output_response('default', MimeType.TIFF)
-            ],
-            bbox=bbox,
-            size=size,
-            config=config
-        )
-        
-        with st.spinner("🛰️ Descargando múltiples índices..."):
-            img_data = request.get_data()
-        
-        if not img_data or len(img_data) == 0:
-            return None
-        
-        img_array = img_data[0]
-        indices_map = {'NDVI': 0, 'NDRE': 1, 'GNDVI': 2, 'EVI': 3, 'SAVI': 4}
+        # Calcular índices solicitados
         resultados = {}
         
-        for idx_name in indices:
-            if idx_name in indices_map:
-                band_idx = indices_map[idx_name]
-                band_data = img_array[:, :, band_idx]
-                valid_values = band_data[~np.isnan(band_data) & (band_data != 0)]
-                
-                if len(valid_values) > 0:
-                    resultados[idx_name] = {
-                        'valor_promedio': float(np.mean(valid_values)),
-                        'valor_min': float(np.min(valid_values)),
-                        'valor_max': float(np.max(valid_values)),
-                        'valor_std': float(np.std(valid_values)),
-                        'fuente': 'Sentinel-2 (Sentinel Hub)',
-                        'fecha': escena['fecha'],
-                        'id_escena': escena['id'],
-                        'cobertura_nubes': f"{escena['nubes']:.1f}%",
-                        'resolucion': '10m'
-                    }
+        for indice in indices:
+            if indice == 'NDVI':
+                img_indice = calcular_ndvi(imagen)
+                nombre = 'NDVI'
+            elif indice == 'NDRE':
+                img_indice = calcular_ndre(imagen)
+                nombre = 'NDRE'
+            elif indice == 'GNDVI':
+                img_indice = calcular_gndvi(imagen)
+                nombre = 'GNDVI'
+            elif indice == 'EVI':
+                img_indice = calcular_evi(imagen)
+                nombre = 'EVI'
+            elif indice == 'SAVI':
+                img_indice = calcular_savi(imagen)
+                nombre = 'SAVI'
+            else:
+                continue
+            
+            # Obtener estadísticas de la región
+            estadisticas = img_indice.reduceRegion(
+                reducer=ee.Reducer.mean().combine(
+                    reducer2=ee.Reducer.minMax().combine(
+                        reducer2=ee.Reducer.stdDev(),
+                        sharedInputs=True
+                    ),
+                    sharedInputs=True
+                ),
+                geometry=ee_polygon,
+                scale=10,
+                maxPixels=1e9
+            ).getInfo()
+            
+            # Información de la imagen
+            fecha = imagen.date().format('YYYY-MM-dd').getInfo()
+            id_imagen = imagen.id().getInfo()
+            nubes = imagen.get('CLOUDY_PIXEL_PERCENTAGE').getInfo()
+            
+            resultados[nombre] = {
+                'indice': nombre,
+                'valor_promedio': estadisticas.get('mean', 0),
+                'valor_min': estadisticas.get('min', 0),
+                'valor_max': estadisticas.get('max', 0),
+                'valor_std': estadisticas.get('stdDev', 0),
+                'fuente': 'Sentinel-2 (Google Earth Engine)',
+                'fecha': fecha,
+                'id_escena': id_imagen,
+                'cobertura_nubes': f"{nubes:.1f}%" if nubes else "Desconocido",
+                'resolucion': '10m',
+                'bounds': gdf_wgs84.total_bounds.tolist()
+            }
+        
+        # Si no se calculó ningún índice, retornar NDVI por defecto
+        if not resultados:
+            img_indice = calcular_ndvi(imagen)
+            estadisticas = img_indice.reduceRegion(
+                reducer=ee.Reducer.mean().combine(
+                    reducer2=ee.Reducer.minMax().combine(
+                        reducer2=ee.Reducer.stdDev(),
+                        sharedInputs=True
+                    ),
+                    sharedInputs=True
+                ),
+                geometry=ee_polygon,
+                scale=10,
+                maxPixels=1e9
+            ).getInfo()
+            
+            fecha = imagen.date().format('YYYY-MM-dd').getInfo()
+            id_imagen = imagen.id().getInfo()
+            nubes = imagen.get('CLOUDY_PIXEL_PERCENTAGE').getInfo()
+            
+            resultados['NDVI'] = {
+                'indice': 'NDVI',
+                'valor_promedio': estadisticas.get('mean', 0),
+                'valor_min': estadisticas.get('min', 0),
+                'valor_max': estadisticas.get('max', 0),
+                'valor_std': estadisticas.get('stdDev', 0),
+                'fuente': 'Sentinel-2 (Google Earth Engine)',
+                'fecha': fecha,
+                'id_escena': id_imagen,
+                'cobertura_nubes': f"{nubes:.1f}%" if nubes else "Desconocido",
+                'resolucion': '10m',
+                'bounds': gdf_wgs84.total_bounds.tolist()
+            }
         
         return resultados
         
     except Exception as e:
-        st.error(f"❌ Error obteniendo índices: {str(e)}")
+        st.error(f"❌ Error calculando índices con GEE: {str(e)}")
+        import traceback
+        st.error(f"Detalle: {traceback.format_exc()}")
+        return None
+
+def obtener_imagen_gee(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
+    """Obtiene una imagen de Google Earth Engine para visualización"""
+    if not GEE_AVAILABLE:
+        return None
+    
+    try:
+        if not autenticar_gee():
+            return None
+        
+        # Convertir GeoDataFrame a geometría de GEE
+        gdf_wgs84 = gdf.to_crs('EPSG:4326')
+        geometria = gdf_wgs84.geometry.unary_union
+        
+        # Crear polígono de GEE
+        if geometria.geom_type == 'Polygon':
+            coords = list(geometria.exterior.coords)
+            ee_polygon = ee.Geometry.Polygon(coords)
+        else:
+            return None
+        
+        # Definir período temporal
+        fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
+        fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
+        
+        # Cargar colección de Sentinel-2
+        coleccion = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED') \
+            .filterDate(fecha_inicio_str, fecha_fin_str) \
+            .filterBounds(ee_polygon) \
+            .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 10))
+        
+        # Seleccionar la imagen con menos nubes
+        imagen = coleccion.sort('CLOUDY_PIXEL_PERCENTAGE').first()
+        
+        if imagen is None:
+            return None
+        
+        # Calcular el índice seleccionado
+        if indice == 'NDVI':
+            img_indice = imagen.normalizedDifference(['B8', 'B4']).rename('NDVI')
+            viz_params = {
+                'min': -0.2,
+                'max': 0.8,
+                'palette': ['blue', 'white', 'green']
+            }
+        elif indice == 'NDRE':
+            img_indice = imagen.normalizedDifference(['B8', 'B5']).rename('NDRE')
+            viz_params = {
+                'min': -0.2,
+                'max': 0.6,
+                'palette': ['blue', 'white', 'darkgreen']
+            }
+        elif indice == 'GNDVI':
+            img_indice = imagen.normalizedDifference(['B8', 'B3']).rename('GNDVI')
+            viz_params = {
+                'min': -0.2,
+                'max': 0.7,
+                'palette': ['brown', 'yellow', 'green']
+            }
+        else:
+            img_indice = imagen.normalizedDifference(['B8', 'B4']).rename('NDVI')
+            viz_params = {
+                'min': -0.2,
+                'max': 0.8,
+                'palette': ['blue', 'white', 'green']
+            }
+        
+        # Obtener URL de la imagen
+        map_id_dict = img_indice.getMapId(viz_params)
+        
+        return {
+            'url': map_id_dict['tile_fetcher'].url_format,
+            'bounds': gdf_wgs84.total_bounds.tolist(),
+            'indice': indice
+        }
+        
+    except Exception as e:
+        st.error(f"❌ Error obteniendo imagen GEE: {str(e)}")
         return None
 
 # ===== INICIALIZACIÓN DE VARIABLES DE SESIÓN =====
@@ -359,6 +346,8 @@ if 'analisis_completado' not in st.session_state:
     st.session_state.analisis_completado = False
 if 'variedad_seleccionada' not in st.session_state:
     st.session_state.variedad_seleccionada = "No especificada"
+if 'gee_authenticated' not in st.session_state:
+    st.session_state.gee_authenticated = False
 
 # ===== ESTILOS PERSONALIZADOS =====
 st.markdown("""
@@ -500,6 +489,14 @@ div[data-testid="metric-container"]:hover {
     box-shadow: 0 15px 40px rgba(59, 130, 246, 0.2) !important;
     border-color: rgba(59, 130, 246, 0.4) !important;
 }
+
+.gee-info {
+    background: linear-gradient(135deg, #0c4b33 0%, #1a936f 100%);
+    padding: 15px;
+    border-radius: 10px;
+    margin: 10px 0;
+    color: white;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -594,7 +591,7 @@ PARAMETROS_CULTIVOS = {
         'NDRE_OPTIMO': 0.32,
         'RENDIMIENTO_OPTIMO': 3800,
         'COSTO_FERTILIZACION': 380,
-        'PRECIO_VENTa': 0.60,
+        'PRECIO_VENTA': 0.60,
         'VARIEDADES': VARIEDADES_ARGENTINA['MANI'],
         'ZONAS_ARGENTINA': ['Córdoba', 'San Luis', 'La Pampa']
     }
@@ -607,14 +604,47 @@ st.markdown("""
 <div class="hero-banner">
     <div class="hero-content">
         <h1 class="hero-title">🛰️ ANALIZADOR MULTI-CULTIVO SATELITAL</h1>
-        <p class="hero-subtitle">Potenciado con Sentinel Hub para agricultura de precisión con datos satelitales reales</p>
+        <p class="hero-subtitle">Potenciado con Google Earth Engine para agricultura de precisión con datos satelitales gratuitos</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
 
-# ===== SIDEBAR =====
+# ===== SIDEBAR CONFIGURACIÓN =====
 with st.sidebar:
     st.markdown('<div class="sidebar-title">⚙️ CONFIGURACIÓN</div>', unsafe_allow_html=True)
+    
+    # Configuración de Google Earth Engine
+    st.markdown('<div class="gee-info">🌎 GOOGLE EARTH ENGINE</div>', unsafe_allow_html=True)
+    
+    if GEE_AVAILABLE:
+        if st.button("🔑 Autenticar GEE"):
+            with st.spinner("Autenticando con Google Earth Engine..."):
+                if autenticar_gee():
+                    st.session_state.gee_authenticated = True
+                    st.success("✅ Autenticación exitosa!")
+                    st.rerun()
+                else:
+                    st.error("❌ Error en autenticación")
+        
+        if st.session_state.get('gee_authenticated', False):
+            st.success("✅ GEE Autenticado")
+        else:
+            st.warning("⚠️ GEE No autenticado")
+            
+        st.info("""
+        **Satélites disponibles:**
+        - Sentinel-2 (10m resolución)
+        - Landsat 8/9 (30m resolución)
+        - MODIS (250-500m)
+        """)
+    else:
+        st.error("❌ GEE no disponible")
+        st.info("""
+        **Para instalar GEE:**
+        1. `pip install earthengine-api`
+        2. Ejecutar en terminal: `earthengine authenticate`
+        3. Sigue las instrucciones en el navegador
+        """)
     
     cultivo = st.selectbox("Cultivo:", ["TRIGO", "MAIZ", "SORGO", "SOJA", "GIRASOL", "MANI"])
     
@@ -622,13 +652,27 @@ with st.sidebar:
     variedad = st.selectbox("Variedad:", ["No especificada"] + variedades)
     st.session_state.variedad_seleccionada = variedad
     
-    satelite_seleccionado = st.selectbox("Satélite:", ["SENTINEL-2", "LANDSAT-8", "DATOS_SIMULADOS"])
-    fecha_fin = st.date_input("Fecha fin", datetime.now())
-    fecha_inicio = st.date_input("Fecha inicio", datetime.now() - timedelta(days=30))
+    satelite_seleccionado = st.selectbox("Satélite:", ["SENTINEL-2 (GEE)", "LANDSAT-8 (GEE)", "DATOS_SIMULADOS"])
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        fecha_inicio = st.date_input("Fecha inicio", datetime.now() - timedelta(days=30))
+    with col2:
+        fecha_fin = st.date_input("Fecha fin", datetime.now())
+    
     n_divisiones = st.slider("Zonas de manejo:", 16, 48, 32)
     intervalo_curvas = st.slider("Intervalo curvas (m):", 1.0, 20.0, 5.0, 1.0)
     resolucion_dem = st.slider("Resolución DEM (m):", 5.0, 50.0, 10.0, 5.0)
-    uploaded_file = st.file_uploader("Subir parcela", type=['zip', 'kml', 'kmz'])
+    
+    uploaded_file = st.file_uploader("Subir parcela", type=['zip', 'kml', 'kmz', 'geojson', 'shp'])
+    
+    # Selección de índices a calcular
+    st.markdown("**📊 Índices a calcular:**")
+    ndvi_check = st.checkbox("NDVI", value=True)
+    ndre_check = st.checkbox("NDRE", value=True)
+    gndvi_check = st.checkbox("GNDVI", value=False)
+    evi_check = st.checkbox("EVI", value=False)
+    savi_check = st.checkbox("SAVI", value=False)
 
 # ===== FUNCIONES AUXILIARES =====
 def validar_y_corregir_crs(gdf):
@@ -770,6 +814,10 @@ def cargar_archivo_parcela(uploaded_file):
             gdf = cargar_shapefile_desde_zip(uploaded_file)
         elif uploaded_file.name.endswith(('.kml', '.kmz')):
             gdf = cargar_kml(uploaded_file)
+        elif uploaded_file.name.endswith('.geojson'):
+            contenido = uploaded_file.read().decode('utf-8')
+            gdf = gpd.read_file(contenido, driver='GeoJSON')
+            gdf = validar_y_corregir_crs(gdf)
         else:
             st.error("❌ Formato no soportado")
             return None
@@ -792,47 +840,55 @@ def cargar_archivo_parcela(uploaded_file):
         st.error(f"❌ Error cargando archivo: {str(e)}")
         return None
 
-# ===== FUNCIONES PARA DATOS SATELITALES =====
-def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
+# ===== FUNCIONES PARA DATOS SATELITALES CON GEE =====
+def descargar_datos_gee(gdf, fecha_inicio, fecha_fin):
+    """Descarga datos de Google Earth Engine"""
     try:
-        return {
+        # Determinar qué índices calcular según checkboxes
+        indices_seleccionados = []
+        if ndvi_check:
+            indices_seleccionados.append('NDVI')
+        if ndre_check:
+            indices_seleccionados.append('NDRE')
+        if gndvi_check:
+            indices_seleccionados.append('GNDVI')
+        if evi_check:
+            indices_seleccionados.append('EVI')
+        if savi_check:
+            indices_seleccionados.append('SAVI')
+        
+        if not indices_seleccionados:
+            indices_seleccionados = ['NDVI']  # Por defecto
+        
+        # Calcular índices con GEE
+        resultados = calcular_indices_gee(gdf, fecha_inicio, fecha_fin, indices_seleccionados)
+        
+        if resultados:
+            return resultados
+        else:
+            # Si GEE falla, usar datos simulados
+            st.warning("⚠️ Usando datos simulados (GEE no disponible)")
+            return generar_datos_simulados_multiples(gdf, cultivo, indices_seleccionados)
+            
+    except Exception as e:
+        st.error(f"❌ Error GEE: {str(e)}")
+        return generar_datos_simulados_multiples(gdf, cultivo, ['NDVI'])
+
+def generar_datos_simulados_multiples(gdf, cultivo, indices):
+    """Genera datos simulados para múltiples índices"""
+    resultados = {}
+    for indice in indices:
+        resultados[indice] = {
             'indice': indice,
-            'valor_promedio': 0.65 + np.random.normal(0, 0.1),
-            'fuente': 'Landsat-8',
+            'valor_promedio': PARAMETROS_CULTIVOS[cultivo].get(f'{indice}_OPTIMO', 0.7) * 0.8 + np.random.normal(0, 0.1),
+            'valor_min': 0.3,
+            'valor_max': 0.9,
+            'valor_std': 0.1,
+            'fuente': 'Simulación',
             'fecha': datetime.now().strftime('%Y-%m-%d'),
-            'resolucion': '30m'
+            'resolucion': '10m'
         }
-    except Exception as e:
-        st.error(f"❌ Error Landsat 8: {str(e)}")
-        return None
-
-def descargar_datos_sentinel2(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
-    """Función modificada para usar Sentinel Hub"""
-    try:
-        config = None
-        if SENTINELHUB_AVAILABLE and satelite_seleccionado == "SENTINEL-2":
-            config = configurar_sentinel_hub()
-        
-        if config is not None:
-            resultado = calcular_indice_sentinel2(gdf, fecha_inicio, fecha_fin, indice, config)
-            if resultado is not None:
-                return resultado
-        
-        st.warning("⚠️ Usando datos simulados")
-        return generar_datos_simulados(gdf, cultivo, indice)
-        
-    except Exception as e:
-        st.error(f"❌ Error: {str(e)}")
-        return generar_datos_simulados(gdf, cultivo, indice)
-
-def generar_datos_simulados(gdf, cultivo, indice='NDVI'):
-    return {
-        'indice': indice,
-        'valor_promedio': PARAMETROS_CULTIVOS[cultivo]['NDVI_OPTIMO'] * 0.8 + np.random.normal(0, 0.1),
-        'fuente': 'Simulación',
-        'fecha': datetime.now().strftime('%Y-%m-%d'),
-        'resolucion': '10m'
-    }
+    return resultados
 
 # ===== FUNCIONES DEM SINTÉTICO Y CURVAS DE NIVEL =====
 def generar_dem_sintetico(gdf, resolucion=10.0):
@@ -897,7 +953,7 @@ def calcular_pendiente(X, Y, Z, resolucion):
     return pendiente
 
 def generar_curvas_nivel(X, Y, Z, intervalo=5.0):
-    """Genera curvas de nivel a partir del DEM - VERSIÓN MEJORADA"""
+    """Genera curvas de nivel a partir del DEM"""
     try:
         # Limpiar datos NaN
         Z_clean = np.where(np.isnan(Z), -9999, Z)
@@ -954,7 +1010,11 @@ def analizar_fertilidad_actual(gdf_dividido, cultivo, datos_satelitales):
     x_min, x_max = min(x_coords), max(x_coords)
     y_min, y_max = min(y_coords), max(y_coords)
     params = PARAMETROS_CULTIVOS[cultivo]
-    valor_base_satelital = datos_satelitales.get('valor_promedio', 0.6) if datos_satelitales else 0.6
+    
+    # Obtener valor NDVI de datos satelitales
+    valor_base_satelital = 0.6  # Valor por defecto
+    if datos_satelitales and 'NDVI' in datos_satelitales:
+        valor_base_satelital = datos_satelitales['NDVI'].get('valor_promedio', 0.6)
     
     for idx, row in gdf_centroids.iterrows():
         x_norm = (row['x'] - x_min) / (x_max - x_min) if x_max != x_min else 0.5
@@ -1065,9 +1125,9 @@ def analizar_proyecciones_cosecha(gdf_dividido, cultivo, indices):
     
     return proyecciones
 
-# ===== FUNCIONES DE VISUALIZACIÓN CORREGIDAS =====
+# ===== FUNCIONES DE VISUALIZACIÓN =====
 def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
-    """Crear mapa de fertilidad actual con mapa de calor - CORREGIDO"""
+    """Crear mapa de fertilidad actual con mapa de calor"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
         fig, ax = plt.subplots(1, 1, figsize=(12, 8))
@@ -1092,9 +1152,9 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
         yi = np.linspace(y_min, y_max, 200)
         Xi, Yi = np.meshgrid(xi, yi)
         
-        # ✅ CORREGIDO: Usar LinearTriInterpolator en lugar de TriInterpolator
+        # Interpolación
         triang = Triangulation(puntos[:, 0], puntos[:, 1])
-        interpolator = LinearTriInterpolator(triang, valores)  # ✅ CORRECCIÓN AQUÍ
+        interpolator = LinearTriInterpolator(triang, valores)
         Zi = interpolator(Xi, Yi)
         
         # Si hay NaN en la interpolación, rellenar con valor más cercano
@@ -1120,7 +1180,7 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
         except:
             pass
         
-        info_satelite = {'SENTINEL-2': 'Sentinel-2', 'LANDSAT-8': 'Landsat-8', 'DATOS_SIMULADOS': 'Simulados'}
+        info_satelite = {'SENTINEL-2 (GEE)': 'Sentinel-2 (GEE)', 'LANDSAT-8 (GEE)': 'Landsat-8 (GEE)', 'DATOS_SIMULADOS': 'Simulados'}
         ax.set_title(f'{ICONOS_CULTIVOS[cultivo]} MAPA DE CALOR - FERTILIDAD ACTUAL\n{cultivo} | {info_satelite.get(satelite, satelite)}',
                     fontsize=16, fontweight='bold', pad=20)
         ax.set_xlabel('Longitud')
@@ -1145,7 +1205,7 @@ def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
         return None
 
 def crear_mapa_npk_completo(gdf_completo, cultivo, nutriente='N'):
-    """Crear mapa de recomendaciones NPK con mapa de calor - CORREGIDO"""
+    """Crear mapa de recomendaciones NPK con mapa de calor"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
         fig, ax = plt.subplots(1, 1, figsize=(12, 8))
@@ -1186,9 +1246,9 @@ def crear_mapa_npk_completo(gdf_completo, cultivo, nutriente='N'):
         yi = np.linspace(y_min, y_max, 200)
         Xi, Yi = np.meshgrid(xi, yi)
         
-        # ✅ CORREGIDO: Usar LinearTriInterpolator
+        # Interpolación
         triang = Triangulation(puntos[:, 0], puntos[:, 1])
-        interpolator = LinearTriInterpolator(triang, valores)  # ✅ CORRECCIÓN AQUÍ
+        interpolator = LinearTriInterpolator(triang, valores)
         Zi = interpolator(Xi, Yi)
         
         # Si hay NaN en la interpolación
@@ -1253,9 +1313,9 @@ def crear_mapa_pendientes_completo(X, Y, pendientes, gdf_original):
         yi = np.linspace(Y_flat.min(), Y_flat.max(), 300)
         Xi, Yi = np.meshgrid(xi, yi)
         
-        # ✅ CORREGIDO: Usar LinearTriInterpolator
+        # Interpolación
         triang = Triangulation(X_flat, Y_flat)
-        interpolator = LinearTriInterpolator(triang, pend_flat)  # ✅ CORRECCIÓN AQUÍ
+        interpolator = LinearTriInterpolator(triang, pend_flat)
         Zi = interpolator(Xi, Yi)
         
         # Si hay NaN en la interpolación
@@ -1395,7 +1455,7 @@ def crear_visualizacion_3d_completa(X, Y, Z):
         return None
 
 def crear_mapa_potencial_cosecha(gdf_completo, cultivo, variedad):
-    """Crear mapa de potencial de cosecha con mapa de calor - CORREGIDO"""
+    """Crear mapa de potencial de cosecha con mapa de calor"""
     try:
         gdf_plot = gdf_completo.to_crs(epsg=3857)
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 7))
@@ -1422,9 +1482,9 @@ def crear_mapa_potencial_cosecha(gdf_completo, cultivo, variedad):
         yi = np.linspace(y_min, y_max, 200)
         Xi, Yi = np.meshgrid(xi, yi)
         
-        # ✅ CORREGIDO: Usar LinearTriInterpolator
+        # Interpolación
         triang = Triangulation(puntos[:, 0], puntos[:, 1])
-        interpolator = LinearTriInterpolator(triang, valores)  # ✅ CORRECCIÓN AQUÍ
+        interpolator = LinearTriInterpolator(triang, valores)
         Zi = interpolator(Xi, Yi)
         
         # Si hay NaN en la interpolación
@@ -1462,8 +1522,8 @@ def crear_mapa_potencial_cosecha(gdf_completo, cultivo, variedad):
         
         valores_fert = np.array(valores_fert)
         
-        # ✅ CORREGIDO: Usar LinearTriInterpolator
-        interpolator_fert = LinearTriInterpolator(triang, valores_fert)  # ✅ CORRECCIÓN AQUÍ
+        # Interpolación
+        interpolator_fert = LinearTriInterpolator(triang, valores_fert)
         Zi_fert = interpolator_fert(Xi, Yi)
         
         # Si hay NaN en la interpolación
@@ -1502,7 +1562,7 @@ def crear_mapa_potencial_cosecha(gdf_completo, cultivo, variedad):
         st.error(f"Detalle: {traceback.format_exc()}")
         return None
 
-# ===== FUNCIONES DE EXPORTACIÓN COMPLETAS =====
+# ===== FUNCIONES DE EXPORTACIÓN =====
 def exportar_a_geojson(gdf, nombre_base="parcela"):
     try:
         gdf = validar_y_corregir_crs(gdf)
@@ -1740,15 +1800,15 @@ def generar_reporte_completo(resultados, cultivo, variedad, satelite, fecha_inic
         doc.add_heading('10. METADATOS TÉCNICOS', level=1)
         metadatos = [
             ('Generado por', 'Analizador Multi-Cultivo Satelital'),
-            ('Versión', '5.2 - Sentinel Hub Integration'),
+            ('Versión', '6.0 - Google Earth Engine Integration'),
             ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
             ('Número de zonas', str(len(resultados['gdf_completo']))),
-            ('Resolución satelital', '10m' if satelite == "SENTINEL-2" else '30m'),
+            ('Resolución satelital', '10m' if "SENTINEL" in satelite else '30m'),
             ('Resolución DEM', f'{resolucion_dem} m'),
             ('Intervalo curvas de nivel', f'{intervalo_curvas} m'),
             ('Variedad seleccionada', variedad),
-            ('Sentinel Hub', 'Configurado' if SENTINELHUB_AVAILABLE else 'No disponible')
+            ('Google Earth Engine', 'Configurado' if GEE_AVAILABLE else 'No disponible')
         ]
         
         for key, value in metadatos:
@@ -1799,29 +1859,23 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         area_total = calcular_superficie(gdf)
         resultados['area_total'] = area_total
         
-        config = None
-        if satelite == "SENTINEL-2" and SENTINELHUB_AVAILABLE:
-            config = configurar_sentinel_hub()
-        
+        # Obtener datos satelitales según selección
         datos_satelitales = None
-        if satelite == "SENTINEL-2" and SENTINELHUB_AVAILABLE and config is not None:
-            indices_deseados = ['NDVI', 'NDRE', 'GNDVI']
-            datos_multiples = obtener_multiples_indices_sentinel2(
-                gdf, fecha_inicio, fecha_fin, indices_deseados, config
-            )
-            
-            if datos_multiples and 'NDVI' in datos_multiples:
-                datos_satelitales = datos_multiples['NDVI']
-                resultados['datos_satelitales'] = datos_multiples
-                st.success(f"✅ Datos reales de Sentinel-2 obtenidos ({datos_satelitales['fecha']})")
-            else:
-                datos_satelitales = generar_datos_simulados(gdf, cultivo, "NDVI")
-                st.warning("⚠️ Usando datos simulados (no se encontraron escenas)")
+        if "GEE" in satelite and GEE_AVAILABLE:
+            with st.spinner("🌎 Conectando a Google Earth Engine..."):
+                datos_satelitales = descargar_datos_gee(gdf, fecha_inicio, fecha_fin)
                 
-        elif satelite == "LANDSAT-8":
-            datos_satelitales = descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, "NDVI")
+            if datos_satelitales:
+                st.success(f"✅ Datos satelitales obtenidos de Google Earth Engine")
+                # Mostrar información de los índices obtenidos
+                for idx_name, idx_data in datos_satelitales.items():
+                    st.info(f"📊 {idx_name}: {idx_data.get('valor_promedio', 0):.3f} (Fecha: {idx_data.get('fecha', 'N/A')})")
+            else:
+                datos_satelitales = generar_datos_simulados_multiples(gdf, cultivo, ['NDVI', 'NDRE'])
+                st.warning("⚠️ Usando datos simulados")
         else:
-            datos_satelitales = generar_datos_simulados(gdf, cultivo, "NDVI")
+            datos_satelitales = generar_datos_simulados_multiples(gdf, cultivo, ['NDVI', 'NDRE'])
+            st.info("ℹ️ Usando datos simulados")
         
         gdf_dividido = dividir_parcela_en_zonas(gdf, n_divisiones)
         resultados['gdf_dividido'] = gdf_dividido
@@ -1888,6 +1942,7 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
                 gdf_completo.at[gdf_completo.index[i], f'proy_{key}'] = value
         
         resultados['gdf_completo'] = gdf_completo
+        resultados['datos_satelitales'] = datos_satelitales
         resultados['exitoso'] = True
         
         return resultados
@@ -1899,7 +1954,7 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         return resultados
 
 # ===== INTERFAZ PRINCIPAL =====
-st.title("🛰️ ANALIZADOR MULTI-CULTIVO SATELITAL")
+st.title("🛰️ ANALIZADOR MULTI-CULTIVO SATELITAL CON GOOGLE EARTH ENGINE")
 
 if uploaded_file:
     with st.spinner("Cargando parcela..."):
@@ -1931,6 +1986,7 @@ if uploaded_file:
                     st.write(f"- Zonas: {n_divisiones}")
                     st.write(f"- Satélite: {satelite_seleccionado}")
                     st.write(f"- Período: {fecha_inicio} a {fecha_fin}")
+                    st.write(f"- Índices seleccionados: {', '.join([idx for idx, checked in [('NDVI', ndvi_check), ('NDRE', ndre_check), ('GNDVI', gndvi_check), ('EVI', evi_check), ('SAVI', savi_check)] if checked])}")
                 
                 if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True):
                     with st.spinner("Ejecutando análisis completo..."):
@@ -1960,7 +2016,19 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
     variedad = st.session_state.variedad_seleccionada
     
     if 'datos_satelitales' in resultados and resultados['datos_satelitales']:
-        st.info(f"🛰️ **Datos Satelitales:** {resultados['datos_satelitales']['fecha']}")
+        st.markdown("---")
+        st.subheader("🛰️ DATOS SATELITALES OBTENIDOS")
+        
+        datos_satelitales = resultados['datos_satelitales']
+        cols = st.columns(min(3, len(datos_satelitales)))
+        
+        for idx, (indice_name, indice_data) in enumerate(datos_satelitales.items()):
+            with cols[idx % 3]:
+                st.metric(
+                    label=f"{indice_name}",
+                    value=f"{indice_data.get('valor_promedio', 0):.3f}",
+                    help=f"Fuente: {indice_data.get('fuente', 'N/A')}\nFecha: {indice_data.get('fecha', 'N/A')}\nNubes: {indice_data.get('cobertura_nubes', 'N/A')}"
+                )
     
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 Fertilidad Actual",
@@ -2249,5 +2317,27 @@ with col_exp2:
             key="docx_download"
         )
 
+# Información sobre Google Earth Engine
 st.markdown("---")
-st.markdown("**Versión 5.2 - Sentinel Hub Integration** | © 2026 Analizador Multi-Cultivo Satelital")
+st.markdown("""
+### 🌎 Acerca de Google Earth Engine
+
+**Google Earth Engine** es una plataforma de análisis geoespacial que combina:
+- **Catálogo multi-petabyte** de imágenes satelitales
+- **Procesamiento en la nube** a gran escala
+- **Acceso gratuito** para investigación, educación y uso sin fines de lucro
+
+**Satélites disponibles:**
+- **Sentinel-2**: 10m resolución, cada 5 días
+- **Landsat 8/9**: 30m resolución, cada 16 días
+- **MODIS**: 250-500m resolución, diario
+- **Y muchos más...**
+
+**Para autenticar GEE:**
+1. Instalar: `pip install earthengine-api`
+2. Ejecutar en terminal: `earthengine authenticate`
+3. Sigue las instrucciones en el navegador
+""")
+
+st.markdown("---")
+st.markdown("**Versión 6.0 - Google Earth Engine Integration** | © 2026 Analizador Multi-Cultivo Satelital")
