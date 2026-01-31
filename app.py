@@ -66,41 +66,38 @@ if 'sh_client_secret' not in st.session_state:
 if 'sh_instance_id' not in st.session_state:
     st.session_state.sh_instance_id = ''
 
-# Cargar credenciales de Sentinel Hub desde secrets si están disponibles
-if SENTINEL_HUB_AVAILABLE:
+# === CONFIGURACIÓN DE SENTINEL HUB CON CREDENCIALES INCLUIDAS ===
+def configurar_sentinel_hub_predefinido():
+    """Configurar Sentinel Hub con credenciales incluidas en el código"""
+    if not SENTINEL_HUB_AVAILABLE:
+        return None
+    
     try:
-        # Intentar cargar desde secrets.toml
-        if 'sentinel_hub' in st.secrets:
-            sh_secrets = st.secrets['sentinel_hub']
-            client_id = sh_secrets.get('client_id')
-            client_secret = sh_secrets.get('client_secret')
-            instance_id = sh_secrets.get('instance_id')
-            
-            if client_id and client_secret and instance_id:
-                # Guardar en session_state para mostrar
-                st.session_state.sh_client_id = client_id
-                st.session_state.sh_client_secret = client_secret
-                st.session_state.sh_instance_id = instance_id
-                
-                # Configurar si no está ya configurado
-                if not st.session_state.sentinel_authenticated:
-                    def configurar_sentinel_desde_secrets():
-                        config = configurar_sentinel_hub(client_id, client_secret, instance_id)
-                        if config:
-                            autenticado = verificar_autenticacion_sentinel_hub(config)
-                            if autenticado:
-                                st.session_state.sh_config = config
-                                st.session_state.sentinel_authenticated = True
-                                return True
-                        return False
-                    
-                    # Ejecutar en background sin bloquear
-                    import threading
-                    thread = threading.Thread(target=configurar_sentinel_desde_secrets)
-                    thread.start()
+        config = SHConfig()
+        
+        # ⚠️ ⚠️ ⚠️ IMPORTANTE: REEMPLAZA ESTAS CREDENCIALES CON LAS TUS ⚠️ ⚠️ ⚠️
+        # ⚠️ Obtén tus credenciales de: https://apps.sentinel-hub.com/dashboard/
+        
+        # Client ID de Sentinel Hub
+        config.sh_client_id = 'TU_CLIENT_ID_AQUI'                    # ⚠️ REEMPLAZAR
+        
+        # Client Secret de Sentinel Hub
+        config.sh_client_secret = 'TU_CLIENT_SECRET_AQUI'           # ⚠️ REEMPLAZAR
+        
+        # Instance ID de Sentinel Hub
+        config.instance_id = 'TU_INSTANCE_ID_AQUI'                  # ⚠️ REEMPLAZAR
+        
+        # Verificar que las credenciales no sean las de ejemplo
+        if (config.sh_client_id == 'TU_CLIENT_ID_AQUI' or 
+            config.sh_client_secret == 'TU_CLIENT_SECRET_AQUI' or
+            config.instance_id == 'TU_INSTANCE_ID_AQUI'):
+            st.warning("⚠️ Credenciales de Sentinel Hub no configuradas. Usa tus credenciales reales.")
+            return None
+        
+        return config
     except Exception as e:
-        # Silenciar error si no hay secrets
-        pass
+        st.error(f"❌ Error configurando Sentinel Hub: {str(e)}")
+        return None
 
 # === ESTILOS PERSONALIZADOS - VERSIÓN PREMIUM MODERNA ===
 st.markdown("""
@@ -820,16 +817,27 @@ def mostrar_info_cultivo(cultivo):
         """, unsafe_allow_html=True)
 
 # ===== FUNCIONES SENTINEL HUB =====
-def configurar_sentinel_hub(client_id, client_secret, instance_id):
-    """Configurar Sentinel Hub con credenciales"""
+def configurar_sentinel_hub(client_id=None, client_secret=None, instance_id=None):
+    """Configurar Sentinel Hub con credenciales (manual o automática)"""
     if not SENTINEL_HUB_AVAILABLE:
         return None
     
     try:
         config = SHConfig()
-        config.sh_client_id = client_id
-        config.sh_client_secret = client_secret
-        config.instance_id = instance_id
+        
+        # Si se proporcionan credenciales manualmente, usarlas
+        if client_id and client_secret and instance_id:
+            config.sh_client_id = client_id
+            config.sh_client_secret = client_secret
+            config.instance_id = instance_id
+        else:
+            # Usar las credenciales predefinidas
+            config_predefinido = configurar_sentinel_hub_predefinido()
+            if config_predefinido:
+                return config_predefinido
+            else:
+                return None
+                
         return config
     except Exception as e:
         st.error(f"❌ Error configurando Sentinel Hub: {str(e)}")
@@ -1130,7 +1138,7 @@ with st.sidebar:
     else:
         variedad = "No especificada"
     
-    # Configuración Sentinel Hub
+    # Configuración Sentinel Hub - Versión simplificada
     if SENTINEL_HUB_AVAILABLE:
         with st.expander("🔐 Configuración Sentinel Hub"):
             
@@ -1146,61 +1154,47 @@ with st.sidebar:
                     st.success("Autenticación limpiada")
                     st.rerun()
             else:
-                # Verificar si hay credenciales en secrets
-                try:
-                    if 'sentinel_hub' in st.secrets:
-                        sh_secrets = st.secrets['sentinel_hub']
-                        has_client_id = 'client_id' in sh_secrets and sh_secrets['client_id']
-                        has_client_secret = 'client_secret' in sh_secrets and sh_secrets['client_secret']
-                        has_instance_id = 'instance_id' in sh_secrets and sh_secrets['instance_id']
-                        
-                        if has_client_id and has_client_secret and has_instance_id:
-                            if st.button("🔑 Autenticar con secrets.toml", key="auth_with_secrets"):
-                                with st.spinner("Autenticando con Sentinel Hub..."):
-                                    config = configurar_sentinel_hub(
-                                        sh_secrets['client_id'],
-                                        sh_secrets['client_secret'],
-                                        sh_secrets['instance_id']
-                                    )
-                                    if config:
-                                        autenticado = verificar_autenticacion_sentinel_hub(config)
-                                        if autenticado:
-                                            st.session_state.sh_config = config
-                                            st.session_state.sentinel_authenticated = True
-                                            st.session_state.sh_client_id = sh_secrets['client_id']
-                                            st.session_state.sh_client_secret = sh_secrets['client_secret']
-                                            st.session_state.sh_instance_id = sh_secrets['instance_id']
-                                            st.success("✅ Autenticación exitosa desde secrets.toml!")
-                                            st.rerun()
-                                        else:
-                                            st.error("❌ Error de autenticación. Verifica tus credenciales en secrets.toml")
-                                    else:
-                                        st.error("❌ Error configurando Sentinel Hub")
-                        else:
-                            st.info("ℹ️ Credenciales de Sentinel Hub encontradas en secrets.toml")
-                            st.code("""
-# Ejemplo de formato:
-[sentinel_hub]
-client_id = "tu_client_id_aquí"
-client_secret = "tu_client_secret_aquí"
-instance_id = "tu_instance_id_aquí"
-""", language="toml")
-                except Exception as e:
-                    st.info("ℹ️ Para usar Sentinel Hub, configura tus credenciales en .streamlit/secrets.toml")
+                st.info("Credenciales configuradas en el código. Haz clic en 'Autenticar' para conectar.")
                 
-                # También permitir entrada manual
+                # Botón para autenticar con credenciales predefinidas
+                if st.button("🔑 Autenticar con Credenciales Predefinidas", key="auth_predefined", type="primary"):
+                    with st.spinner("Autenticando con Sentinel Hub..."):
+                        config = configurar_sentinel_hub_predefinido()
+                        if config:
+                            autenticado = verificar_autenticacion_sentinel_hub(config)
+                            if autenticado:
+                                st.session_state.sh_config = config
+                                st.session_state.sentinel_authenticated = True
+                                st.success("✅ Autenticación exitosa!")
+                                st.rerun()
+                            else:
+                                st.error("❌ Error de autenticación. Verifica las credenciales en el código.")
+                        else:
+                            st.error("❌ Error configurando Sentinel Hub. Verifica las credenciales.")
+                
+                # Instrucciones para configurar credenciales
+                st.markdown("---")
+                st.markdown("**📝 Para configurar tus credenciales:**")
+                st.markdown("""
+                1. Ve a: https://apps.sentinel-hub.com/dashboard/
+                2. Crea una cuenta o inicia sesión
+                3. Obtén tu **Client ID**, **Client Secret** e **Instance ID**
+                4. Reemplaza las credenciales en el archivo `app.py`:
+                """)
+                st.code("""
+# En la función configurar_sentinel_hub_predefinido():
+config.sh_client_id = 'TU_CLIENT_ID_REAL'       # ⚠️ Reemplazar
+config.sh_client_secret = 'TU_CLIENT_SECRET_REAL' # ⚠️ Reemplazar
+config.instance_id = 'TU_INSTANCE_ID_REAL'     # ⚠️ Reemplazar
+                """, language="python")
+                
+                # Opción para ingresar credenciales manualmente (alternativa)
                 st.markdown("---")
                 st.markdown("**O ingresa credenciales manualmente:**")
                 
-                sh_client_id = st.text_input("Client ID", 
-                                             value=st.session_state.get('sh_client_id', ''),
-                                             type="password")
-                sh_client_secret = st.text_input("Client Secret", 
-                                                value=st.session_state.get('sh_client_secret', ''),
-                                                type="password")
-                sh_instance_id = st.text_input("Instance ID", 
-                                              value=st.session_state.get('sh_instance_id', ''),
-                                              type="password")
+                sh_client_id = st.text_input("Client ID", type="password")
+                sh_client_secret = st.text_input("Client Secret", type="password")
+                sh_instance_id = st.text_input("Instance ID", type="password")
                 
                 col_auth1, col_auth2 = st.columns(2)
                 with col_auth1:
@@ -1766,7 +1760,7 @@ def analizar_costos(gdf_dividido, cultivo, recomendaciones_n, recomendaciones_p,
         costo_n = recomendaciones_n[i] * precio_n
         costo_p = recomendaciones_p[i] * precio_p
         costo_k = recomendaciones_k[i] * precio_k
-        costo_total = costo_n + costo_p + costo_k + params['COSTO_FERTILIZacion']
+        costo_total = costo_n + costo_p + costo_k + params['COSTO_FERTILIZACION']
         
         costos.append({
             'costo_nitrogeno': round(costo_n, 2),
