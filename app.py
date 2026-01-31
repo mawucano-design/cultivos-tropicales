@@ -79,13 +79,13 @@ def configurar_sentinel_hub_predefinido():
         # ⚠️ Obtén tus credenciales de: https://apps.sentinel-hub.com/dashboard/
         
         # Client ID de Sentinel Hub
-        config.sh_client_id = 854eeebf-f870-484a-96f4-d23d49b5f071
+        config.sh_client_id = '854eeebf-f870-484a-96f4-d23d49b5f071'
         
         # Client Secret de Sentinel Hub
-        config.sh_client_secret = 23729a0d-75f6-478b-8304-c8bb2bfbe71d
+        config.sh_client_secret = '23729a0d-75f6-478b-8304-c8bb2bfbe71d'
         
         # Instance ID de Sentinel Hub
-        config.instance_id = PLAK91bbe43a22834a5ca2c6cee7ebd97105
+        config.instance_id = 'PLAK91bbe43a22834a5ca2c6cee7ebd97105'
         
         # Verificar que las credenciales no sean las de ejemplo
         if (config.sh_client_id == 'TU_CLIENT_ID_AQUI' or 
