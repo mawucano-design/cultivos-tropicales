@@ -16,3 +16,4 @@ lxml>=4.9.0
 scipy
 earthengine-api 
 geemap
+sentinelhub
