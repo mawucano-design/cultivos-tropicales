@@ -6,13 +6,11 @@ matplotlib>=3.7.0
 shapely>=2.0.0
 contextily>=1.4.0
 requests>=2.31.0
-fpdf2>=2.7.0
 python-docx>=1.1.0
 geojson>=3.0.0
 pyproj>=3.6.0
 rtree>=1.0.0
-scipy>=1.11.0
 lxml>=4.9.0
-scipy
-xarray
-h5py
+scipy>=1.11.0
+xarray>=2023.6.0
+h5py>=3.9.0
