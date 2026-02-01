@@ -747,22 +747,25 @@ def crear_visualizacion_npk(zonas, recomendaciones_npk, nutriente='N'):
     return fig
 
 # ===== FUNCIONES PARA CARGAR ARCHIVOS GEOGRÁFICOS =====
-def procesar_kml(kml_bytes):
-    """Procesa archivo KML"""
+def procesar_kml_simple(kml_bytes):
+    """Procesa archivo KML sin usar fiona directamente - método simple"""
     try:
-        # Guardar temporalmente el archivo
+        # Método simple: usar geopandas con método alternativo
         with tempfile.NamedTemporaryFile(suffix='.kml', delete=False) as tmp_file:
             tmp_file.write(kml_bytes)
             tmp_file.flush()
-            
-            try:
-                gdf = gpd.read_file(tmp_file.name, driver='KML')
-            except:
-                # Intentar con encoding diferente
-                gdf = gpd.read_file(tmp_file.name, driver='KML', encoding='utf-8')
+            tmp_path = tmp_file.name
+        
+        try:
+            # Intentar leer con geopandas
+            gdf = gpd.read_file(tmp_path, driver='KML')
+        except Exception as e:
+            # Si falla, intentar sin especificar driver
+            st.warning(f"Intento 1 falló: {str(e)[:100]}")
+            gdf = gpd.read_file(tmp_path)
         
         # Limpiar archivo temporal
-        os.unlink(tmp_file.name)
+        os.unlink(tmp_path)
         
         if gdf.empty:
             st.warning("El archivo KML no contiene geometrías válidas")
@@ -776,42 +779,102 @@ def procesar_kml(kml_bytes):
                 # Tomar el polígono más grande
                 polygons = list(geom.geoms)
                 return max(polygons, key=lambda p: p.area)
-            elif geom.geom_type == 'GeometryCollection':
-                # Buscar polígonos en la colección
-                for subgeom in geom.geoms:
-                    if subgeom.geom_type == 'Polygon':
-                        return subgeom
         
-        # Si no encuentra polígono, intentar crear uno a partir de puntos
-        st.warning("No se encontraron polígonos en el KML. Creando polígono convexo...")
-        puntos = []
-        for geom in gdf.geometry:
-            if geom.geom_type == 'Point':
-                puntos.append((geom.x, geom.y))
-            elif geom.geom_type == 'LineString':
-                puntos.extend(list(geom.coords))
-        
-        if len(puntos) >= 3:
-            from shapely.geometry import MultiPoint
-            multipoint = MultiPoint(puntos)
-            return multipoint.convex_hull
+        # Si no encuentra polígono, usar la primera geometría
+        if not gdf.geometry.empty:
+            return gdf.geometry.iloc[0]
         
         return None
         
     except Exception as e:
-        st.error(f"Error procesando KML: {str(e)}")
+        st.error(f"Error procesando KML simple: {str(e)[:200]}")
         return None
+
+def procesar_kml_manual(kml_bytes):
+    """Procesa KML manualmente si geopandas falla"""
+    try:
+        import xml.etree.ElementTree as ET
+        
+        # Convertir bytes a string
+        kml_string = kml_bytes.decode('utf-8', errors='ignore')
+        
+        # Parsear XML
+        try:
+            root = ET.fromstring(kml_string)
+        except ET.ParseError:
+            # Intentar limpiar el XML
+            kml_string = kml_string.replace('<?xml version="1.0" encoding="UTF-8"?>', '')
+            root = ET.fromstring(kml_string)
+        
+        # Buscar coordenadas en el KML
+        namespaces = {'kml': 'http://www.opengis.net/kml/2.2'}
+        
+        # Buscar todas las etiquetas de coordenadas
+        coord_elements = []
+        
+        # Método 1: Buscar con namespace
+        for elem in root.findall('.//kml:coordinates', namespaces):
+            coord_elements.append(elem)
+        
+        # Método 2: Buscar sin namespace
+        if not coord_elements:
+            for elem in root.findall('.//coordinates'):
+                coord_elements.append(elem)
+        
+        if not coord_elements:
+            return None
+        
+        # Tomar el primer conjunto de coordenadas
+        coords_text = coord_elements[0].text.strip()
+        
+        # Parsear coordenadas: formato "lon,lat,alt lon,lat,alt ..."
+        coords_list = []
+        for coord in coords_text.split():
+            parts = coord.split(',')
+            if len(parts) >= 2:
+                lon, lat = float(parts[0]), float(parts[1])
+                coords_list.append((lon, lat))
+        
+        if len(coords_list) < 3:
+            return None
+        
+        # Crear polígono
+        return Polygon(coords_list)
+        
+    except Exception as e:
+        st.error(f"Error procesando KML manual: {str(e)[:200]}")
+        return None
+
+def procesar_kml(kml_bytes):
+    """Procesa archivo KML con múltiples métodos"""
+    # Método 1: Usar geopandas simple
+    resultado = procesar_kml_simple(kml_bytes)
+    
+    if resultado is not None:
+        return resultado
+    
+    # Método 2: Procesar manualmente
+    resultado = procesar_kml_manual(kml_bytes)
+    
+    if resultado is not None:
+        st.info("✅ KML procesado manualmente")
+        return resultado
+    
+    st.error("No se pudo procesar el archivo KML con ningún método")
+    return None
 
 def procesar_kmz(kmz_bytes):
     """Procesa archivo KMZ (KML comprimido)"""
     try:
-        # Crear archivo temporal
-        with tempfile.NamedTemporaryFile(suffix='.kmz', delete=False) as tmp_file:
-            tmp_file.write(kmz_bytes)
-            tmp_file.flush()
+        # Crear directorio temporal
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            # Guardar archivo KMZ
+            kmz_path = os.path.join(tmp_dir, 'archivo.kmz')
+            with open(kmz_path, 'wb') as f:
+                f.write(kmz_bytes)
             
             # Descomprimir KMZ
-            with zipfile.ZipFile(tmp_file.name, 'r') as kmz_zip:
+            with zipfile.ZipFile(kmz_path, 'r') as kmz_zip:
                 # Buscar archivos KML dentro del KMZ
                 kml_files = [f for f in kmz_zip.namelist() if f.lower().endswith('.kml')]
                 
@@ -828,10 +891,6 @@ def procesar_kmz(kmz_bytes):
     except Exception as e:
         st.error(f"Error procesando KMZ: {str(e)}")
         return None
-    finally:
-        # Limpiar archivo temporal
-        if 'tmp_file' in locals():
-            os.unlink(tmp_file.name)
 
 def procesar_shapefile_zip(zip_bytes):
     """Procesa Shapefile comprimido en ZIP"""
@@ -930,7 +989,8 @@ def cargar_poligono_desde_archivo():
     archivo_subido = st.file_uploader(
         "Seleccionar archivo",
         type=['kml', 'kmz', 'zip'],
-        help="Formatos soportados: KML, KMZ, Shapefile (ZIP)"
+        help="Formatos soportados: KML, KMZ, Shapefile (ZIP)",
+        key="file_uploader_sidebar"
     )
     
     if archivo_subido is not None:
@@ -949,13 +1009,15 @@ def cargar_poligono_desde_archivo():
                 st.success(f"✅ Polígono cargado exitosamente")
                 
                 # Calcular área aproximada
-                gdf_temp = gpd.GeoDataFrame({'geometry': [poligono]}, crs='EPSG:4326')
-                area_ha = gdf_temp.geometry.area.iloc[0] * 111000 * 111000 / 10000
-                
-                st.metric("Área aproximada", f"{area_ha:.2f} ha")
+                try:
+                    gdf_temp = gpd.GeoDataFrame({'geometry': [poligono]}, crs='EPSG:4326')
+                    area_ha = gdf_temp.geometry.area.iloc[0] * 111000 * 111000 / 10000
+                    st.metric("Área aproximada", f"{area_ha:.2f} ha")
+                except:
+                    st.info("Área: No se pudo calcular")
                 
                 # Botón para usar este polígono
-                if st.button("🗺️ Usar este Polígono en el Análisis", type="primary"):
+                if st.button("🗺️ Usar este Polígono en el Análisis", type="primary", key="use_polygon_btn"):
                     st.session_state.poligono = poligono
                     st.rerun()
                 
@@ -1083,13 +1145,13 @@ with col_controles:
     st.markdown("### ✏️ Controles")
     
     # Botón para usar parcela de ejemplo
-    if st.button("📍 Ejemplo Colombia", use_container_width=True):
+    if st.button("📍 Ejemplo Colombia", use_container_width=True, key="example_btn"):
         coords = [(-74.10, 4.65), (-74.05, 4.65), (-74.05, 4.60), (-74.10, 4.60)]
         st.session_state.poligono = Polygon(coords)
         st.rerun()
     
     # Botón para limpiar parcela
-    if st.button("🗑️ Limpiar Parcela", use_container_width=True):
+    if st.button("🗑️ Limpiar Parcela", use_container_width=True, key="clear_btn"):
         st.session_state.poligono = None
         st.rerun()
     
@@ -1119,10 +1181,13 @@ with col_controles:
     
     if st.session_state.poligono:
         # Calcular área
-        gdf_temp = gpd.GeoDataFrame({'geometry': [st.session_state.poligono]}, crs='EPSG:4326')
-        area_ha = gdf_temp.geometry.area.iloc[0] * 111000 * 111000 / 10000  # Aproximación
+        try:
+            gdf_temp = gpd.GeoDataFrame({'geometry': [st.session_state.poligono]}, crs='EPSG:4326')
+            area_ha = gdf_temp.geometry.area.iloc[0] * 111000 * 111000 / 10000  # Aproximación
+            st.metric("Área aproximada", f"{area_ha:.2f} ha")
+        except:
+            st.metric("Área aproximada", "No disponible")
         
-        st.metric("Área aproximada", f"{area_ha:.2f} ha")
         st.metric("Cultivo", cultivo_seleccionado)
         st.metric("Zonas", n_zonas)
     else:
@@ -1130,7 +1195,7 @@ with col_controles:
 
 # ===== BOTÓN DE ANÁLISIS PRINCIPAL =====
 st.markdown("---")
-if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True):
+if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True, key="analyze_btn"):
     if st.session_state.poligono is None:
         st.error("❌ Por favor, dibuja o selecciona una parcela primero")
     else:
@@ -1204,6 +1269,13 @@ if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_w
             progress_bar.progress(95)
             st.info("Paso 7/7: Generando reportes...")
             
+            # Calcular área
+            try:
+                gdf_temp = gpd.GeoDataFrame({'geometry': [st.session_state.poligono]}, crs='EPSG:4326')
+                area_total = gdf_temp.geometry.area.iloc[0] * 111000 * 111000 / 10000
+            except:
+                area_total = 1.0  # Valor por defecto
+            
             # Guardar resultados en session_state
             st.session_state.resultados_analisis = {
                 'indices_satelitales': indices_satelitales,
@@ -1215,7 +1287,7 @@ if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_w
                 'cultivo': cultivo_seleccionado,
                 'textura_suelo': textura_suelo,
                 'precipitacion': precipitacion,
-                'area_total': gpd.GeoDataFrame({'geometry': [st.session_state.poligono]}, crs='EPSG:4326').geometry.area.iloc[0] * 111000 * 111000 / 10000
+                'area_total': area_total
             }
             
             progress_bar.progress(100)
