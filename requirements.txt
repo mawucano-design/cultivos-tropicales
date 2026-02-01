@@ -16,4 +16,4 @@ contextily==1.4.0
 requests==2.31.0
 python-docx==0.8.11
 geojson==2.5.0
-fiona
+fiona>=1.9.0
