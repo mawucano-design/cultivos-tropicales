@@ -88,9 +88,9 @@ def configurar_sentinel_hub_predefinido():
         config.instance_id = 'PLAK91bbe43a22834a5ca2c6cee7ebd97105'
         
         # Verificar que las credenciales no sean las de ejemplo
-        if (config.sh_client_id == 'TU_CLIENT_ID_AQUI' or 
-            config.sh_client_secret == 'TU_CLIENT_SECRET_AQUI' or
-            config.instance_id == 'TU_INSTANCE_ID_AQUI'):
+        if (config.sh_client_id == '23729a0d-75f6-478b-8304-c8bb2bfbe71d' or 
+            config.sh_client_secret == '854eeebf-f870-484a-96f4-d23d49b5f071' or
+            config.instance_id == 'PLAK91bbe43a22834a5ca2c6cee7ebd97105'):
             st.warning("⚠️ Credenciales de Sentinel Hub no configuradas. Usa tus credenciales reales.")
             return None
         
