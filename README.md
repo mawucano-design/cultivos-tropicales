@@ -1,30 +1,60 @@
-# 🌴 Analizador de Cultivos con Sentinel-2
+# 🌾 Analizador Multi-Cultivo Satelital - Versión 3.0
 
-Aplicación web para análisis agrícola avanzado usando Google Earth Engine y Sentinel-2 Harmonizada.
+Aplicación web para agricultura de precisión con Google Earth Engine - **SIN INSTALACIÓN REQUERIDA**
 
 ## 🚀 Características Principales
 
-- 🛰️ **Datos reales de Sentinel-2 Harmonizada**
-- 🌿 **Análisis de nutrientes NPK** basado en modelos científicos
-- 🗺️ **Mapas interactivos** con visualizaciones impactantes
-- 📊 **Recomendaciones agroecológicas** específicas por cultivo
-- 📄 **Generación de informes PDF** automáticos
+### ✅ **Sin instalación local**
+- Acceso vía navegador web
+- No requiere Python en la computadora
+- Funciona en cualquier dispositivo
 
-## 🎯 Cultivos Soportados
+### ✅ **Autenticación flexible**
+- Cuenta de servicio Google Cloud
+- Token de acceso temporal
+- Modo público (limitado)
+- Secrets de Streamlit Cloud
 
-- Palma Aceitera
-- Cacao
-- Banano
+### ✅ **Datos satelitales reales**
+- Google Earth Engine integrado
+- Sentinel-2 (10m resolución)
+- Landsat 8/9 (30m resolución)
+- MODIS (250m resolución)
 
-## ⚡ Instalación Rápida
+### ✅ **Cultivos soportados**
+- Trigo 🌾
+- Maíz 🌽
+- Sorgo 🌾
+- Soja 🫘
+- Girasol 🌻
+- Maní 🥜
 
-```bash
-# Clonar repositorio
-git clone https://github.com/tuusuario/analizador-cultivos-sentinel2.git
-cd analizador-cultivos-sentinel2
+## 🌐 Cómo usar online
 
-# Instalar dependencias
-pip install -r requirements.txt
+### Opción 1: Usar versión alojada (recomendado)
+1. Visita: `https://agriculturadeprecision.streamlit.app/`
+2. Autentica con tu cuenta GEE
+3. Sube tu parcela
+4. Obtén análisis inmediato
 
-# Ejecutar aplicación
-streamlit run apppalmaaceitera.py
+### Opción 2: Desplegar en tu cuenta
+1. Fork este repositorio en GitHub
+2. Conecta a Streamlit Cloud
+3. Configura Secrets con credenciales GEE
+4. Tu app estará en: `https://tunombre-analizador.streamlit.app/`
+
+## 🔧 Configuración para desarrolladores
+
+### Despliegue en Streamlit Cloud
+1. **Crea cuenta en [Streamlit Cloud](https://streamlit.io/cloud)**
+2. **Conecta tu repositorio de GitHub**
+3. **Configura Secrets:**
+
+```toml
+# En Streamlit Cloud > Settings > Secrets
+EE_ACCOUNT ="gee-service-account@ee-mawucano25.iam.gserviceaccount.com"
+EE_PRIVATE_KEY = '''
+-----BEGIN PRIVATE KEY-----
+MIIEvQIBADANBgkqhkiG9w0BAQEFAASCBKcwggSjAgEAAoIBAQC...
+-----END PRIVATE KEY-----
+'''
