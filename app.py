@@ -746,230 +746,6 @@ def crear_visualizacion_npk(zonas, recomendaciones_npk, nutriente='N'):
     plt.tight_layout()
     return fig
 
-# ===== FUNCIONES PARA CARGAR ARCHIVOS GEOGRÁFICOS =====
-def procesar_kml(kml_bytes):
-    """Procesa archivo KML"""
-    try:
-        # Guardar temporalmente el archivo
-        with tempfile.NamedTemporaryFile(suffix='.kml', delete=False) as tmp_file:
-            tmp_file.write(kml_bytes)
-            tmp_file.flush()
-            
-            try:
-                gdf = gpd.read_file(tmp_file.name, driver='KML')
-            except:
-                # Intentar con encoding diferente
-                gdf = gpd.read_file(tmp_file.name, driver='KML', encoding='utf-8')
-        
-        # Limpiar archivo temporal
-        os.unlink(tmp_file.name)
-        
-        if gdf.empty:
-            st.warning("El archivo KML no contiene geometrías válidas")
-            return None
-        
-        # Buscar polígonos en el GeoDataFrame
-        for geom in gdf.geometry:
-            if geom.geom_type == 'Polygon':
-                return geom
-            elif geom.geom_type == 'MultiPolygon':
-                # Tomar el polígono más grande
-                polygons = list(geom.geoms)
-                return max(polygons, key=lambda p: p.area)
-            elif geom.geom_type == 'GeometryCollection':
-                # Buscar polígonos en la colección
-                for subgeom in geom.geoms:
-                    if subgeom.geom_type == 'Polygon':
-                        return subgeom
-        
-        # Si no encuentra polígono, intentar crear uno a partir de puntos
-        st.warning("No se encontraron polígonos en el KML. Creando polígono convexo...")
-        puntos = []
-        for geom in gdf.geometry:
-            if geom.geom_type == 'Point':
-                puntos.append((geom.x, geom.y))
-            elif geom.geom_type == 'LineString':
-                puntos.extend(list(geom.coords))
-        
-        if len(puntos) >= 3:
-            from shapely.geometry import MultiPoint
-            multipoint = MultiPoint(puntos)
-            return multipoint.convex_hull
-        
-        return None
-        
-    except Exception as e:
-        st.error(f"Error procesando KML: {str(e)}")
-        return None
-
-def procesar_kmz(kmz_bytes):
-    """Procesa archivo KMZ (KML comprimido)"""
-    try:
-        # Crear archivo temporal
-        with tempfile.NamedTemporaryFile(suffix='.kmz', delete=False) as tmp_file:
-            tmp_file.write(kmz_bytes)
-            tmp_file.flush()
-            
-            # Descomprimir KMZ
-            with zipfile.ZipFile(tmp_file.name, 'r') as kmz_zip:
-                # Buscar archivos KML dentro del KMZ
-                kml_files = [f for f in kmz_zip.namelist() if f.lower().endswith('.kml')]
-                
-                if not kml_files:
-                    st.error("No se encontró archivo KML dentro del KMZ")
-                    return None
-                
-                # Tomar el primer archivo KML
-                kml_content = kmz_zip.read(kml_files[0])
-                
-                # Procesar como KML
-                return procesar_kml(kml_content)
-    
-    except Exception as e:
-        st.error(f"Error procesando KMZ: {str(e)}")
-        return None
-    finally:
-        # Limpiar archivo temporal
-        if 'tmp_file' in locals():
-            os.unlink(tmp_file.name)
-
-def procesar_shapefile_zip(zip_bytes):
-    """Procesa Shapefile comprimido en ZIP"""
-    try:
-        # Crear directorio temporal
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # Guardar ZIP
-            zip_path = os.path.join(tmp_dir, 'shapefile.zip')
-            with open(zip_path, 'wb') as f:
-                f.write(zip_bytes)
-            
-            # Descomprimir
-            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
-                zip_ref.extractall(tmp_dir)
-            
-            # Buscar archivo .shp
-            shp_files = [f for f in os.listdir(tmp_dir) if f.lower().endswith('.shp')]
-            
-            if not shp_files:
-                st.error("No se encontró archivo .shp en el ZIP")
-                return None
-            
-            # Leer shapefile con geopandas
-            shp_path = os.path.join(tmp_dir, shp_files[0])
-            gdf = gpd.read_file(shp_path)
-            
-            if gdf.empty:
-                st.warning("El Shapefile no contiene geometrías válidas")
-                return None
-            
-            # Combinar todas las geometrías en un solo polígono
-            poligonos = []
-            for geom in gdf.geometry:
-                if geom.geom_type == 'Polygon':
-                    poligonos.append(geom)
-                elif geom.geom_type == 'MultiPolygon':
-                    poligonos.extend(list(geom.geoms))
-            
-            if not poligonos:
-                st.warning("No se encontraron polígonos en el Shapefile")
-                return None
-            
-            # Unir todos los polígonos
-            if len(poligonos) == 1:
-                poligono_final = poligonos[0]
-            else:
-                poligono_final = unary_union(poligonos)
-            
-            # Simplificar geometría si es necesario
-            if poligono_final.geom_type == 'MultiPolygon':
-                # Tomar el polígono más grande
-                polygons = list(poligono_final.geoms)
-                poligono_final = max(polygons, key=lambda p: p.area)
-            
-            # Reprojectar a WGS84 si es necesario
-            if gdf.crs and gdf.crs.to_epsg() != 4326:
-                gdf_wgs84 = gdf.to_crs(epsg=4326)
-                poligono_final = gdf_wgs84.geometry.unary_union
-            
-            return poligono_final
-            
-    except Exception as e:
-        st.error(f"Error procesando Shapefile: {str(e)}")
-        return None
-
-def procesar_archivo_geografico(archivo_subido):
-    """Procesa archivos KML, KMZ o Shapefile (ZIP) y extrae polígonos"""
-    
-    try:
-        # Leer el archivo cargado como bytes
-        bytes_data = archivo_subido.getvalue()
-        
-        # Detectar tipo de archivo por extensión
-        nombre_archivo = archivo_subido.name.lower()
-        
-        if nombre_archivo.endswith('.kml'):
-            return procesar_kml(bytes_data)
-        elif nombre_archivo.endswith('.kmz'):
-            return procesar_kmz(bytes_data)
-        elif nombre_archivo.endswith('.zip'):
-            return procesar_shapefile_zip(bytes_data)
-        else:
-            st.error(f"Formato no soportado: {nombre_archivo}")
-            return None
-            
-    except Exception as e:
-        st.error(f"Error al procesar archivo: {str(e)}")
-        return None
-
-def cargar_poligono_desde_archivo():
-    """Interfaz para cargar polígono desde archivo"""
-    
-    st.markdown("### 📁 Cargar Polígono desde Archivo")
-    
-    # Widget para subir archivo
-    archivo_subido = st.file_uploader(
-        "Seleccionar archivo",
-        type=['kml', 'kmz', 'zip'],
-        help="Formatos soportados: KML, KMZ, Shapefile (ZIP)"
-    )
-    
-    if archivo_subido is not None:
-        # Mostrar información del archivo
-        col_info1, col_info2 = st.columns(2)
-        with col_info1:
-            st.info(f"**Archivo:** {archivo_subido.name}")
-        with col_info2:
-            st.info(f"**Tamaño:** {archivo_subido.size / 1024:.1f} KB")
-        
-        # Procesar archivo
-        with st.spinner("Procesando archivo..."):
-            poligono = procesar_archivo_geografico(archivo_subido)
-            
-            if poligono is not None:
-                st.success(f"✅ Polígono cargado exitosamente")
-                
-                # Calcular área aproximada
-                gdf_temp = gpd.GeoDataFrame({'geometry': [poligono]}, crs='EPSG:4326')
-                area_ha = gdf_temp.geometry.area.iloc[0] * 111000 * 111000 / 10000
-                
-                st.metric("Área aproximada", f"{area_ha:.2f} ha")
-                
-                # Botón para usar este polígono
-                if st.button("🗺️ Usar este Polígono en el Análisis", type="primary"):
-                    st.session_state.poligono = poligono
-                    st.rerun()
-                
-                # Mostrar vista previa en mapa pequeño
-                st.markdown("**Vista previa:**")
-                mapa_preview = crear_mapa_interactivo(poligono, zoom_start=12)
-                st_folium(mapa_preview, width=400, height=300)
-                
-                return poligono
-            else:
-                st.error("No se pudo extraer un polígono válido del archivo")
-    
-    return None
-
 # ===== INTERFAZ DE USUARIO MEJORADA =====
 
 # Sidebar - Configuración completa
@@ -1037,18 +813,6 @@ with st.sidebar:
     # Precipitación
     precipitacion = st.slider("💧 Precipitación anual (mm):", 500, 4000, 1500)
 
-    # Carga de archivos geográficos
-    st.markdown("---")
-    st.markdown("### 📁 CARGAR POLÍGONO")
-    
-    # Opción para cargar desde archivo
-    cargar_desde_archivo = st.checkbox("Cargar polígono desde archivo", value=False)
-
-    if cargar_desde_archivo:
-        poligono_cargado = cargar_poligono_desde_archivo()
-        if poligono_cargado:
-            st.session_state.poligono = poligono_cargado
-
 # ===== SECCIÓN DE MAPA INTERACTIVO =====
 st.markdown("## 🗺️ Mapa Interactivo de la Parcela")
 
@@ -1094,27 +858,6 @@ with col_controles:
         st.rerun()
     
     st.markdown("---")
-    
-    # Carga de archivos en la sección del mapa
-    st.markdown("### 📤 Importar desde Archivo")
-    archivo_subido = st.file_uploader(
-        "Cargar KML/KMZ/Shapefile",
-        type=['kml', 'kmz', 'zip'],
-        help="Sube un archivo con la geometría de tu parcela",
-        key="file_uploader_map"
-    )
-
-    if archivo_subido:
-        with st.spinner("Procesando archivo..."):
-            poligono = procesar_archivo_geografico(archivo_subido)
-            if poligono:
-                st.session_state.poligono = poligono
-                st.success("✅ Polígono cargado exitosamente")
-                st.rerun()
-            else:
-                st.error("❌ No se pudo procesar el archivo")
-    
-    st.markdown("---")
     st.markdown("**Información de la parcela:**")
     
     if st.session_state.poligono:
@@ -1126,7 +869,7 @@ with col_controles:
         st.metric("Cultivo", cultivo_seleccionado)
         st.metric("Zonas", n_zonas)
     else:
-        st.info("Dibuja un polígono en el mapa, usa el ejemplo o carga un archivo")
+        st.info("Dibuja un polígono en el mapa o usa el ejemplo")
 
 # ===== BOTÓN DE ANÁLISIS PRINCIPAL =====
 st.markdown("---")
@@ -1143,8 +886,6 @@ if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_w
             st.info("Paso 1/7: Obteniendo datos satelitales...")
             
             usar_gee = '_GEE' in satelite_seleccionado and st.session_state.gee_authenticated
-            indices_satelitales = None
-            
             if usar_gee:
                 indices_satelitales = calcular_indices_satelitales_gee(
                     satelite_seleccionado,
@@ -1152,20 +893,15 @@ if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_w
                     fecha_inicio,
                     fecha_fin
                 )
-                # Si no se obtuvieron datos de GEE, usar simulados
-                if indices_satelitales is None:
-                    st.warning("No se pudieron obtener datos de GEE. Usando datos simulados.")
-                    usar_gee = False
-            
-            if not usar_gee:
-                # Datos simulados si no hay GEE o si GEE falló
+            else:
+                # Datos simulados si no hay GEE
                 np.random.seed(42)
                 indices_satelitales = {
                     'NDVI': np.random.uniform(0.55, 0.85),
                     'NDWI': np.random.uniform(0.10, 0.25),
                     'EVI': np.random.uniform(0.45, 0.75),
                     'NDRE': np.random.uniform(0.25, 0.45),
-                    'fecha': datetime.now().strftime('%Y-%m-%d'),
+                    'fecha': '2024-01-15',
                     'fuente': 'Simulado',
                     'resolucion': '10m'
                 }
@@ -1271,14 +1007,10 @@ if 'resultados_analisis' in st.session_state:
             """)
         
         with info_col2:
-            fuente = resultados['indices_satelitales'].get('fuente', 'No disponible')
-            fecha = resultados['indices_satelitales'].get('fecha', 'No disponible')
-            resolucion = resultados['indices_satelitales'].get('resolucion', 'N/A')
-            
             st.markdown(f"""
-            **🛰️ Fuente de datos:** {fuente}
-            **📅 Fecha datos:** {fecha}
-            **🎯 Resolución:** {resolucion}
+            **🛰️ Fuente de datos:** {resultados['indices_satelitales']['fuente']}
+            **📅 Fecha datos:** {resultados['indices_satelitales']['fecha']}
+            **🎯 Resolución:** {resultados['indices_satelitales'].get('resolucion', 'N/A')}
             **🏜️ Textura suelo:** {resultados['textura_suelo']}
             """)
         
@@ -1550,15 +1282,6 @@ if 'resultados_analisis' in st.session_state:
         # Generar reporte ejecutivo
         st.markdown("### 📄 Reporte Ejecutivo")
         
-        # Calcular ROI
-        try:
-            precio = PARAMETROS_CULTIVOS[resultados['cultivo']]['PRECIO_VENTA']
-            rend_total_fert = sum([proy['rendimiento_fertilizado'] for proy in resultados['proyecciones']]) * resultados['area_total'] / len(resultados['proyecciones'])
-            costo_total = (total_n * 1.2 + total_p * 2.5 + total_k * 1.8) * resultados['area_total'] / len(resultados['recomendaciones_npk'])
-            roi_estimado = ((rend_total_fert * precio) - costo_total) / costo_total * 100 if costo_total > 0 else 0
-        except:
-            roi_estimado = 0
-        
         reporte_html = f"""
         <div style="background: linear-gradient(135deg, rgba(30, 41, 59, 0.9), rgba(15, 23, 42, 0.95)); 
                     border-radius: 20px; padding: 25px; border: 1px solid rgba(59, 130, 246, 0.2); 
@@ -1579,8 +1302,8 @@ if 'resultados_analisis' in st.session_state:
                 
                 <div>
                     <h3 style="color: #93c5fd;">🛰️ DATOS SATELITALES</h3>
-                    <p><strong>Fuente:</strong> {resultados['indices_satelitales'].get('fuente', 'No disponible')}</p>
-                    <p><strong>Fecha:</strong> {resultados['indices_satelitales'].get('fecha', 'No disponible')}</p>
+                    <p><strong>Fuente:</strong> {resultados['indices_satelitales']['fuente']}</p>
+                    <p><strong>Fecha:</strong> {resultados['indices_satelitales']['fecha']}</p>
                     <p><strong>NDVI promedio:</strong> {np.mean([idx['ndvi'] for idx in resultados['indices_fertilidad']]):.3f}</p>
                     <p><strong>Fertilidad promedio:</strong> {np.mean([idx['indice_fertilidad'] for idx in resultados['indices_fertilidad']]):.3f}</p>
                 </div>
@@ -1592,7 +1315,7 @@ if 'resultados_analisis' in st.session_state:
                     <li><strong>Fertilización diferenciada:</strong> Aplicar dosis variables según zona</li>
                     <li><strong>Manejo de pendientes:</strong> {"Implementar medidas de conservación" if np.mean(resultados['dem']['pendientes'].flatten()) > 10 else "Condiciones favorables"}</li>
                     <li><strong>Rendimiento esperado:</strong> {np.mean([proy['rendimiento_fertilizado'] for proy in resultados['proyecciones']]):.0f} kg/ha</li>
-                    <li><strong>ROI estimado:</strong> {roi_estimado:.1f}%</li>
+                    <li><strong>ROI estimado:</strong> {((sum([proy['rendimiento_fertilizado'] for proy in resultados['proyecciones']]) * PARAMETROS_CULTIVOS[resultados['cultivo']]['PRECIO_VENTA'] * resultados['area_total'] / len(resultados['proyecciones'])) - (sum([rec['N'] for rec in resultados['recomendaciones_npk']]) * 1.2 + sum([rec['P'] for rec in resultados['recomendaciones_npk']]) * 2.5 + sum([rec['K'] for rec in resultados['recomendaciones_npk']]) * 1.8) * resultados['area_total'] / len(resultados['recomendaciones_npk'])) / ((sum([rec['N'] for rec in resultados['recomendaciones_npk']]) * 1.2 + sum([rec['P'] for rec in resultados['recomendaciones_npk']]) * 2.5 + sum([rec['K'] for rec in resultados['recomendaciones_npk']]) * 1.8) * resultados['area_total'] / len(resultados['recomendaciones_npk'])) * 100:.1f}%</li>
                 </ul>
             </div>
         </div>
@@ -1606,30 +1329,30 @@ if 'resultados_analisis' in st.session_state:
         col_exp1, col_exp2, col_exp3 = st.columns(3)
         
         with col_exp1:
-            # Crear DataFrame combinado
-            df_completo = pd.DataFrame({
-                'Zona': [f"Z{idx['id_zona']}" for idx in resultados['indices_fertilidad']],
-                'Area_ha': [resultados['area_total'] / len(resultados['zonas'])] * len(resultados['zonas']),
-                'Materia_Organica_%': [idx['materia_organica'] for idx in resultados['indices_fertilidad']],
-                'Humedad': [idx['humedad'] for idx in resultados['indices_fertilidad']],
-                'NDVI': [idx['ndvi'] for idx in resultados['indices_fertilidad']],
-                'Indice_Fertilidad': [idx['indice_fertilidad'] for idx in resultados['indices_fertilidad']],
-                'N_kg_ha': [rec['N'] for rec in resultados['recomendaciones_npk']],
-                'P_kg_ha': [rec['P'] for rec in resultados['recomendaciones_npk']],
-                'K_kg_ha': [rec['K'] for rec in resultados['recomendaciones_npk']],
-                'Rendimiento_Base_kg_ha': [proy['rendimiento_base'] for proy in resultados['proyecciones']],
-                'Rendimiento_Fert_kg_ha': [proy['rendimiento_fertilizado'] for proy in resultados['proyecciones']],
-                'Incremento_%': [proy['incremento'] for proy in resultados['proyecciones']]
-            })
-            
-            csv = df_completo.to_csv(index=False)
-            st.download_button(
-                label="📥 Descargar CSV",
-                data=csv,
-                file_name=f"analisis_{resultados['cultivo']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
+            if st.button("📊 Exportar a CSV", use_container_width=True):
+                # Crear DataFrame combinado
+                df_completo = pd.DataFrame({
+                    'Zona': [f"Z{idx['id_zona']}" for idx in resultados['indices_fertilidad']],
+                    'Area_ha': [resultados['area_total'] / len(resultados['zonas'])] * len(resultados['zonas']),
+                    'Materia_Organica_%': [idx['materia_organica'] for idx in resultados['indices_fertilidad']],
+                    'Humedad': [idx['humedad'] for idx in resultados['indices_fertilidad']],
+                    'NDVI': [idx['ndvi'] for idx in resultados['indices_fertilidad']],
+                    'Indice_Fertilidad': [idx['indice_fertilidad'] for idx in resultados['indices_fertilidad']],
+                    'N_kg_ha': [rec['N'] for rec in resultados['recomendaciones_npk']],
+                    'P_kg_ha': [rec['P'] for rec in resultados['recomendaciones_npk']],
+                    'K_kg_ha': [rec['K'] for rec in resultados['recomendaciones_npk']],
+                    'Rendimiento_Base_kg_ha': [proy['rendimiento_base'] for proy in resultados['proyecciones']],
+                    'Rendimiento_Fert_kg_ha': [proy['rendimiento_fertilizado'] for proy in resultados['proyecciones']],
+                    'Incremento_%': [proy['incremento'] for proy in resultados['proyecciones']]
+                })
+                
+                csv = df_completo.to_csv(index=False)
+                st.download_button(
+                    label="📥 Descargar CSV",
+                    data=csv,
+                    file_name=f"analisis_{resultados['cultivo']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                    mime="text/csv"
+                )
         
         with col_exp2:
             # Generar PDF (simulado)
