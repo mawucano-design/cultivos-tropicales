@@ -21,7 +21,15 @@ from streamlit_folium import st_folium
 from matplotlib.tri import Triangulation
 import warnings
 warnings.filterwarnings('ignore')
-from scipy.interpolate import griddata
+
+# Verificar scipy
+try:
+    from scipy.interpolate import griddata
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
+    st.warning("⚠️ Scipy no está instalado. Para interpolación en mapas de calor, instala: pip install scipy")
+
 from collections import Counter
 
 # Importar librerías para reportes
@@ -690,12 +698,16 @@ def crear_mapa_calor_expandido(zonas, valores, titulo, cmap, poligono, unidad=''
     centroides_x = [zona['centroid'].x for zona in zonas]
     centroides_y = [zona['centroid'].y for zona in zonas]
     
-    grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
-    
-    grid_z = griddata((centroides_x, centroides_y), valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(valores))
-    
-    im = ax.imshow(grid_z.T, extent=[expanded_minx, expanded_maxx, expanded_miny, expanded_maxy], 
-                   origin='lower', cmap=cmap, alpha=0.8, aspect='auto')
+    # Si scipy está disponible, usar interpolación
+    if SCIPY_AVAILABLE:
+        grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
+        grid_z = griddata((centroides_x, centroides_y), valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(valores))
+        im = ax.imshow(grid_z.T, extent=[expanded_minx, expanded_maxx, expanded_miny, expanded_maxy], 
+                       origin='lower', cmap=cmap, alpha=0.8, aspect='auto')
+    else:
+        # Sin scipy, solo scatter plot
+        im = ax.scatter(centroides_x, centroides_y, c=valores, cmap=cmap, 
+                        s=100, edgecolor='black', linewidth=1, zorder=5, alpha=0.9)
     
     # Dibujar polígono
     if hasattr(poligono, 'exterior'):
@@ -730,7 +742,7 @@ def crear_mapa_calor_expandido(zonas, valores, titulo, cmap, poligono, unidad=''
     ax.set_ylabel('Latitud', fontsize=14)
     ax.grid(True, alpha=0.2, linestyle='--')
     
-    cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+    cbar = plt.colorbar(scatter, ax=ax, shrink=0.8, pad=0.02)
     cbar.set_label(unidad if unidad else 'Valor', fontsize=12)
     
     # Anotaciones
@@ -797,13 +809,16 @@ def crear_mapa_calor_ndvi(zonas, indices_fertilidad, poligono):
     centroides_x = [zona['centroid'].x for zona in zonas]
     centroides_y = [zona['centroid'].y for zona in zonas]
     
-    grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
-    
-    grid_z = griddata((centroides_x, centroides_y), ndvi_valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(ndvi_valores))
-    
-    cmap = plt.cm.RdYlGn
-    im = ax.imshow(grid_z.T, extent=[expanded_minx, expanded_maxx, expanded_miny, expanded_maxy], 
-                   origin='lower', cmap=cmap, alpha=0.8, aspect='auto', vmin=0, vmax=1)
+    # Si scipy está disponible
+    if SCIPY_AVAILABLE:
+        grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
+        grid_z = griddata((centroides_x, centroides_y), ndvi_valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(ndvi_valores))
+        im = ax.imshow(grid_z.T, extent=[expanded_minx, expanded_maxx, expanded_miny, expanded_maxy], 
+                       origin='lower', cmap=plt.cm.RdYlGn, alpha=0.8, aspect='auto', vmin=0, vmax=1)
+    else:
+        # Sin scipy
+        im = ax.scatter(centroides_x, centroides_y, c=ndvi_valores, cmap=plt.cm.RdYlGn, 
+                        s=100, edgecolor='black', linewidth=1, zorder=5, alpha=0.9, vmin=0, vmax=1)
     
     # Dibujar polígono
     if hasattr(poligono, 'exterior'):
@@ -829,7 +844,7 @@ def crear_mapa_calor_ndvi(zonas, indices_fertilidad, poligono):
         
         ax.plot(x_coords, y_coords, 'k-', linewidth=0.5, alpha=0.7)
     
-    scatter = ax.scatter(centroides_x, centroides_y, c=ndvi_valores, cmap=cmap, 
+    scatter = ax.scatter(centroides_x, centroides_y, c=ndvi_valores, cmap=plt.cm.RdYlGn, 
                          s=100, edgecolor='black', linewidth=1, zorder=5, alpha=0.9, vmin=0, vmax=1)
     
     ax.set_title('Mapa de Calor - NDVI', fontsize=18, fontweight='bold', pad=20)
@@ -837,7 +852,7 @@ def crear_mapa_calor_ndvi(zonas, indices_fertilidad, poligono):
     ax.set_ylabel('Latitud', fontsize=14)
     ax.grid(True, alpha=0.2, linestyle='--')
     
-    cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+    cbar = plt.colorbar(scatter, ax=ax, shrink=0.8, pad=0.02)
     cbar.set_label('NDVI', fontsize=12)
     
     ax.text(0.02, 0.98, 'Interpretación NDVI:\n0.0-0.2: Suelo desnudo\n0.2-0.4: Vegetación escasa\n0.4-0.6: Vegetación moderada\n0.6-0.8: Vegetación densa\n0.8-1.0: Vegetación muy densa',
@@ -1114,9 +1129,9 @@ if st.session_state.analisis_ejecutado and st.session_state.resultados_analisis:
     resultados = st.session_state.resultados_analisis
     
     # Crear pestañas
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "📊 Resumen", "🌿 Fertilidad", "🟢 NDVI", "🧪 NPK", "📈 Proyecciones", 
-        "🏔️ Topografía", "📋 Reporte"
+        "🏔️ Topografía"
     ])
     
     with tab1:
@@ -1443,67 +1458,6 @@ if st.session_state.analisis_ejecutado and st.session_state.resultados_analisis:
             - Considerar cultivos permanentes
             - Consultar especialista
             """)
-    
-    with tab7:
-        st.markdown("## 📋 REPORTE FINAL")
-        
-        # Resumen ejecutivo
-        st.markdown("### 📈 Resumen Ejecutivo")
-        
-        ndvi_prom = np.mean([idx['ndvi'] for idx in resultados['indices_fertilidad']])
-        fert_prom = np.mean([idx['indice_fertilidad'] for idx in resultados['indices_fertilidad']])
-        rend_prom_base = np.mean([proy['rendimiento_base'] for proy in resultados['proyecciones']])
-        rend_prom_fert = np.mean([proy['rendimiento_fertilizado'] for proy in resultados['proyecciones']])
-        incremento_prom = np.mean([proy['incremento'] for proy in resultados['proyecciones']])
-        
-        st.markdown(f"""
-        <div class="dashboard-card">
-            <h4>📊 RESULTADOS TÉCNICOS</h4>
-            <p><strong>NDVI promedio:</strong> {ndvi_prom:.3f} (Óptimo: {PARAMETROS_CULTIVOS[resultados['cultivo']]['NDVI_OPTIMO']})</p>
-            <p><strong>Fertilidad promedio:</strong> {fert_prom:.3f}</p>
-            <p><strong>Rendimiento estimado:</strong> {rend_prom_base:.0f} → {rend_prom_fert:.0f} kg/ha</p>
-            <p><strong>Incremento promedio:</strong> +{incremento_prom:.1f}%</p>
-            
-            <h4 style="margin-top: 20px;">💰 IMPACTO ECONÓMICO</h4>
-            <p><strong>Área cultivable:</strong> {resultados['area_total']:.2f} ha</p>
-            <p><strong>Zonas prioridad alta:</strong> {len([idx for idx in resultados['indices_fertilidad'] if idx['indice_fertilidad'] < 0.5])}</p>
-            <p><strong>ROI estimado:</strong> {roi:.1f}%</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Botones de descarga
-        st.markdown("### 📄 Exportar Resultados")
-        
-        col_exp1, col_exp2, col_exp3 = st.columns(3)
-        
-        with col_exp1:
-            if DOCX_AVAILABLE:
-                if st.button("📝 Generar Reporte DOCX", use_container_width=True):
-                    st.info("Función DOCX en desarrollo")
-            else:
-                st.warning("python-docx no instalado")
-        
-        with col_exp2:
-            if XLSX_AVAILABLE:
-                if st.button("📊 Exportar Excel", use_container_width=True):
-                    st.info("Función Excel en desarrollo")
-            else:
-                st.warning("xlsxwriter no instalado")
-        
-        with col_exp3:
-            if st.button("🗃️ Descargar Mapas", use_container_width=True):
-                st.info("Función ZIP en desarrollo")
-        
-        # Recomendaciones finales
-        st.markdown("### 🎯 Recomendaciones Finales")
-        
-        st.markdown("""
-        1. **Fertilización variable:** Aplicar diferentes dosis según zonas
-        2. **Priorización:** Atender zonas con fertilidad < 0.5 primero
-        3. **Monitoreo:** Seguimiento continuo de NDVI y humedad
-        4. **Validación:** Análisis de suelo para confirmar recomendaciones
-        5. **Implementación gradual:** Comenzar con zonas de mayor impacto
-        """)
 
 # ===== PIE DE PÁGINA =====
 st.markdown("---")
