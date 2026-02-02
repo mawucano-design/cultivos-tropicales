@@ -362,7 +362,7 @@ def procesar_archivo_carga(uploaded_file):
         st.error(f"❌ Error al procesar el archivo: {str(e)}")
         return None
 
-# ===== FUNCIONES DE CARGA KML/KMZ MEJORADAS =====
+# ===== FUNCIONES DE CARGA KML/KMZ SIMPLIFICADAS Y ROBUSTAS =====
 def extraer_kml_de_kmz(kmz_path, tmpdir):
     """Extrae el archivo KML de un KMZ"""
     try:
@@ -383,86 +383,53 @@ def extraer_kml_de_kmz(kmz_path, tmpdir):
         st.error(f"Error al extraer KMZ: {str(e)}")
         return None
 
-def parsear_kml_con_fastkml(kml_content):
-    """Parsea contenido KML usando fastkml si está disponible"""
+def procesar_kml_simple(kml_path):
+    """Procesa archivos KML de manera simple pero robusta usando solo geopandas"""
     try:
-        # Intentar importar fastkml
-        from fastkml import kml
-        
-        # Parsear KML
-        k = kml.KML()
-        k.from_string(kml_content.encode('utf-8'))
-        
-        # Extraer geometrías
-        geometries = []
-        
-        def extract_geometries(element):
-            if hasattr(element, 'geometry'):
-                if element.geometry:
-                    # Convertir geometría fastkml a shapely
-                    from fastkml.geometry import Geometry
-                    if isinstance(element.geometry, Geometry):
-                        # Usar el método to_shapely si está disponible
-                        if hasattr(element.geometry, 'to_shapely'):
-                            geometries.append(element.geometry.to_shapely())
-                        else:
-                            # Alternativa: convertir a través de __geo_interface__
-                            if hasattr(element.geometry, '__geo_interface__'):
-                                geometries.append(shape(element.geometry.__geo_interface__))
-            if hasattr(element, 'features'):
-                for feature in element.features:
-                    extract_geometries(feature)
-        
-        # Buscar en todos los features del KML
-        for feature in k.features():  # Aquí features() es un método
-            extract_geometries(feature)
-        
-        if not geometries:
-            st.warning("No se encontraron geometrías en el KML")
-            return None
-        
-        # Combinar todas las geometrías
-        if geometries:
-            combined_geom = unary_union(geometries)
-            return combined_geom
-        
-        return None
-        
-    except ImportError:
-        st.warning("fastkml no está instalado. Usando método alternativo.")
-        return None
-    except Exception as e:
-        st.warning(f"Error al parsear KML con fastkml: {str(e)}")
-        return None
-
-def procesar_kml_avanzado(kml_path):
-    """Procesa archivos KML con múltiples geometrías"""
-    try:
-        # Leer el contenido del KML
-        with open(kml_path, 'r', encoding='utf-8') as f:
-            kml_content = f.read()
-        
-        # Intentar con fastkml primero
-        geometry = parsear_kml_con_fastkml(kml_content)
-        
-        if geometry is not None and not geometry.is_empty:
-            return geometry
-        
-        # Fallback a geopandas si fastkml falla o no está instalado
+        # Leer KML con geopandas
         gdf = gpd.read_file(kml_path, driver='KML')
         
         if gdf.empty:
             st.error("El KML no contiene geometrías válidas")
             return None
         
-        # Combinar todas las geometrías del KML
-        all_geometries = gdf.geometry.tolist()
-        combined_geom = unary_union(all_geometries)
+        # Verificar y combinar múltiples geometrías
+        if len(gdf) > 1:
+            # Combinar todas las geometrías del KML
+            all_geometries = gdf.geometry.tolist()
+            
+            # Filtrar solo polígonos y multipolígonos
+            valid_geometries = []
+            for geom in all_geometries:
+                if geom is not None and not geom.is_empty:
+                    if geom.geom_type in ['Polygon', 'MultiPolygon']:
+                        valid_geometries.append(geom)
+                    elif geom.geom_type == 'GeometryCollection':
+                        # Extraer polígonos de GeometryCollection
+                        for sub_geom in geom.geoms:
+                            if sub_geom.geom_type in ['Polygon', 'MultiPolygon']:
+                                valid_geometries.append(sub_geom)
+            
+            if not valid_geometries:
+                st.error("No se encontraron polígonos válidos en el KML")
+                return None
+            
+            # Unir todas las geometrías válidas
+            combined_geom = unary_union(valid_geometries)
+        else:
+            # Solo una geometría
+            combined_geom = gdf.geometry.iloc[0]
         
         # Verificar que no esté vacío
         if combined_geom.is_empty:
             st.error("No se pudo extraer geometría válida del KML")
             return None
+        
+        # Si es MultiPolygon, tomar el más grande
+        if combined_geom.geom_type == 'MultiPolygon':
+            polygons = list(combined_geom.geoms)
+            polygons.sort(key=lambda p: p.area, reverse=True)
+            combined_geom = polygons[0]
         
         return combined_geom
         
@@ -471,7 +438,7 @@ def procesar_kml_avanzado(kml_path):
         return None
 
 def procesar_archivo_carga_mejorado(uploaded_file):
-    """Función mejorada para procesar archivos KML/KMZ con múltiples geometrías"""
+    """Función mejorada para procesar archivos KML/KMZ de manera robusta"""
     try:
         # Crear directorio temporal
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -489,14 +456,14 @@ def procesar_archivo_carga_mejorado(uploaded_file):
                 kml_path = extraer_kml_de_kmz(file_path, tmpdir)
                 
                 if kml_path:
-                    geometry = procesar_kml_avanzado(kml_path)
+                    geometry = procesar_kml_simple(kml_path)
                 else:
                     return None
                     
             elif file_ext == 'kml':
                 # Procesar KML directamente
                 st.info("🗺️ Procesando archivo KML...")
-                geometry = procesar_kml_avanzado(file_path)
+                geometry = procesar_kml_simple(file_path)
                 
             elif file_ext == 'geojson':
                 # Procesar GeoJSON
@@ -508,10 +475,11 @@ def procesar_archivo_carga_mejorado(uploaded_file):
                     return None
                 
                 # Combinar todas las geometrías
-                all_geometries = gdf.geometry.tolist()
-                combined_geom = unary_union(all_geometries)
-                
-                geometry = combined_geom
+                if len(gdf) > 1:
+                    all_geometries = gdf.geometry.tolist()
+                    geometry = unary_union(all_geometries)
+                else:
+                    geometry = gdf.geometry.iloc[0]
                     
             elif file_ext == 'shp' or file_ext == 'zip':
                 # Usar la función original para shapefiles
@@ -527,9 +495,28 @@ def procesar_archivo_carga_mejorado(uploaded_file):
                 return None
             
             # Verificar tipo de geometría
-            if geometry.geom_type not in ['Polygon', 'MultiPolygon', 'GeometryCollection']:
-                st.error(f"Tipo de geometría no soportado: {geometry.geom_type}")
-                return None
+            if geometry.geom_type not in ['Polygon', 'MultiPolygon']:
+                # Intentar convertir si es posible
+                if geometry.geom_type == 'GeometryCollection':
+                    # Extraer polígonos de GeometryCollection
+                    polygons = []
+                    for geom in geometry.geoms:
+                        if geom.geom_type in ['Polygon', 'MultiPolygon']:
+                            if geom.geom_type == 'MultiPolygon':
+                                polygons.extend(list(geom.geoms))
+                            else:
+                                polygons.append(geom)
+                    
+                    if polygons:
+                        # Tomar el polígono más grande
+                        polygons.sort(key=lambda p: p.area, reverse=True)
+                        geometry = polygons[0]
+                    else:
+                        st.error("GeometryCollection no contiene polígonos válidos")
+                        return None
+                else:
+                    st.error(f"Tipo de geometría no soportado: {geometry.geom_type}")
+                    return None
             
             # Si es MultiPolygon, convertir a Polygon (tomar el más grande)
             if geometry.geom_type == 'MultiPolygon':
@@ -537,27 +524,19 @@ def procesar_archivo_carga_mejorado(uploaded_file):
                 polygons.sort(key=lambda p: p.area, reverse=True)
                 geometry = polygons[0]
             
-            # Si es GeometryCollection, extraer polígonos
-            elif geometry.geom_type == 'GeometryCollection':
-                polygons = [geom for geom in geometry.geoms if geom.geom_type in ['Polygon', 'MultiPolygon']]
-                if polygons:
-                    # Tomar el polígono más grande
-                    polygons.sort(key=lambda p: p.area if hasattr(p, 'area') else 0, reverse=True)
-                    geometry = polygons[0]
-                else:
-                    st.error("GeometryCollection no contiene polígonos válidos")
-                    return None
-            
             # Calcular área aproximada
             gdf_temp = gpd.GeoDataFrame({'geometry': [geometry]}, crs='EPSG:4326')
             area_ha = gdf_temp.geometry.area.iloc[0] * 111000 * 111000 / 10000
+            
+            # Calcular número de puntos en el polígono
+            num_puntos = len(geometry.exterior.coords) if hasattr(geometry, 'exterior') else 'N/A'
             
             st.success(f"""
             ✅ **Archivo procesado exitosamente:**
             - **Nombre:** {uploaded_file.name}
             - **Tipo:** {geometry.geom_type}
             - **Área aproximada:** {area_ha:.2f} ha
-            - **Puntos en el polígono:** {len(geometry.exterior.coords) if hasattr(geometry, 'exterior') else 'N/A'}
+            - **Puntos en el polígono:** {num_puntos}
             """)
             
             return geometry
