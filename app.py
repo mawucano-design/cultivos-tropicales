@@ -1,4 +1,5 @@
-
+[file name]: GEEmulticultivotrigo.py
+[file content begin]
 import streamlit as st
 import geopandas as gpd
 import numpy as np
@@ -287,6 +288,81 @@ PARAMETROS_CULTIVOS = {
 }
 
 # ===== FUNCIONES AUXILIARES MEJORADAS =====
+def procesar_archivo_carga(uploaded_file):
+    """Procesa archivos KML, KMZ, GeoJSON, Shapefile, etc."""
+    try:
+        # Crear directorio temporal
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Guardar el archivo subido
+            file_path = os.path.join(tmpdir, uploaded_file.name)
+            with open(file_path, 'wb') as f:
+                f.write(uploaded_file.getbuffer())
+            
+            # Determinar tipo de archivo por extensión
+            file_ext = uploaded_file.name.lower().split('.')[-1]
+            
+            if file_ext in ['kml', 'kmz']:
+                # Leer KML/KMZ
+                gdf = gpd.read_file(file_path, driver='KML')
+            elif file_ext == 'geojson':
+                # Leer GeoJSON
+                gdf = gpd.read_file(file_path)
+            elif file_ext == 'shp':
+                # Shapefile - ya es .shp
+                gdf = gpd.read_file(file_path)
+            elif file_ext == 'zip':
+                # Shapefile comprimido
+                with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                    zip_ref.extractall(tmpdir)
+                # Buscar archivo .shp en el directorio extraído
+                shp_file = None
+                for file in os.listdir(tmpdir):
+                    if file.endswith('.shp'):
+                        shp_file = os.path.join(tmpdir, file)
+                        break
+                if shp_file:
+                    gdf = gpd.read_file(shp_file)
+                else:
+                    st.error("No se encontró archivo .shp en el ZIP")
+                    return None
+            else:
+                st.error(f"Formato de archivo no soportado: {file_ext}")
+                return None
+            
+            # Verificar que el GeoDataFrame no esté vacío
+            if gdf.empty:
+                st.error("El archivo no contiene geometrías válidas")
+                return None
+            
+            # Obtener la primera geometría
+            geometry = gdf.geometry.iloc[0]
+            
+            # Convertir a Polygon si es MultiPolygon
+            if geometry.geom_type == 'MultiPolygon':
+                # Tomar el polígono más grande
+                polygons = list(geometry.geoms)
+                polygons.sort(key=lambda p: p.area, reverse=True)
+                geometry = polygons[0]
+            
+            # Verificar que sea un polígono válido
+            if geometry.geom_type not in ['Polygon', 'MultiPolygon']:
+                st.error(f"Tipo de geometría no soportado: {geometry.geom_type}. Se requiere Polygon o MultiPolygon.")
+                return None
+            
+            # Reproject a WGS84 si es necesario
+            if gdf.crs and gdf.crs.to_string() != 'EPSG:4326':
+                gdf = gdf.to_crs('EPSG:4326')
+                geometry = gdf.geometry.iloc[0]
+            
+            st.success(f"✅ Archivo cargado: {uploaded_file.name}")
+            st.info(f"Tipo de geometría: {geometry.geom_type}")
+            
+            return geometry
+    
+    except Exception as e:
+        st.error(f"❌ Error al procesar el archivo: {str(e)}")
+        return None
+
 def crear_mapa_interactivo(poligono=None, titulo="Mapa de la Parcela", zoom_start=14):
     """Crea un mapa interactivo con Esri World Imagery como base"""
     if poligono is not None:
@@ -1308,6 +1384,21 @@ with st.sidebar:
         st.error("❌ **No autenticado**")
         st.info("Para usar imágenes reales, configura GEE en Streamlit Cloud o ejecuta localmente.")
     
+    # Carga de archivos KML/KMZ/Shapefile
+    st.markdown("### 📁 Cargar Parcela desde Archivo")
+    
+    uploaded_file = st.file_uploader(
+        "Sube un archivo de parcela:",
+        type=['kml', 'kmz', 'geojson', 'shp', 'zip'],
+        help="Formatos soportados: KML, KMZ, GeoJSON, Shapefile (.shp o .zip con shapefile)"
+    )
+    
+    if uploaded_file is not None:
+        geometry = procesar_archivo_carga(uploaded_file)
+        if geometry is not None:
+            st.session_state.poligono = geometry
+            st.rerun()
+    
     # Selección de cultivo
     st.markdown("### 🌱 Cultivo Principal")
     cultivo_opciones = list(PARAMETROS_CULTIVOS.keys())
@@ -1412,7 +1503,7 @@ if st.session_state.poligono:
     with col3:
         st.metric("Zonas de manejo", n_zonas)
 else:
-    st.info("👆 **Dibuja un polígono en el mapa para comenzar el análisis**")
+    st.info("👆 **Dibuja un polígono en el mapa o carga un archivo desde el sidebar para comenzar el análisis**")
 
 # ===== BOTÓN DE ANÁLISIS PRINCIPAL =====
 st.markdown("---")
@@ -1421,7 +1512,7 @@ col_btn1, col_btn2, col_btn3 = st.columns([2, 1, 1])
 with col_btn1:
     if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True):
         if st.session_state.poligono is None:
-            st.error("❌ Por favor, dibuja o selecciona una parcela primero")
+            st.error("❌ Por favor, dibuja o carga una parcela primero")
         else:
             with st.spinner("🔬 Realizando análisis completo..."):
                 # Mostrar progreso
@@ -2093,3 +2184,4 @@ st.markdown("""
     <p>© 2024 - Todos los derechos reservados</p>
 </div>
 """, unsafe_allow_html=True)
+[file content end]
