@@ -1,4 +1,4 @@
-
+# app.py - Análisis Multicultivo Satelital con GEE
 import streamlit as st
 import geopandas as gpd
 import numpy as np
@@ -90,13 +90,6 @@ def inicializar_gee():
         print(f"❌ Error crítico GEE: {str(e)}")
         return False
 
-# Ejecutar inicialización al inicio (ANTES de cualquier uso de ee.*)
-if 'gee_authenticated' not in st.session_state:
-    st.session_state.gee_authenticated = False
-    st.session_state.gee_project = ''
-    if GEE_AVAILABLE:
-        inicializar_gee()
-
 # ===== CONFIGURACIÓN INICIAL DE LA APP =====
 st.set_page_config(
     page_title="🌾 Análisis Multicultivo Satelital con GEE",
@@ -104,6 +97,22 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# ===== INICIALIZACIÓN DE VARIABLES DE SESIÓN =====
+if 'gee_authenticated' not in st.session_state:
+    st.session_state.gee_authenticated = False
+    st.session_state.gee_project = ''
+    if GEE_AVAILABLE:
+        inicializar_gee()
+
+if 'poligono' not in st.session_state:
+    st.session_state.poligono = None
+if 'resultados_analisis' not in st.session_state:
+    st.session_state.resultados_analisis = None
+if 'cultivo_seleccionado' not in st.session_state:
+    st.session_state.cultivo_seleccionado = 'TRIGO'
+if 'analisis_ejecutado' not in st.session_state:
+    st.session_state.analisis_ejecutado = False
 
 # Estilos CSS premium
 st.markdown("""
@@ -204,7 +213,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ===== CONFIGURACIÓN DE CULTIVOS MEJORADA =====
+# ===== CONFIGURACIÓN DE CULTIVOS COMPLETA =====
 PARAMETROS_CULTIVOS = {
     'TRIGO': {
         'NITROGENO': {'min': 100, 'max': 180},
@@ -280,9 +289,74 @@ PARAMETROS_CULTIVOS = {
         'NDVI_OPTIMO': 0.68,
         'NDRE_OPTIMO': 0.32,
         'RENDIMIENTO_OPTIMO': 3800,
-        'COSTO_FERTILIZACION': 380,
+        'COSTO_FERTILizACION': 380,
         'PRECIO_VENTA': 0.60,
         'icono': '🥜'
+    },
+    'CACAO': {
+        'NITROGENO': {'min': 120, 'max': 200},
+        'FOSFORO': {'min': 45, 'max': 85},
+        'POTASIO': {'min': 150, 'max': 250},
+        'MATERIA_ORGANICA_OPTIMA': 4.2,
+        'HUMEDAD_OPTIMA': 0.35,
+        'NDVI_OPTIMO': 0.82,
+        'NDRE_OPTIMO': 0.48,
+        'RENDIMIENTO_OPTIMO': 1200,
+        'COSTO_FERTILIZACION': 600,
+        'PRECIO_VENTA': 3.50,
+        'icono': '🍫'
+    },
+    'BANANO': {
+        'NITROGENO': {'min': 180, 'max': 280},
+        'FOSFORO': {'min': 60, 'max': 100},
+        'POTASIO': {'min': 300, 'max': 400},
+        'MATERIA_ORGANICA_OPTIMA': 3.8,
+        'HUMEDAD_OPTIMA': 0.38,
+        'NDVI_OPTIMO': 0.85,
+        'NDRE_OPTIMO': 0.50,
+        'RENDIMIENTO_OPTIMO': 40000,
+        'COSTO_FERTILIZACION': 800,
+        'PRECIO_VENTA': 0.30,
+        'icono': '🍌'
+    },
+    'PALMA ACEITERA': {
+        'NITROGENO': {'min': 100, 'max': 180},
+        'FOSFORO': {'min': 40, 'max': 80},
+        'POTASIO': {'min': 200, 'max': 350},
+        'MATERIA_ORGANICA_OPTIMA': 3.5,
+        'HUMEDAD_OPTIMA': 0.32,
+        'NDVI_OPTIMO': 0.78,
+        'NDRE_OPTIMO': 0.42,
+        'RENDIMIENTO_OPTIMO': 20000,
+        'COSTO_FERTILIZACION': 750,
+        'PRECIO_VENTA': 0.18,
+        'icono': '🌴'
+    },
+    'VID': {
+        'NITROGENO': {'min': 60, 'max': 120},
+        'FOSFORO': {'min': 40, 'max': 80},
+        'POTASIO': {'min': 100, 'max': 200},
+        'MATERIA_ORGANICA_OPTIMA': 2.5,
+        'HUMEDAD_OPTIMA': 0.25,
+        'NDVI_OPTIMO': 0.70,
+        'NDRE_OPTIMO': 0.35,
+        'RENDIMIENTO_OPTIMO': 15000,
+        'COSTO_FERTILIZACION': 450,
+        'PRECIO_VENTA': 0.80,
+        'icono': '🍇'
+    },
+    'OLIVO': {
+        'NITROGENO': {'min': 80, 'max': 150},
+        'FOSFORO': {'min': 30, 'max': 60},
+        'POTASIO': {'min': 120, 'max': 220},
+        'MATERIA_ORGANICA_OPTIMA': 2.0,
+        'HUMEDAD_OPTIMA': 0.20,
+        'NDVI_OPTIMO': 0.65,
+        'NDRE_OPTIMO': 0.30,
+        'RENDIMIENTO_OPTIMO': 10000,
+        'COSTO_FERTILIZACION': 400,
+        'PRECIO_VENTA': 0.90,
+        'icono': '🫒'
     }
 }
 
@@ -350,7 +424,7 @@ def procesar_archivo_carga(uploaded_file):
             
             # Reproject a WGS84 si es necesario
             if gdf.crs and gdf.crs.to_string() != 'EPSG:4326':
-                gdf = gdf.to_crs('EPSG:4326')
+                gdf = gpd.to_crs('EPSG:4326')
                 geometry = gdf.geometry.iloc[0]
             
             st.success(f"✅ Archivo cargado: {uploaded_file.name}")
@@ -1531,9 +1605,14 @@ with st.sidebar:
     # Configuración satelital
     st.markdown("### 🛰️ Configuración Satelital")
     
-    # Fechas
+    # Fechas - asegurar que fecha_inicio sea anterior
     fecha_fin = st.date_input("Fecha fin", datetime.now())
     fecha_inicio = st.date_input("Fecha inicio", datetime.now() - timedelta(days=30))
+    
+    # Validación de fechas
+    if fecha_inicio >= fecha_fin:
+        st.warning("⚠️ La fecha de inicio debe ser anterior a la fecha de fin")
+        fecha_inicio = fecha_fin - timedelta(days=30)
     
     # Selección de satélite
     if st.session_state.gee_authenticated:
@@ -1579,14 +1658,11 @@ with st.sidebar:
             st.session_state.poligono = None
         if 'resultados_analisis' in st.session_state:
             del st.session_state.resultados_analisis
+        st.session_state.analisis_ejecutado = False
         st.rerun()
 
 # ===== SECCIÓN DE MAPA INTERACTIVO =====
 st.markdown("## 🗺️ Mapa Interactivo de la Parcela")
-
-# Inicializar polígono en session_state si no existe
-if 'poligono' not in st.session_state:
-    st.session_state.poligono = None
 
 # Crear mapa
 mapa = crear_mapa_interactivo(st.session_state.poligono)
@@ -1634,89 +1710,104 @@ with col_btn1:
         if st.session_state.poligono is None:
             st.error("❌ Por favor, dibuja o carga una parcela primero")
         else:
+            # Guardar cultivo seleccionado en session_state
+            st.session_state.cultivo_seleccionado = cultivo_seleccionado
+            
             with st.spinner("🔬 Realizando análisis completo..."):
-                # Mostrar progreso
-                progress_bar = st.progress(0)
-                
-                # Paso 1: Obtener datos satelitales
-                progress_bar.progress(10)
-                st.info("Paso 1/7: Obteniendo datos satelitales...")
-                
-                usar_gee = '_GEE' in satelite_seleccionado and st.session_state.gee_authenticated
-                if usar_gee:
-                    indices_satelitales = calcular_indices_satelitales_gee(
-                        satelite_seleccionado,
-                        st.session_state.poligono,
-                        fecha_inicio,
-                        fecha_fin
+                try:
+                    # Mostrar progreso
+                    progress_bar = st.progress(0)
+                    
+                    # Paso 1: Obtener datos satelitales
+                    progress_bar.progress(10)
+                    st.info("Paso 1/7: Obteniendo datos satelitales...")
+                    
+                    usar_gee = '_GEE' in satelite_seleccionado and st.session_state.gee_authenticated
+                    if usar_gee:
+                        indices_satelitales = calcular_indices_satelitales_gee(
+                            satelite_seleccionado,
+                            st.session_state.poligono,
+                            fecha_inicio,
+                            fecha_fin
+                        )
+                    else:
+                        # Datos simulados si no hay GEE
+                        np.random.seed(42)
+                        indices_satelitales = {
+                            'NDVI': np.random.uniform(0.55, 0.85),
+                            'NDWI': np.random.uniform(0.10, 0.25),
+                            'EVI': np.random.uniform(0.45, 0.75),
+                            'NDRE': np.random.uniform(0.25, 0.45),
+                            'fecha': datetime.now().strftime('%Y-%m-%d'),
+                            'fuente': 'Simulado',
+                            'resolucion': '10m'
+                        }
+                    
+                    # Paso 2: Dividir parcela en zonas
+                    progress_bar.progress(20)
+                    st.info("Paso 2/7: Dividiendo parcela en zonas...")
+                    zonas = dividir_parcela_en_zonas(st.session_state.poligono, n_zonas)
+                    
+                    # Paso 3: Analizar fertilidad por zonas
+                    progress_bar.progress(35)
+                    st.info("Paso 3/7: Analizando fertilidad...")
+                    indices_fertilidad = analizar_fertilidad_zonas(zonas, indices_satelitales, st.session_state.cultivo_seleccionado)
+                    
+                    # Paso 4: Calcular recomendaciones NPK
+                    progress_bar.progress(50)
+                    st.info("Paso 4/7: Calculando recomendaciones NPK...")
+                    recomendaciones_npk = calcular_recomendaciones_npk_mejorado(
+                        indices_fertilidad, 
+                        st.session_state.cultivo_seleccionado, 
+                        textura_suelo
                     )
-                else:
-                    # Datos simulados si no hay GEE
-                    np.random.seed(42)
-                    indices_satelitales = {
-                        'NDVI': np.random.uniform(0.55, 0.85),
-                        'NDWI': np.random.uniform(0.10, 0.25),
-                        'EVI': np.random.uniform(0.45, 0.75),
-                        'NDRE': np.random.uniform(0.25, 0.45),
-                        'fecha': datetime.now().strftime('%Y-%m-%d'),
-                        'fuente': 'Simulado',
-                        'resolucion': '10m'
+                    
+                    # Paso 5: Calcular proyecciones de cosecha
+                    progress_bar.progress(65)
+                    st.info("Paso 5/7: Calculando proyecciones...")
+                    proyecciones = calcular_proyecciones_cosecha(indices_fertilidad, recomendaciones_npk, st.session_state.cultivo_seleccionado)
+                    
+                    # Paso 6: Generar DEM y análisis topográfico
+                    progress_bar.progress(80)
+                    st.info("Paso 6/7: Generando análisis topográfico...")
+                    fig_dem, dem_data = crear_dem_y_curvas(st.session_state.poligono, resolucion_dem, intervalo_curvas)
+                    pendientes = calcular_pendiente_mejorado(dem_data['Z'])
+                    dem_data['pendientes'] = pendientes
+                    
+                    # Paso 7: Preparar visualizaciones
+                    progress_bar.progress(95)
+                    st.info("Paso 7/7: Generando reportes...")
+                    
+                    # Calcular área aproximada
+                    gdf_temp = gpd.GeoDataFrame({'geometry': [st.session_state.poligono]}, crs='EPSG:4326')
+                    area_ha = gdf_temp.geometry.area.iloc[0] * 111000 * 111000 / 10000
+                    
+                    # Guardar resultados en session_state
+                    st.session_state.resultados_analisis = {
+                        'indices_satelitales': indices_satelitales,
+                        'zonas': zonas,
+                        'indices_fertilidad': indices_fertilidad,
+                        'recomendaciones_npk': recomendaciones_npk,
+                        'proyecciones': proyecciones,
+                        'dem': dem_data,
+                        'cultivo': st.session_state.cultivo_seleccionado,
+                        'textura_suelo': textura_suelo,
+                        'precipitacion': precipitacion,
+                        'area_total': area_ha
                     }
-                
-                # Paso 2: Dividir parcela en zonas
-                progress_bar.progress(20)
-                st.info("Paso 2/7: Dividiendo parcela en zonas...")
-                zonas = dividir_parcela_en_zonas(st.session_state.poligono, n_zonas)
-                
-                # Paso 3: Analizar fertilidad por zonas
-                progress_bar.progress(35)
-                st.info("Paso 3/7: Analizando fertilidad...")
-                indices_fertilidad = analizar_fertilidad_zonas(zonas, indices_satelitales, cultivo_seleccionado)
-                
-                # Paso 4: Calcular recomendaciones NPK
-                progress_bar.progress(50)
-                st.info("Paso 4/7: Calculando recomendaciones NPK...")
-                recomendaciones_npk = calcular_recomendaciones_npk_mejorado(
-                    indices_fertilidad, 
-                    cultivo_seleccionado, 
-                    textura_suelo
-                )
-                
-                # Paso 5: Calcular proyecciones de cosecha
-                progress_bar.progress(65)
-                st.info("Paso 5/7: Calculando proyecciones...")
-                proyecciones = calcular_proyecciones_cosecha(indices_fertilidad, recomendaciones_npk, cultivo_seleccionado)
-                
-                # Paso 6: Generar DEM y análisis topográfico
-                progress_bar.progress(80)
-                st.info("Paso 6/7: Generando análisis topográfico...")
-                fig_dem, dem_data = crear_dem_y_curvas(st.session_state.poligono, resolucion_dem, intervalo_curvas)
-                pendientes = calcular_pendiente_mejorado(dem_data['Z'])
-                dem_data['pendientes'] = pendientes
-                
-                # Paso 7: Preparar visualizaciones
-                progress_bar.progress(95)
-                st.info("Paso 7/7: Generando reportes...")
-                
-                # Guardar resultados en session_state
-                st.session_state.resultados_analisis = {
-                    'indices_satelitales': indices_satelitales,
-                    'zonas': zonas,
-                    'indices_fertilidad': indices_fertilidad,
-                    'recomendaciones_npk': recomendaciones_npk,
-                    'proyecciones': proyecciones,
-                    'dem': dem_data,
-                    'cultivo': cultivo_seleccionado,
-                    'textura_suelo': textura_suelo,
-                    'precipitacion': precipitacion,
-                    'area_total': gpd.GeoDataFrame({'geometry': [st.session_state.poligono]}, crs='EPSG:4326').geometry.area.iloc[0] * 111000 * 111000 / 10000
-                }
-                
-                progress_bar.progress(100)
-                st.success("✅ Análisis completado exitosamente!")
+                    
+                    st.session_state.analisis_ejecutado = True
+                    progress_bar.progress(100)
+                    st.success("✅ Análisis completado exitosamente!")
+                    st.rerun()  # Forzar recarga para mostrar resultados
+                    
+                except Exception as e:
+                    st.error(f"❌ Error durante el análisis: {str(e)}")
+                    import traceback
+                    st.code(traceback.format_exc())
 
 with col_btn2:
-    if 'resultados_analisis' in st.session_state:
+    if st.session_state.resultados_analisis is not None:
         if st.button("📥 Descargar Mapas PNG", use_container_width=True):
             zip_buffer = descargar_todas_visualizaciones(st.session_state.resultados_analisis, st.session_state.poligono)
             if zip_buffer:
@@ -1729,14 +1820,15 @@ with col_btn2:
                 )
 
 with col_btn3:
-    if 'resultados_analisis' in st.session_state:
+    if st.session_state.resultados_analisis is not None:
         if st.button("🗑️ Limpiar Resultados", use_container_width=True):
             if 'resultados_analisis' in st.session_state:
-                del st.session_state.resultados_analisis
+                st.session_state.resultados_analisis = None
+            st.session_state.analisis_ejecutado = False
             st.rerun()
 
 # ===== MOSTRAR RESULTADOS SI EXISTEN =====
-if 'resultados_analisis' in st.session_state:
+if st.session_state.resultados_analisis is not None and st.session_state.analisis_ejecutado:
     resultados = st.session_state.resultados_analisis
     
     # Crear pestañas para diferentes secciones
@@ -2105,6 +2197,10 @@ if 'resultados_analisis' in st.session_state:
         ingreso_fert = rend_total_fert * precio
         
         # Costos estimados de fertilización
+        total_n = sum([rec['N'] for rec in resultados['recomendaciones_npk']]) * resultados['area_total'] / len(resultados['recomendaciones_npk'])
+        total_p = sum([rec['P'] for rec in resultados['recomendaciones_npk']]) * resultados['area_total'] / len(resultados['recomendaciones_npk'])
+        total_k = sum([rec['K'] for rec in resultados['recomendaciones_npk']]) * resultados['area_total'] / len(resultados['recomendaciones_npk'])
+        
         costo_total = (total_n * 1.2 + total_p * 2.5 + total_k * 1.8)
         
         ingreso_adicional = ingreso_fert - ingreso_base
