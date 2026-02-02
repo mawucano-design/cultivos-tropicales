@@ -534,44 +534,78 @@ def calcular_indices_satelitales_gee(tipo_satelite, poligono, fecha_inicio, fech
         st.error(f"❌ Error al obtener datos de GEE: {str(e)[:200]}")
         return None
 
-def generar_dem_sintetico_mejorado(ancho=100, alto=100, complejidad=2):
-    """Genera un DEM sintético más realista"""
-    x = np.linspace(0, ancho, ancho)
-    y = np.linspace(0, alto, alto)
+def generar_dem_para_poligono(poligono, resolucion_m=10):
+    """Genera un DEM adaptado al polígono de la parcela"""
+    # Obtener los límites del polígono
+    bounds = poligono.bounds
+    minx, miny, maxx, maxy = bounds
+    
+    # Expandir los límites un 20% para tener un área más grande
+    expand_factor = 0.2
+    width = maxx - minx
+    height = maxy - miny
+    
+    expanded_minx = minx - width * expand_factor
+    expanded_maxx = maxx + width * expand_factor
+    expanded_miny = miny - height * expand_factor
+    expanded_maxy = maxy + height * expand_factor
+    
+    # Calcular tamaño basado en resolución
+    # Convertir grados a metros aproximados (1 grado ≈ 111,000 m)
+    width_deg = expanded_maxx - expanded_minx
+    height_deg = expanded_maxy - expanded_miny
+    
+    # Calcular número de puntos basado en resolución
+    width_m = width_deg * 111000  # Aproximación
+    height_m = height_deg * 111000
+    
+    nx = int(width_m / resolucion_m)
+    ny = int(height_m / resolucion_m)
+    
+    # Limitar tamaño máximo
+    nx = min(nx, 200)
+    ny = min(ny, 200)
+    
+    # Crear malla
+    x = np.linspace(expanded_minx, expanded_maxx, nx)
+    y = np.linspace(expanded_miny, expanded_maxy, ny)
     X, Y = np.meshgrid(x, y)
     
-    # Base con pendiente general
-    pendiente_base = np.random.uniform(1, 5)
-    Z = pendiente_base * (X / ancho)
+    # Generar terreno realista
+    Z = np.zeros_like(X)
     
-    # Agregar colinas y valles
+    # Base con pendiente general
+    pendiente_base = np.random.uniform(1, 3)
+    Z = pendiente_base * ((X - expanded_minx) / width_deg)
+    
+    # Agregar colinas y valles aleatorios
     np.random.seed(42)
-    n_colinas = np.random.randint(3, 7)
+    n_colinas = np.random.randint(3, 8)
     for _ in range(n_colinas):
-        centro_x = np.random.uniform(0, ancho)
-        centro_y = np.random.uniform(0, alto)
-        radio = np.random.uniform(10, 30)
-        altura = np.random.uniform(5, 15)
+        centro_x = np.random.uniform(expanded_minx, expanded_maxx)
+        centro_y = np.random.uniform(expanded_miny, expanded_maxy)
+        radio = np.random.uniform(width_deg * 0.1, width_deg * 0.3)
+        altura = np.random.uniform(5, 20)
         
         distancia = np.sqrt((X - centro_x)**2 + (Y - centro_y)**2)
         Z += altura * np.exp(-(distancia**2) / (2 * radio**2))
     
     # Agregar valles
-    n_valles = np.random.randint(2, 5)
+    n_valles = np.random.randint(2, 6)
     for _ in range(n_valles):
-        centro_x = np.random.uniform(0, ancho)
-        centro_y = np.random.uniform(0, alto)
-        radio = np.random.uniform(15, 35)
-        profundidad = np.random.uniform(3, 10)
+        centro_x = np.random.uniform(expanded_minx, expanded_maxx)
+        centro_y = np.random.uniform(expanded_miny, expanded_maxy)
+        radio = np.random.uniform(width_deg * 0.15, width_deg * 0.35)
+        profundidad = np.random.uniform(3, 12)
         
         distancia = np.sqrt((X - centro_x)**2 + (Y - centro_y)**2)
         Z -= profundidad * np.exp(-(distancia**2) / (2 * radio**2))
     
     # Ruido topográfico
-    ruido = np.random.randn(alto, ancho) * complejidad
+    ruido = np.random.randn(ny, nx) * 2
     Z += ruido
     
-    # Normalizar
+    # Normalizar para que esté entre 0 y 100 metros
     Z = (Z - Z.min()) / (Z.max() - Z.min()) * 100
     
     return X, Y, Z
@@ -738,24 +772,50 @@ def calcular_proyecciones_cosecha(indices_fertilidad, recomendaciones_npk, culti
     
     return proyecciones
 
-def crear_mapa_calor_fertilidad(zonas, indices_fertilidad):
-    """Crea mapa de calor de fertilidad"""
-    fig, ax = plt.subplots(figsize=(12, 8))
+def crear_mapa_calor_expandido(zonas, valores, titulo, cmap, poligono, unidad=''):
+    """Crea mapa de calor expandido más allá del polígono"""
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    # Obtener límites del polígono
+    bounds = poligono.bounds
+    minx, miny, maxx, maxy = bounds
+    
+    # Expandir los límites un 30% para el área de visualización
+    expand_factor = 0.3
+    width = maxx - minx
+    height = maxy - miny
+    
+    expanded_minx = minx - width * expand_factor
+    expanded_maxx = maxx + width * expand_factor
+    expanded_miny = miny - height * expand_factor
+    expanded_maxy = maxy + height * expand_factor
     
     # Preparar datos para mapa de calor
-    fertilidades = [idx['indice_fertilidad'] for idx in indices_fertilidad]
     centroides_x = [zona['centroid'].x for zona in zonas]
     centroides_y = [zona['centroid'].y for zona in zonas]
     
-    # Crear triangulación para mapa de calor
-    triang = Triangulation(centroides_x, centroides_y)
+    # Crear grilla para interpolación
+    grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
     
-    # Mapa de calor con interpolación
-    cmap = plt.cm.YlOrRd  # Colores de calor (amarillo-naranja-rojo)
-    levels = np.linspace(0, 1, 11)
+    # Interpolación lineal para suavizar
+    from scipy.interpolate import griddata
+    grid_z = griddata((centroides_x, centroides_y), valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(valores))
     
-    # Contour plot para mapa de calor
-    contour = ax.tricontourf(triang, fertilidades, levels=levels, cmap=cmap, alpha=0.8)
+    # Mapa de calor con interpolación suavizada
+    im = ax.imshow(grid_z.T, extent=[expanded_minx, expanded_maxx, expanded_miny, expanded_maxy], 
+                   origin='lower', cmap=cmap, alpha=0.8, aspect='auto')
+    
+    # Dibujar el polígono principal
+    if hasattr(poligono, 'exterior'):
+        coords = list(poligono.exterior.coords)
+    else:
+        coords = list(poligono.coords)
+    
+    x_coords = [c[0] for c in coords]
+    y_coords = [c[1] for c in coords]
+    
+    ax.fill(x_coords, y_coords, color='white', alpha=0.2, edgecolor='black', linewidth=2, linestyle='--')
+    ax.plot(x_coords, y_coords, 'k-', linewidth=2)
     
     # Dibujar contornos de zonas
     for zona in zonas:
@@ -770,34 +830,43 @@ def crear_mapa_calor_fertilidad(zonas, indices_fertilidad):
         ax.plot(x_coords, y_coords, 'k-', linewidth=0.5, alpha=0.7)
     
     # Añadir puntos de centroides
-    scatter = ax.scatter(centroides_x, centroides_y, c=fertilidades, cmap=cmap, 
-                         s=50, edgecolor='black', linewidth=0.5, zorder=5)
+    scatter = ax.scatter(centroides_x, centroides_y, c=valores, cmap=cmap, 
+                         s=100, edgecolor='black', linewidth=1, zorder=5, alpha=0.9)
     
     # Etiquetas
-    ax.set_title('Mapa de Calor - Índice de Fertilidad', fontsize=16, fontweight='bold', pad=20)
-    ax.set_xlabel('Longitud', fontsize=12)
-    ax.set_ylabel('Latitud', fontsize=12)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.set_title(titulo, fontsize=18, fontweight='bold', pad=20)
+    ax.set_xlabel('Longitud', fontsize=14)
+    ax.set_ylabel('Latitud', fontsize=14)
+    ax.grid(True, alpha=0.2, linestyle='--')
     
     # Colorbar
-    cbar = plt.colorbar(contour, ax=ax, shrink=0.8, pad=0.02)
-    cbar.set_label('Índice de Fertilidad', fontsize=12)
+    cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+    cbar.set_label(unidad if unidad else 'Valor', fontsize=12)
     
-    # Añadir anotaciones
-    for zona, idx in zip(zonas, indices_fertilidad):
-        ax.annotate(f"Z{idx['id_zona']}\n{idx['indice_fertilidad']:.2f}", 
+    # Añadir anotaciones de valores en cada zona
+    for zona, valor in zip(zonas, valores):
+        ax.annotate(f"{valor:.2f}" if valor < 1 else f"{valor:.0f}", 
                    xy=(zona['centroid'].x, zona['centroid'].y), 
-                   xytext=(0, 5), textcoords='offset points',
-                   ha='center', va='bottom', fontsize=8,
-                   bbox=dict(boxstyle="round,pad=0.2", facecolor='white', alpha=0.8))
+                   xytext=(0, 8), textcoords='offset points',
+                   ha='center', va='bottom', fontsize=9, fontweight='bold',
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9, edgecolor='black'))
+    
+    # Añadir escala
+    ax.text(0.02, 0.02, f"Área expandida: {expand_factor*100:.0f}%", transform=ax.transAxes,
+           fontsize=10, bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.8))
     
     plt.tight_layout()
     return fig
 
-def crear_mapa_calor_npk(zonas, recomendaciones_npk, nutriente='N'):
-    """Crea mapa de calor de NPK"""
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
+def crear_mapa_calor_fertilidad(zonas, indices_fertilidad, poligono):
+    """Crea mapa de calor de fertilidad expandido"""
+    fertilidades = [idx['indice_fertilidad'] for idx in indices_fertilidad]
+    return crear_mapa_calor_expandido(zonas, fertilidades, 
+                                     'Mapa de Calor - Índice de Fertilidad', 
+                                     plt.cm.YlOrRd, poligono, 'Índice de Fertilidad')
+
+def crear_mapa_calor_npk(zonas, recomendaciones_npk, nutriente='N', poligono=None):
+    """Crea mapa de calor de NPK expandido"""
     # Preparar datos según nutriente
     if nutriente == 'N':
         valores = [rec['N'] for rec in recomendaciones_npk]
@@ -815,15 +884,57 @@ def crear_mapa_calor_npk(zonas, recomendaciones_npk, nutriente='N'):
         cmap = plt.cm.Oranges
         unidad = 'kg/ha'
     
+    return crear_mapa_calor_expandido(zonas, valores, 
+                                     f'Mapa de Calor - {titulo} ({unidad})', 
+                                     cmap, poligono, unidad)
+
+def crear_mapa_calor_ndvi(zonas, indices_fertilidad, poligono):
+    """Crea mapa de calor de NDVI expandido"""
+    ndvi_valores = [idx['ndvi'] for idx in indices_fertilidad]
+    
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    # Obtener límites del polígono
+    bounds = poligono.bounds
+    minx, miny, maxx, maxy = bounds
+    
+    # Expandir los límites un 30% para el área de visualización
+    expand_factor = 0.3
+    width = maxx - minx
+    height = maxy - miny
+    
+    expanded_minx = minx - width * expand_factor
+    expanded_maxx = maxx + width * expand_factor
+    expanded_miny = miny - height * expand_factor
+    expanded_maxy = maxy + height * expand_factor
+    
+    # Preparar datos para mapa de calor
     centroides_x = [zona['centroid'].x for zona in zonas]
     centroides_y = [zona['centroid'].y for zona in zonas]
     
-    # Crear triangulación para mapa de calor
-    triang = Triangulation(centroides_x, centroides_y)
+    # Crear grilla para interpolación
+    grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
     
-    # Mapa de calor con interpolación
-    levels = np.linspace(min(valores), max(valores), 11)
-    contour = ax.tricontourf(triang, valores, levels=levels, cmap=cmap, alpha=0.8)
+    # Interpolación lineal para suavizar
+    from scipy.interpolate import griddata
+    grid_z = griddata((centroides_x, centroides_y), ndvi_valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(ndvi_valores))
+    
+    # Mapa de calor con colores específicos para NDVI
+    cmap = plt.cm.RdYlGn  # Rojo-Amarillo-Verde para NDVI
+    im = ax.imshow(grid_z.T, extent=[expanded_minx, expanded_maxx, expanded_miny, expanded_maxy], 
+                   origin='lower', cmap=cmap, alpha=0.8, aspect='auto', vmin=0, vmax=1)
+    
+    # Dibujar el polígono principal
+    if hasattr(poligono, 'exterior'):
+        coords = list(poligono.exterior.coords)
+    else:
+        coords = list(poligono.coords)
+    
+    x_coords = [c[0] for c in coords]
+    y_coords = [c[1] for c in coords]
+    
+    ax.fill(x_coords, y_coords, color='white', alpha=0.2, edgecolor='black', linewidth=2, linestyle='--')
+    ax.plot(x_coords, y_coords, 'k-', linewidth=2)
     
     # Dibujar contornos de zonas
     for zona in zonas:
@@ -838,35 +949,38 @@ def crear_mapa_calor_npk(zonas, recomendaciones_npk, nutriente='N'):
         ax.plot(x_coords, y_coords, 'k-', linewidth=0.5, alpha=0.7)
     
     # Añadir puntos de centroides
-    scatter = ax.scatter(centroides_x, centroides_y, c=valores, cmap=cmap, 
-                         s=50, edgecolor='black', linewidth=0.5, zorder=5)
+    scatter = ax.scatter(centroides_x, centroides_y, c=ndvi_valores, cmap=cmap, 
+                         s=100, edgecolor='black', linewidth=1, zorder=5, alpha=0.9, vmin=0, vmax=1)
     
     # Etiquetas
-    ax.set_title(f'Mapa de Calor - {titulo} ({unidad})', fontsize=16, fontweight='bold', pad=20)
-    ax.set_xlabel('Longitud', fontsize=12)
-    ax.set_ylabel('Latitud', fontsize=12)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.set_title('Mapa de Calor - NDVI (Índice de Vegetación de Diferencia Normalizada)', 
+                fontsize=18, fontweight='bold', pad=20)
+    ax.set_xlabel('Longitud', fontsize=14)
+    ax.set_ylabel('Latitud', fontsize=14)
+    ax.grid(True, alpha=0.2, linestyle='--')
     
     # Colorbar
-    cbar = plt.colorbar(contour, ax=ax, shrink=0.8, pad=0.02)
-    cbar.set_label(f'{titulo} ({unidad})', fontsize=12)
+    cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
+    cbar.set_label('NDVI', fontsize=12)
     
-    # Añadir anotaciones
-    for zona, rec in zip(zonas, recomendaciones_npk):
-        valor = rec[nutriente] if nutriente in rec else rec[nutriente[0]]
-        ax.annotate(f"{valor:.0f}", 
+    # Añadir leyenda de colores
+    ax.text(0.02, 0.98, 'Interpretación NDVI:\n0.0-0.2: Suelo desnudo\n0.2-0.4: Vegetación escasa\n0.4-0.6: Vegetación moderada\n0.6-0.8: Vegetación densa\n0.8-1.0: Vegetación muy densa',
+            transform=ax.transAxes, fontsize=10, verticalalignment='top',
+            bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
+    
+    # Añadir anotaciones de valores en cada zona
+    for zona, valor in zip(zonas, ndvi_valores):
+        ax.annotate(f"{valor:.3f}", 
                    xy=(zona['centroid'].x, zona['centroid'].y), 
-                   xytext=(0, 5), textcoords='offset points',
-                   ha='center', va='bottom', fontsize=8, fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
+                   xytext=(0, 8), textcoords='offset points',
+                   ha='center', va='bottom', fontsize=9, fontweight='bold',
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9, edgecolor='black'))
     
     plt.tight_layout()
     return fig
 
-def crear_mapa_calor_rendimiento(zonas, proyecciones, tipo='base'):
-    """Crea mapa de calor de rendimiento (con o sin fertilización)"""
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
+def crear_mapa_calor_rendimiento(zonas, proyecciones, tipo='base', poligono=None):
+    """Crea mapa de calor de rendimiento expandido"""
     # Preparar datos según tipo
     if tipo == 'base':
         valores = [proy['rendimiento_base'] for proy in proyecciones]
@@ -877,64 +991,12 @@ def crear_mapa_calor_rendimiento(zonas, proyecciones, tipo='base'):
         titulo = 'Rendimiento Con Fertilización'
         cmap = plt.cm.RdYlGn  # Verde-Amarillo-Rojo
     
-    centroides_x = [zona['centroid'].x for zona in zonas]
-    centroides_y = [zona['centroid'].y for zona in zonas]
-    
-    # Crear triangulación para mapa de calor
-    triang = Triangulation(centroides_x, centroides_y)
-    
-    # Mapa de calor con interpolación
-    levels = np.linspace(min(valores), max(valores), 11)
-    contour = ax.tricontourf(triang, valores, levels=levels, cmap=cmap, alpha=0.8)
-    
-    # Dibujar contornos de zonas
-    for zona in zonas:
-        if hasattr(zona['geometry'], 'exterior'):
-            coords = list(zona['geometry'].exterior.coords)
-        else:
-            coords = list(zona['geometry'].coords)
-        
-        x_coords = [c[0] for c in coords]
-        y_coords = [c[1] for c in coords]
-        
-        ax.plot(x_coords, y_coords, 'k-', linewidth=0.5, alpha=0.7)
-    
-    # Añadir puntos de centroides
-    scatter = ax.scatter(centroides_x, centroides_y, c=valores, cmap=cmap, 
-                         s=50, edgecolor='black', linewidth=0.5, zorder=5)
-    
-    # Etiquetas
-    ax.set_title(f'Mapa de Calor - {titulo}', fontsize=16, fontweight='bold', pad=20)
-    ax.set_xlabel('Longitud', fontsize=12)
-    ax.set_ylabel('Latitud', fontsize=12)
-    ax.grid(True, alpha=0.3, linestyle='--')
-    
-    # Colorbar
-    cbar = plt.colorbar(contour, ax=ax, shrink=0.8, pad=0.02)
-    cbar.set_label('Rendimiento (kg/ha)', fontsize=12)
-    
-    # Añadir anotaciones
-    for i, (zona, proy) in enumerate(zip(zonas, proyecciones)):
-        valor = proy['rendimiento_base'] if tipo == 'base' else proy['rendimiento_fertilizado']
-        incremento = proy['incremento'] if tipo != 'base' else 0
-        
-        label = f"{valor:.0f}"
-        if tipo != 'base' and incremento > 0:
-            label += f"\n(+{incremento:.0f}%)"
-        
-        ax.annotate(label, 
-                   xy=(zona['centroid'].x, zona['centroid'].y), 
-                   xytext=(0, 5), textcoords='offset points',
-                   ha='center', va='bottom', fontsize=8, fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.3", facecolor='white', alpha=0.9))
-    
-    plt.tight_layout()
-    return fig
+    return crear_mapa_calor_expandido(zonas, valores, 
+                                     f'Mapa de Calor - {titulo}', 
+                                     cmap, poligono, 'kg/ha')
 
-def crear_mapa_calor_diferencia(zonas, proyecciones):
-    """Crea mapa de calor de diferencia de rendimiento"""
-    fig, ax = plt.subplots(figsize=(12, 8))
-    
+def crear_mapa_calor_diferencia(zonas, proyecciones, poligono):
+    """Crea mapa de calor de diferencia de rendimiento expandido"""
     # Calcular diferencias
     diferencias = []
     porcentajes = []
@@ -945,20 +1007,51 @@ def crear_mapa_calor_diferencia(zonas, proyecciones):
         diferencias.append(diferencia)
         porcentajes.append(porcentaje)
     
+    fig, ax = plt.subplots(figsize=(14, 10))
+    
+    # Obtener límites del polígono
+    bounds = poligono.bounds
+    minx, miny, maxx, maxy = bounds
+    
+    # Expandir los límites un 30% para el área de visualización
+    expand_factor = 0.3
+    width = maxx - minx
+    height = maxy - miny
+    
+    expanded_minx = minx - width * expand_factor
+    expanded_maxx = maxx + width * expand_factor
+    expanded_miny = miny - height * expand_factor
+    expanded_maxy = maxy + height * expand_factor
+    
+    # Preparar datos para mapa de calor
     centroides_x = [zona['centroid'].x for zona in zonas]
     centroides_y = [zona['centroid'].y for zona in zonas]
     
-    # Crear triangulación para mapa de calor
-    triang = Triangulation(centroides_x, centroides_y)
+    # Crear grilla para interpolación
+    grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
     
-    # Mapa de calor con colores divergentes (rojo-blanco-verde)
+    # Interpolación lineal para suavizar
+    from scipy.interpolate import griddata
+    grid_z = griddata((centroides_x, centroides_y), diferencias, (grid_x, grid_y), method='linear', fill_value=np.nanmean(diferencias))
+    
+    # Mapa de calor con colores divergentes
     cmap = plt.cm.RdBu  # Rojo-Azul (divergente)
-    
-    # Normalizar diferencias para que el centro sea 0
     max_diff = max(abs(min(diferencias)), abs(max(diferencias)))
-    levels = np.linspace(-max_diff, max_diff, 11)
+    im = ax.imshow(grid_z.T, extent=[expanded_minx, expanded_maxx, expanded_miny, expanded_maxy], 
+                   origin='lower', cmap=cmap, alpha=0.8, aspect='auto', 
+                   vmin=-max_diff, vmax=max_diff)
     
-    contour = ax.tricontourf(triang, diferencias, levels=levels, cmap=cmap, alpha=0.8)
+    # Dibujar el polígono principal
+    if hasattr(poligono, 'exterior'):
+        coords = list(poligono.exterior.coords)
+    else:
+        coords = list(poligono.coords)
+    
+    x_coords = [c[0] for c in coords]
+    y_coords = [c[1] for c in coords]
+    
+    ax.fill(x_coords, y_coords, color='white', alpha=0.2, edgecolor='black', linewidth=2, linestyle='--')
+    ax.plot(x_coords, y_coords, 'k-', linewidth=2)
     
     # Dibujar contornos de zonas
     for zona in zonas:
@@ -974,32 +1067,86 @@ def crear_mapa_calor_diferencia(zonas, proyecciones):
     
     # Añadir puntos de centroides
     scatter = ax.scatter(centroides_x, centroides_y, c=diferencias, cmap=cmap, 
-                         s=50, edgecolor='black', linewidth=0.5, zorder=5)
+                         s=100, edgecolor='black', linewidth=1, zorder=5, alpha=0.9, 
+                         vmin=-max_diff, vmax=max_diff)
     
     # Etiquetas
-    ax.set_title('Mapa de Calor - Incremento por Fertilización', fontsize=16, fontweight='bold', pad=20)
-    ax.set_xlabel('Longitud', fontsize=12)
-    ax.set_ylabel('Latitud', fontsize=12)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.set_title('Mapa de Calor - Incremento por Fertilización', fontsize=18, fontweight='bold', pad=20)
+    ax.set_xlabel('Longitud', fontsize=14)
+    ax.set_ylabel('Latitud', fontsize=14)
+    ax.grid(True, alpha=0.2, linestyle='--')
     
     # Colorbar
-    cbar = plt.colorbar(contour, ax=ax, shrink=0.8, pad=0.02)
+    cbar = plt.colorbar(im, ax=ax, shrink=0.8, pad=0.02)
     cbar.set_label('Incremento (kg/ha)', fontsize=12)
     
     # Añadir anotaciones
     for i, (zona, proy, diff, pct) in enumerate(zip(zonas, proyecciones, diferencias, porcentajes)):
-        label = f"+{diff:.0f}\n(+{pct:.0f}%)" if diff >= 0 else f"{diff:.0f}\n({pct:.0f}%)"
-        
-        ax.annotate(label, 
+        color = 'green' if diff > 0 else 'red' if diff < 0 else 'gray'
+        ax.annotate(f"+{diff:.0f}\n(+{pct:.0f}%)" if diff >= 0 else f"{diff:.0f}\n({pct:.0f}%)", 
                    xy=(zona['centroid'].x, zona['centroid'].y), 
-                   xytext=(0, 5), textcoords='offset points',
-                   ha='center', va='bottom', fontsize=8, fontweight='bold',
-                   bbox=dict(boxstyle="round,pad=0.3", 
-                           facecolor='green' if diff > 0 else 'red' if diff < 0 else 'gray', 
-                           alpha=0.8))
+                   xytext=(0, 8), textcoords='offset points',
+                   ha='center', va='bottom', fontsize=9, fontweight='bold',
+                   bbox=dict(boxstyle="round,pad=0.3", facecolor=color, alpha=0.8, edgecolor='black'))
     
     plt.tight_layout()
     return fig
+
+def crear_dem_y_curvas(poligono, resolucion_m=10, intervalo_curvas=5):
+    """Crea DEM y curvas de nivel consistentes"""
+    # Generar DEM para el polígono
+    X, Y, Z = generar_dem_para_poligono(poligono, resolucion_m)
+    
+    # Calcular pendientes
+    pendientes = calcular_pendiente_mejorado(Z)
+    
+    # Crear figura con DEM y curvas
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(18, 8))
+    
+    # Panel 1: DEM
+    im1 = ax1.imshow(Z, extent=[X.min(), X.max(), Y.min(), Y.max()], 
+                     cmap='terrain', aspect='auto', origin='lower')
+    ax1.set_title('Modelo Digital de Elevaciones', fontsize=16, fontweight='bold')
+    ax1.set_xlabel('Longitud', fontsize=12)
+    ax1.set_ylabel('Latitud', fontsize=12)
+    
+    # Dibujar polígono sobre DEM
+    if hasattr(poligono, 'exterior'):
+        coords = list(poligono.exterior.coords)
+    else:
+        coords = list(poligono.coords)
+    
+    poly_x = [c[0] for c in coords]
+    poly_y = [c[1] for c in coords]
+    ax1.fill(poly_x, poly_y, color='white', alpha=0.3, edgecolor='black', linewidth=2)
+    ax1.plot(poly_x, poly_y, 'k-', linewidth=2)
+    
+    plt.colorbar(im1, ax=ax1, label='Elevación (m)', shrink=0.8)
+    
+    # Panel 2: Curvas de nivel
+    # Determinar niveles de curvas
+    z_min, z_max = Z.min(), Z.max()
+    niveles = np.arange(int(z_min // intervalo_curvas) * intervalo_curvas, 
+                       int(z_max // intervalo_curvas + 2) * intervalo_curvas, 
+                       intervalo_curvas)
+    
+    contour = ax2.contour(X, Y, Z, levels=niveles, colors='black', linewidths=0.8)
+    ax2.clabel(contour, inline=True, fontsize=8, fmt='%1.0f m')
+    
+    # Fill contour
+    ax2.contourf(X, Y, Z, levels=50, cmap='terrain', alpha=0.7)
+    
+    # Dibujar polígono sobre curvas
+    ax2.fill(poly_x, poly_y, color='white', alpha=0.3, edgecolor='black', linewidth=2)
+    ax2.plot(poly_x, poly_y, 'k-', linewidth=2)
+    
+    ax2.set_title(f'Curvas de Nivel (Intervalo: {intervalo_curvas}m)', fontsize=16, fontweight='bold')
+    ax2.set_xlabel('Longitud', fontsize=12)
+    ax2.set_ylabel('Latitud', fontsize=12)
+    ax2.grid(True, alpha=0.3, linestyle='--')
+    
+    plt.tight_layout()
+    return fig, {'X': X, 'Y': Y, 'Z': Z, 'pendientes': pendientes}
 
 def guardar_figura_como_png(fig, nombre):
     """Guarda una figura matplotlib como PNG en bytes"""
@@ -1288,7 +1435,7 @@ def exportar_tablas_xlsx(resultados):
         st.error(f"Error exportando a XLSX: {str(e)}")
         return None
 
-def descargar_todas_visualizaciones(resultados):
+def descargar_todas_visualizaciones(resultados, poligono):
     """Crea un archivo ZIP con todas las visualizaciones"""
     if 'resultados_analisis' not in st.session_state:
         return None
@@ -1298,67 +1445,41 @@ def descargar_todas_visualizaciones(resultados):
         zip_buffer = io.BytesIO()
         with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
             # 1. Mapa de calor de fertilidad
-            fig_fert = crear_mapa_calor_fertilidad(resultados['zonas'], resultados['indices_fertilidad'])
+            fig_fert = crear_mapa_calor_fertilidad(resultados['zonas'], resultados['indices_fertilidad'], poligono)
             fert_buffer = guardar_figura_como_png(fig_fert, 'fertilidad')
             zip_file.writestr('01_Mapa_Calor_Fertilidad.png', fert_buffer.getvalue())
             
-            # 2. Mapas de calor NPK
+            # 2. Mapa de calor de NDVI
+            fig_ndvi = crear_mapa_calor_ndvi(resultados['zonas'], resultados['indices_fertilidad'], poligono)
+            ndvi_buffer = guardar_figura_como_png(fig_ndvi, 'ndvi')
+            zip_file.writestr('02_Mapa_Calor_NDVI.png', ndvi_buffer.getvalue())
+            
+            # 3. Mapas de calor NPK
             for nutriente, nombre in [('N', 'Nitrogeno'), ('P', 'Fosforo'), ('K', 'Potasio')]:
-                fig_npk = crear_mapa_calor_npk(resultados['zonas'], resultados['recomendaciones_npk'], nutriente)
+                fig_npk = crear_mapa_calor_npk(resultados['zonas'], resultados['recomendaciones_npk'], nutriente, poligono)
                 npk_buffer = guardar_figura_como_png(fig_npk, f'npk_{nutriente}')
-                zip_file.writestr(f'02_Mapa_Calor_{nombre}.png', npk_buffer.getvalue())
+                zip_file.writestr(f'03_Mapa_Calor_{nombre}.png', npk_buffer.getvalue())
             
-            # 3. Mapas de calor de rendimiento
-            fig_rend_base = crear_mapa_calor_rendimiento(resultados['zonas'], resultados['proyecciones'], 'base')
+            # 4. Mapas de calor de rendimiento
+            fig_rend_base = crear_mapa_calor_rendimiento(resultados['zonas'], resultados['proyecciones'], 'base', poligono)
             rend_base_buffer = guardar_figura_como_png(fig_rend_base, 'rendimiento_base')
-            zip_file.writestr('03_Mapa_Calor_Rendimiento_Sin_Fertilizacion.png', rend_base_buffer.getvalue())
+            zip_file.writestr('04_Mapa_Calor_Rendimiento_Sin_Fertilizacion.png', rend_base_buffer.getvalue())
             
-            fig_rend_fert = crear_mapa_calor_rendimiento(resultados['zonas'], resultados['proyecciones'], 'fert')
+            fig_rend_fert = crear_mapa_calor_rendimiento(resultados['zonas'], resultados['proyecciones'], 'fert', poligono)
             rend_fert_buffer = guardar_figura_como_png(fig_rend_fert, 'rendimiento_fert')
-            zip_file.writestr('04_Mapa_Calor_Rendimiento_Con_Fertilizacion.png', rend_fert_buffer.getvalue())
+            zip_file.writestr('05_Mapa_Calor_Rendimiento_Con_Fertilizacion.png', rend_fert_buffer.getvalue())
             
-            # 4. Mapa de calor de diferencia
-            fig_diff = crear_mapa_calor_diferencia(resultados['zonas'], resultados['proyecciones'])
+            # 5. Mapa de calor de diferencia
+            fig_diff = crear_mapa_calor_diferencia(resultados['zonas'], resultados['proyecciones'], poligono)
             diff_buffer = guardar_figura_como_png(fig_diff, 'diferencia')
-            zip_file.writestr('05_Mapa_Calor_Incremento_Fertilizacion.png', diff_buffer.getvalue())
+            zip_file.writestr('06_Mapa_Calor_Incremento_Fertilizacion.png', diff_buffer.getvalue())
             
-            # 5. DEM y pendientes
-            fig_dem, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-            im1 = ax1.imshow(resultados['dem']['Z'], cmap='terrain', aspect='auto')
-            ax1.set_title('Modelo Digital de Elevaciones')
-            ax1.set_xlabel('X (m)')
-            ax1.set_ylabel('Y (m)')
-            plt.colorbar(im1, ax=ax1, label='Elevación (m)')
-            
-            im2 = ax2.imshow(resultados['dem']['pendientes'], cmap='RdYlGn_r', aspect='auto', vmin=0, vmax=30)
-            ax2.set_title('Mapa de Pendientes')
-            ax2.set_xlabel('X (m)')
-            ax2.set_ylabel('Y (m)')
-            plt.colorbar(im2, ax=ax2, label='Pendiente (%)')
-            plt.tight_layout()
-            
+            # 6. DEM y curvas de nivel
+            fig_dem, dem_data = crear_dem_y_curvas(poligono, resolucion_m=10, intervalo_curvas=5)
             dem_buffer = io.BytesIO()
             fig_dem.savefig(dem_buffer, format='png', dpi=300, bbox_inches='tight')
             dem_buffer.seek(0)
-            zip_file.writestr('06_DEM_y_Pendientes.png', dem_buffer.getvalue())
-            
-            # 6. Curvas de nivel
-            fig_curvas, ax = plt.subplots(figsize=(10, 8))
-            contour = ax.contour(resultados['dem']['X'], resultados['dem']['Y'], resultados['dem']['Z'], 
-                                levels=10, colors='black', linewidths=0.5)
-            ax.clabel(contour, inline=True, fontsize=8)
-            ax.contourf(resultados['dem']['X'], resultados['dem']['Y'], resultados['dem']['Z'], 
-                       levels=10, cmap='terrain', alpha=0.7)
-            ax.set_title('Curvas de Nivel')
-            ax.set_xlabel('X (m)')
-            ax.set_ylabel('Y (m)')
-            ax.grid(True, alpha=0.3)
-            plt.tight_layout()
-            
-            curvas_buffer = io.BytesIO()
-            fig_curvas.savefig(curvas_buffer, format='png', dpi=300, bbox_inches='tight')
-            curvas_buffer.seek(0)
-            zip_file.writestr('07_Curvas_de_Nivel.png', curvas_buffer.getvalue())
+            zip_file.writestr('07_DEM_y_Curvas_Nivel.png', dem_buffer.getvalue())
             
             plt.close('all')
         
@@ -1569,8 +1690,9 @@ with col_btn1:
                 # Paso 6: Generar DEM y análisis topográfico
                 progress_bar.progress(80)
                 st.info("Paso 6/7: Generando análisis topográfico...")
-                X, Y, Z = generar_dem_sintetico_mejorado(100, 100, complejidad=2)
-                pendientes = calcular_pendiente_mejorado(Z)
+                fig_dem, dem_data = crear_dem_y_curvas(st.session_state.poligono, resolucion_dem, intervalo_curvas)
+                pendientes = calcular_pendiente_mejorado(dem_data['Z'])
+                dem_data['pendientes'] = pendientes
                 
                 # Paso 7: Preparar visualizaciones
                 progress_bar.progress(95)
@@ -1583,7 +1705,7 @@ with col_btn1:
                     'indices_fertilidad': indices_fertilidad,
                     'recomendaciones_npk': recomendaciones_npk,
                     'proyecciones': proyecciones,
-                    'dem': {'X': X, 'Y': Y, 'Z': Z, 'pendientes': pendientes},
+                    'dem': dem_data,
                     'cultivo': cultivo_seleccionado,
                     'textura_suelo': textura_suelo,
                     'precipitacion': precipitacion,
@@ -1596,7 +1718,7 @@ with col_btn1:
 with col_btn2:
     if 'resultados_analisis' in st.session_state:
         if st.button("📥 Descargar Mapas PNG", use_container_width=True):
-            zip_buffer = descargar_todas_visualizaciones(st.session_state.resultados_analisis)
+            zip_buffer = descargar_todas_visualizaciones(st.session_state.resultados_analisis, st.session_state.poligono)
             if zip_buffer:
                 st.download_button(
                     label="🗃️ Descargar ZIP",
@@ -1618,9 +1740,10 @@ if 'resultados_analisis' in st.session_state:
     resultados = st.session_state.resultados_analisis
     
     # Crear pestañas para diferentes secciones
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "📊 Resumen General",
         "🌿 Fertilidad",
+        "🟢 NDVI",
         "🧪 Recomendaciones NPK",
         "📈 Proyecciones",
         "🏔️ Topografía",
@@ -1680,7 +1803,7 @@ if 'resultados_analisis' in st.session_state:
         
         # Visualización de fertilidad
         st.markdown("### 🎨 Mapa de Calor de Fertilidad")
-        fig_fert = crear_mapa_calor_fertilidad(resultados['zonas'], resultados['indices_fertilidad'])
+        fig_fert = crear_mapa_calor_fertilidad(resultados['zonas'], resultados['indices_fertilidad'], st.session_state.poligono)
         st.pyplot(fig_fert)
         
         # Botón para descargar
@@ -1721,6 +1844,98 @@ if 'resultados_analisis' in st.session_state:
             st.metric("Zonas Alta Fertilidad", zonas_altas)
     
     with tab3:
+        st.markdown("## 🟢 ANÁLISIS DE NDVI")
+        
+        # Mapa de calor de NDVI
+        st.markdown("### 🎨 Mapa de Calor de NDVI")
+        fig_ndvi = crear_mapa_calor_ndvi(resultados['zonas'], resultados['indices_fertilidad'], st.session_state.poligono)
+        st.pyplot(fig_ndvi)
+        
+        # Botón para descargar
+        col_dl_ndvi1, col_dl_ndvi2 = st.columns(2)
+        with col_dl_ndvi1:
+            ndvi_buffer = guardar_figura_como_png(fig_ndvi, 'ndvi')
+            st.download_button(
+                label="📥 Descargar Mapa NDVI",
+                data=ndvi_buffer,
+                file_name=f"mapa_ndvi_{resultados['cultivo']}.png",
+                mime="image/png",
+                use_container_width=True
+            )
+        
+        # Análisis de NDVI
+        st.markdown("### 📊 Estadísticas de NDVI")
+        ndvi_valores = [idx['ndvi'] for idx in resultados['indices_fertilidad']]
+        ndvi_min = min(ndvi_valores)
+        ndvi_max = max(ndvi_valores)
+        ndvi_prom = np.mean(ndvi_valores)
+        ndvi_std = np.std(ndvi_valores)
+        
+        col_ndvi1, col_ndvi2, col_ndvi3, col_ndvi4 = st.columns(4)
+        
+        with col_ndvi1:
+            st.metric("NDVI Mínimo", f"{ndvi_min:.3f}")
+        
+        with col_ndvi2:
+            st.metric("NDVI Máximo", f"{ndvi_max:.3f}")
+        
+        with col_ndvi3:
+            st.metric("NDVI Promedio", f"{ndvi_prom:.3f}")
+        
+        with col_ndvi4:
+            st.metric("Desviación NDVI", f"{ndvi_std:.3f}")
+        
+        # Interpretación de NDVI
+        st.markdown("### 📋 Interpretación de Valores NDVI")
+        
+        interpretacion_data = {
+            'Rango NDVI': ['0.0 - 0.2', '0.2 - 0.4', '0.4 - 0.6', '0.6 - 0.8', '0.8 - 1.0'],
+            'Estado Vegetación': ['Suelo desnudo/Baja vegetación', 'Vegetación escasa', 
+                                 'Vegetación moderada', 'Vegetación densa', 'Vegetación muy densa'],
+            'Recomendación': ['Fertilización intensiva', 'Fertilización moderada', 
+                            'Fertilización equilibrada', 'Fertilización ligera', 
+                            'Mantenimiento solamente']
+        }
+        
+        df_interpretacion = pd.DataFrame(interpretacion_data)
+        st.dataframe(df_interpretacion, use_container_width=True)
+        
+        # Distribución de zonas por categoría de NDVI
+        st.markdown("### 📈 Distribución de Zonas por Categoría de NDVI")
+        
+        categorias = []
+        for ndvi in ndvi_valores:
+            if ndvi < 0.2:
+                categorias.append('Suelo desnudo')
+            elif ndvi < 0.4:
+                categorias.append('Vegetación escasa')
+            elif ndvi < 0.6:
+                categorias.append('Vegetación moderada')
+            elif ndvi < 0.8:
+                categorias.append('Vegetación densa')
+            else:
+                categorias.append('Vegetación muy densa')
+        
+        from collections import Counter
+        distribucion = Counter(categorias)
+        
+        fig_dist, ax = plt.subplots(figsize=(10, 6))
+        bars = ax.bar(distribucion.keys(), distribucion.values(), color=['#d73027', '#fc8d59', '#fee08b', '#d9ef8b', '#91cf60'])
+        ax.set_title('Distribución de Zonas por Categoría de NDVI', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Categoría de NDVI', fontsize=12)
+        ax.set_ylabel('Número de Zonas', fontsize=12)
+        
+        # Añadir etiquetas
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                   f'{int(height)}', ha='center', va='bottom', fontweight='bold')
+        
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(fig_dist)
+    
+    with tab4:
         st.markdown("## 🧪 RECOMENDACIONES DE FERTILIZACIÓN NPK")
         
         # Mapas de calor de recomendaciones
@@ -1730,7 +1945,7 @@ if 'resultados_analisis' in st.session_state:
         
         with col_n:
             st.markdown("#### **Nitrógeno (N)**")
-            fig_n = crear_mapa_calor_npk(resultados['zonas'], resultados['recomendaciones_npk'], 'N')
+            fig_n = crear_mapa_calor_npk(resultados['zonas'], resultados['recomendaciones_npk'], 'N', st.session_state.poligono)
             st.pyplot(fig_n)
             
             n_buffer = guardar_figura_como_png(fig_n, 'nitrogeno')
@@ -1744,7 +1959,7 @@ if 'resultados_analisis' in st.session_state:
         
         with col_p:
             st.markdown("#### **Fósforo (P)**")
-            fig_p = crear_mapa_calor_npk(resultados['zonas'], resultados['recomendaciones_npk'], 'P')
+            fig_p = crear_mapa_calor_npk(resultados['zonas'], resultados['recomendaciones_npk'], 'P', st.session_state.poligono)
             st.pyplot(fig_p)
             
             p_buffer = guardar_figura_como_png(fig_p, 'fosforo')
@@ -1758,7 +1973,7 @@ if 'resultados_analisis' in st.session_state:
         
         with col_k:
             st.markdown("#### **Potasio (K)**")
-            fig_k = crear_mapa_calor_npk(resultados['zonas'], resultados['recomendaciones_npk'], 'K')
+            fig_k = crear_mapa_calor_npk(resultados['zonas'], resultados['recomendaciones_npk'], 'K', st.session_state.poligono)
             st.pyplot(fig_k)
             
             k_buffer = guardar_figura_como_png(fig_k, 'potasio')
@@ -1795,7 +2010,7 @@ if 'resultados_analisis' in st.session_state:
         with col_tot3:
             st.metric("Potasio Total", f"{total_k:.1f} kg")
     
-    with tab4:
+    with tab5:
         st.markdown("## 📈 PROYECCIONES DE COSECHA")
         
         # Mapas de calor de rendimiento
@@ -1805,7 +2020,7 @@ if 'resultados_analisis' in st.session_state:
         
         with col_rend1:
             st.markdown("#### **Sin Fertilización**")
-            fig_rend_base = crear_mapa_calor_rendimiento(resultados['zonas'], resultados['proyecciones'], 'base')
+            fig_rend_base = crear_mapa_calor_rendimiento(resultados['zonas'], resultados['proyecciones'], 'base', st.session_state.poligono)
             st.pyplot(fig_rend_base)
             
             base_buffer = guardar_figura_como_png(fig_rend_base, 'rendimiento_base')
@@ -1819,7 +2034,7 @@ if 'resultados_analisis' in st.session_state:
         
         with col_rend2:
             st.markdown("#### **Con Fertilización**")
-            fig_rend_fert = crear_mapa_calor_rendimiento(resultados['zonas'], resultados['proyecciones'], 'fert')
+            fig_rend_fert = crear_mapa_calor_rendimiento(resultados['zonas'], resultados['proyecciones'], 'fert', st.session_state.poligono)
             st.pyplot(fig_rend_fert)
             
             fert_buffer = guardar_figura_como_png(fig_rend_fert, 'rendimiento_fert')
@@ -1833,7 +2048,7 @@ if 'resultados_analisis' in st.session_state:
         
         # Mapa de calor de diferencia
         st.markdown("### 🎯 Incremento por Fertilización")
-        fig_diff = crear_mapa_calor_diferencia(resultados['zonas'], resultados['proyecciones'])
+        fig_diff = crear_mapa_calor_diferencia(resultados['zonas'], resultados['proyecciones'], st.session_state.poligono)
         st.pyplot(fig_diff)
         
         col_dl_diff, _ = st.columns([1, 3])
@@ -1850,7 +2065,7 @@ if 'resultados_analisis' in st.session_state:
         # Gráfico de comparativa
         st.markdown("### 📊 Comparativa de Rendimientos por Zona")
         
-        fig_comparativa, ax = plt.subplots(figsize=(12, 6))
+        fig_comparativa, ax = plt.subplots(figsize=(14, 7))
         
         zonas_ids = [f"Z{idx['id_zona']}" for idx in resultados['indices_fertilidad']]
         rend_base = [proy['rendimiento_base'] for proy in resultados['proyecciones']]
@@ -1866,14 +2081,14 @@ if 'resultados_analisis' in st.session_state:
         for i, (base, fert) in enumerate(zip(rend_base, rend_fert)):
             incremento = ((fert - base) / base * 100) if base > 0 else 0
             ax.text(i, max(base, fert) + (max(rend_fert) * 0.02), 
-                   f"+{incremento:.0f}%", ha='center', va='bottom', fontsize=8, fontweight='bold')
+                   f"+{incremento:.0f}%", ha='center', va='bottom', fontsize=9, fontweight='bold')
         
-        ax.set_xlabel('Zona', fontsize=12)
-        ax.set_ylabel('Rendimiento (kg/ha)', fontsize=12)
-        ax.set_title('Comparativa de Rendimiento con y sin Fertilización', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Zona', fontsize=13)
+        ax.set_ylabel('Rendimiento (kg/ha)', fontsize=13)
+        ax.set_title('Comparativa de Rendimiento con y sin Fertilización', fontsize=16, fontweight='bold', pad=20)
         ax.set_xticks(x)
         ax.set_xticklabels(zonas_ids, rotation=45)
-        ax.legend()
+        ax.legend(fontsize=12)
         ax.grid(True, alpha=0.3, axis='y')
         
         plt.tight_layout()
@@ -1917,39 +2132,23 @@ if 'resultados_analisis' in st.session_state:
         df_proy.columns = ['Zona', 'Sin Fertilización (kg/ha)', 'Con Fertilización (kg/ha)', 'Incremento (%)']
         st.dataframe(df_proy, use_container_width=True)
     
-    with tab5:
+    with tab6:
         st.markdown("## 🏔️ ANÁLISIS TOPOGRÁFICO")
         
-        # DEM y pendientes
-        st.markdown("### 🗺️ Modelo Digital de Elevaciones")
+        # DEM y curvas de nivel consistentes
+        st.markdown("### 🗺️ Modelo Digital de Elevaciones y Curvas de Nivel")
         
-        fig_dem, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
-        
-        # DEM
-        im1 = ax1.imshow(resultados['dem']['Z'], cmap='terrain', aspect='auto')
-        ax1.set_title('Modelo Digital de Elevaciones', fontsize=14, fontweight='bold')
-        ax1.set_xlabel('X (m)', fontsize=12)
-        ax1.set_ylabel('Y (m)', fontsize=12)
-        plt.colorbar(im1, ax=ax1, label='Elevación (m)')
-        
-        # Pendientes
-        im2 = ax2.imshow(resultados['dem']['pendientes'], cmap='RdYlGn_r', aspect='auto', vmin=0, vmax=30)
-        ax2.set_title('Mapa de Pendientes', fontsize=14, fontweight='bold')
-        ax2.set_xlabel('X (m)', fontsize=12)
-        ax2.set_ylabel('Y (m)', fontsize=12)
-        plt.colorbar(im2, ax=ax2, label='Pendiente (%)')
-        
-        plt.tight_layout()
+        fig_dem, _ = crear_dem_y_curvas(st.session_state.poligono, resolucion_dem, intervalo_curvas)
         st.pyplot(fig_dem)
         
         # Botones de descarga
         col_dl_dem, col_dl_pend = st.columns(2)
         with col_dl_dem:
-            dem_buffer = guardar_figura_como_png(fig_dem, 'dem_pendientes')
+            dem_buffer = guardar_figura_como_png(fig_dem, 'dem_curvas')
             st.download_button(
-                label="📥 Descargar DEM y Pendientes",
+                label="📥 Descargar DEM y Curvas",
                 data=dem_buffer,
-                file_name="dem_pendientes.png",
+                file_name="dem_curvas_nivel.png",
                 mime="image/png",
                 use_container_width=True
             )
@@ -1984,37 +2183,20 @@ if 'resultados_analisis' in st.session_state:
                 color = "red"
             st.metric("Riesgo Erosión", riesgo)
         
-        # Curvas de nivel
-        st.markdown("### 🗺️ Curvas de Nivel")
+        # Histograma de pendientes
+        st.markdown("### 📈 Distribución de Pendientes")
         
-        fig_curvas, ax = plt.subplots(figsize=(12, 8))
-        
-        # Contour plot
-        contour = ax.contour(resultados['dem']['X'], resultados['dem']['Y'], resultados['dem']['Z'], 
-                            levels=10, colors='black', linewidths=0.5)
-        ax.clabel(contour, inline=True, fontsize=8)
-        
-        # Fill contour
-        ax.contourf(resultados['dem']['X'], resultados['dem']['Y'], resultados['dem']['Z'], 
-                   levels=10, cmap='terrain', alpha=0.7)
-        
-        ax.set_title('Curvas de Nivel', fontsize=14, fontweight='bold')
-        ax.set_xlabel('X (m)', fontsize=12)
-        ax.set_ylabel('Y (m)', fontsize=12)
-        ax.grid(True, alpha=0.3, linestyle='--')
+        fig_hist, ax = plt.subplots(figsize=(10, 6))
+        ax.hist(pendientes_flat, bins=20, color='skyblue', edgecolor='black', alpha=0.7)
+        ax.axvline(pendiente_prom, color='red', linestyle='--', linewidth=2, label=f'Promedio: {pendiente_prom:.1f}%')
+        ax.set_title('Distribución de Pendientes en el Terreno', fontsize=14, fontweight='bold')
+        ax.set_xlabel('Pendiente (%)', fontsize=12)
+        ax.set_ylabel('Frecuencia', fontsize=12)
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.legend()
         
         plt.tight_layout()
-        st.pyplot(fig_curvas)
-        
-        with col_dl_pend:
-            curvas_buffer = guardar_figura_como_png(fig_curvas, 'curvas_nivel')
-            st.download_button(
-                label="📥 Descargar Curvas de Nivel",
-                data=curvas_buffer,
-                file_name="curvas_nivel.png",
-                mime="image/png",
-                use_container_width=True
-            )
+        st.pyplot(fig_hist)
         
         # Recomendaciones topográficas
         st.markdown("### 💡 Recomendaciones Topográficas")
@@ -2025,6 +2207,7 @@ if 'resultados_analisis' in st.session_state:
             - Pendientes suaves (<5%) permiten buen drenaje sin riesgo significativo de erosión
             - Puedes implementar sistemas de riego convencionales
             - Mínima necesidad de obras de conservación de suelos
+            - Ideal para maquinaria agrícola convencional
             """)
         elif pendiente_prom < 10:
             st.warning("""
@@ -2033,6 +2216,7 @@ if 'resultados_analisis' in st.session_state:
             - Considerar terrazas de base ancha para cultivos anuales
             - Mantener cobertura vegetal para prevenir erosión
             - Evitar labranza intensiva en dirección de la pendiente
+            - Considerar cultivos perennes en las áreas más inclinadas
             """)
         else:
             st.error("""
@@ -2042,9 +2226,10 @@ if 'resultados_analisis' in st.session_state:
             - Considerar cultivos permanentes o agroforestería
             - Evitar cultivos anuales sin medidas de conservación
             - Consultar con especialista en conservación de suelos
+            - Considerar cambio de uso del suelo si es económicamente inviable
             """)
     
-    with tab6:
+    with tab7:
         st.markdown("## 📋 REPORTE FINAL COMPLETO")
         
         # Generar reportes
@@ -2084,7 +2269,7 @@ if 'resultados_analisis' in st.session_state:
         
         with col_report3:
             if st.button("🗃️ Descargar Todos los Mapas", use_container_width=True):
-                zip_buffer = descargar_todas_visualizaciones(resultados)
+                zip_buffer = descargar_todas_visualizaciones(resultados, st.session_state.poligono)
                 if zip_buffer:
                     st.download_button(
                         label="📥 Descargar ZIP",
@@ -2144,6 +2329,7 @@ if 'resultados_analisis' in st.session_state:
                     <li><strong>Priorización:</strong> {len([idx for idx in resultados['indices_fertilidad'] if idx['indice_fertilidad'] < 0.5])} zonas requieren atención prioritaria</li>
                     <li><strong>Monitoreo:</strong> Seguimiento continuo de NDVI y humedad del suelo</li>
                     <li><strong>Validación:</strong> Realizar análisis de suelo para confirmar recomendaciones</li>
+                    <li><strong>Topografía:</strong> {"Implementar medidas de conservación" if np.mean(resultados['dem']['pendientes'].flatten()) > 10 else "Condiciones topográficas favorables"}</li>
                 </ul>
             </div>
         </div>
@@ -2178,7 +2364,7 @@ st.markdown("---")
 st.markdown("""
 <div style="text-align: center; color: #94a3b8; padding: 20px;">
     <p><strong>🌾 Analizador Multicultivo Satelital con Google Earth Engine</strong></p>
-    <p>Versión 3.1 | Desarrollado por Martin Ernesto Cano | Ingeniero Agrónomo</p>
+    <p>Versión 3.2 | Desarrollado por Martin Ernesto Cano | Ingeniero Agrónomo</p>
     <p>📧 mawucano@gmail.com | 📱 +5493525 532313</p>
     <p>© 2024 - Todos los derechos reservados</p>
 </div>
