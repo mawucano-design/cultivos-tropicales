@@ -388,7 +388,7 @@ def parsear_kml_con_fastkml(kml_content):
     try:
         # Intentar importar fastkml
         from fastkml import kml
-        import xml.etree.ElementTree as ET
+        from shapely.geometry import shape
         
         # Parsear KML
         k = kml.KML()
@@ -406,7 +406,7 @@ def parsear_kml_con_fastkml(kml_content):
                     extract_geometries(feature)
         
         # Buscar en todos los features del KML
-        for feature in k.features():
+        for feature in k.features:
             extract_geometries(feature)
         
         if not geometries:
