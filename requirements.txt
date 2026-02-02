@@ -12,3 +12,4 @@ simplekml
 fiona
 pyproj
 rtree
+fastkml 
