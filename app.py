@@ -1,4 +1,3 @@
-
 import streamlit as st
 import geopandas as gpd
 import numpy as np
@@ -22,6 +21,26 @@ from matplotlib.tri import Triangulation
 import warnings
 warnings.filterwarnings('ignore')
 
+# ===== CORRECCIÓN CRÍTICA: IMPORTAR GEE DE MANERA SEGURA =====
+try:
+    import ee
+    # Intentar inicializar GEE
+    try:
+        ee.Initialize()
+        st.session_state.gee_authenticated = True
+        st.session_state.gee_project = 'ee-mawucano25'
+        print("✅ GEE inicializado correctamente")
+    except Exception as e:
+        print(f"⚠️ GEE no inicializado automáticamente: {str(e)}")
+        st.session_state.gee_authenticated = False
+        st.session_state.gee_project = ''
+    GEE_AVAILABLE = True
+except ImportError:
+    GEE_AVAILABLE = False
+    st.session_state.gee_authenticated = False
+    st.session_state.gee_project = ''
+    print("❌ GEE no disponible")
+
 # Importar librerías para reportes
 try:
     from docx import Document
@@ -31,71 +50,14 @@ try:
     DOCX_AVAILABLE = True
 except ImportError:
     DOCX_AVAILABLE = False
-    st.warning("⚠️ Para generar reportes DOCX, instala: pip install python-docx")
+    print("⚠️ python-docx no está disponible")
 
 try:
     import xlsxwriter
     XLSX_AVAILABLE = True
 except ImportError:
     XLSX_AVAILABLE = False
-    st.warning("⚠️ Para exportar a XLSX, instala: pip install xlsxwriter")
-
-# ===== INICIALIZACIÓN AUTOMÁTICA DE GOOGLE EARTH ENGINE =====
-try:
-    import ee
-    GEE_AVAILABLE = True
-except ImportError:
-    GEE_AVAILABLE = False
-    st.warning("⚠️ Google Earth Engine no está instalado. Para usar datos satelitales reales, instala: pip install earthengine-api")
-
-def inicializar_gee():
-    """Inicializa GEE con Service Account desde secrets de Streamlit Cloud o autenticación local"""
-    if not GEE_AVAILABLE:
-        return False
-    
-    try:
-        # Intentar con secrets de Streamlit Cloud
-        gee_secret = os.environ.get('GEE_SERVICE_ACCOUNT')
-        if gee_secret:
-            try:
-                # Limpiar y parsear JSON
-                credentials_info = json.loads(gee_secret.strip())
-                credentials = ee.ServiceAccountCredentials(
-                    credentials_info['client_email'],
-                    key_data=json.dumps(credentials_info)
-                )
-                ee.Initialize(credentials, project='ee-mawucano25')
-                st.session_state.gee_authenticated = True
-                st.session_state.gee_project = 'ee-mawucano25'
-                print("✅ GEE inicializado con Service Account")
-                return True
-            except Exception as e:
-                print(f"⚠️ Error Service Account: {str(e)}")
-        
-        # Fallback: autenticación local (desarrollo)
-        try:
-            ee.Initialize(project='ee-mawucano25')
-            st.session_state.gee_authenticated = True
-            st.session_state.gee_project = 'ee-mawucano25'
-            print("✅ GEE inicializado localmente")
-            return True
-        except Exception as e:
-            print(f"⚠️ Error inicialización local: {str(e)}")
-            
-        st.session_state.gee_authenticated = False
-        return False
-        
-    except Exception as e:
-        st.session_state.gee_authenticated = False
-        print(f"❌ Error crítico GEE: {str(e)}")
-        return False
-
-# Ejecutar inicialización al inicio (ANTES de cualquier uso de ee.*)
-if 'gee_authenticated' not in st.session_state:
-    st.session_state.gee_authenticated = False
-    st.session_state.gee_project = ''
-    if GEE_AVAILABLE:
-        inicializar_gee()
+    print("⚠️ xlsxwriter no está disponible")
 
 # ===== CONFIGURACIÓN INICIAL DE LA APP =====
 st.set_page_config(
@@ -127,8 +89,7 @@ st.markdown("""
         box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6) !important;
     }
     .hero-banner {
-        background: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95)),
-                    url('https://images.unsplash.com/photo-1597981309443-6e2d2a4d9c3f?ixlib=rb-4.0.3&auto=format&fit=crop&w=2070&q=80') !important;
+        background: linear-gradient(rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 0.95));
         background-size: cover !important;
         background-position: center 40% !important;
         padding: 3.5em 2em !important;
@@ -301,8 +262,8 @@ def procesar_archivo_carga(uploaded_file):
             file_ext = uploaded_file.name.lower().split('.')[-1]
             
             if file_ext in ['kml', 'kmz']:
-                # Leer KML/KMZ
-                gdf = gpd.read_file(file_path, driver='KML')
+                # Leer KML/KMZ - para KMZ, geopandas lo maneja automáticamente
+                gdf = gpd.read_file(file_path)
             elif file_ext == 'geojson':
                 # Leer GeoJSON
                 gdf = gpd.read_file(file_path)
@@ -432,6 +393,7 @@ def crear_mapa_interactivo(poligono=None, titulo="Mapa de la Parcela", zoom_star
 def calcular_indices_satelitales_gee(tipo_satelite, poligono, fecha_inicio, fecha_fin):
     """Calcula índices satelitales desde Google Earth Engine"""
     if not st.session_state.gee_authenticated or poligono is None:
+        st.warning("GEE no autenticado o polígono no disponible")
         return None
     
     try:
@@ -448,8 +410,7 @@ def calcular_indices_satelitales_gee(tipo_satelite, poligono, fecha_inicio, fech
             collection = ee.ImageCollection('COPERNICUS/S2_SR') \
                 .filterBounds(ee_poligono) \
                 .filterDate(fecha_inicio_ee, fecha_fin_ee) \
-                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20)) \
-                .sort('CLOUDY_PIXEL_PERCENTAGE')
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
             
             if collection.size().getInfo() == 0:
                 st.warning("⚠️ No se encontraron imágenes Sentinel-2 sin nubes para el período seleccionado")
@@ -494,8 +455,7 @@ def calcular_indices_satelitales_gee(tipo_satelite, poligono, fecha_inicio, fech
             collection = ee.ImageCollection(collection_id) \
                 .filterBounds(ee_poligono) \
                 .filterDate(fecha_inicio_ee, fecha_fin_ee) \
-                .filter(ee.Filter.lt('CLOUD_COVER', 20)) \
-                .sort('CLOUD_COVER')
+                .filter(ee.Filter.lt('CLOUD_COVER', 20))
             
             if collection.size().getInfo() == 0:
                 st.warning(f"⚠️ No se encontraron imágenes {tipo_satelite} sin nubes para el período seleccionado")
@@ -798,8 +758,12 @@ def crear_mapa_calor_expandido(zonas, valores, titulo, cmap, poligono, unidad=''
     grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
     
     # Interpolación lineal para suavizar
-    from scipy.interpolate import griddata
-    grid_z = griddata((centroides_x, centroides_y), valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(valores))
+    try:
+        from scipy.interpolate import griddata
+        grid_z = griddata((centroides_x, centroides_y), valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(valores))
+    except:
+        # Fallback si scipy no está disponible
+        grid_z = np.ones_like(grid_x) * np.mean(valores)
     
     # Mapa de calor con interpolación suavizada
     im = ax.imshow(grid_z.T, extent=[expanded_minx, expanded_maxx, expanded_miny, expanded_maxy], 
@@ -916,8 +880,11 @@ def crear_mapa_calor_ndvi(zonas, indices_fertilidad, poligono):
     grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
     
     # Interpolación lineal para suavizar
-    from scipy.interpolate import griddata
-    grid_z = griddata((centroides_x, centroides_y), ndvi_valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(ndvi_valores))
+    try:
+        from scipy.interpolate import griddata
+        grid_z = griddata((centroides_x, centroides_y), ndvi_valores, (grid_x, grid_y), method='linear', fill_value=np.nanmean(ndvi_valores))
+    except:
+        grid_z = np.ones_like(grid_x) * np.mean(ndvi_valores)
     
     # Mapa de calor con colores específicos para NDVI
     cmap = plt.cm.RdYlGn  # Rojo-Amarillo-Verde para NDVI
@@ -1031,8 +998,11 @@ def crear_mapa_calor_diferencia(zonas, proyecciones, poligono):
     grid_x, grid_y = np.mgrid[expanded_minx:expanded_maxx:100j, expanded_miny:expanded_maxy:100j]
     
     # Interpolación lineal para suavizar
-    from scipy.interpolate import griddata
-    grid_z = griddata((centroides_x, centroides_y), diferencias, (grid_x, grid_y), method='linear', fill_value=np.nanmean(diferencias))
+    try:
+        from scipy.interpolate import griddata
+        grid_z = griddata((centroides_x, centroides_y), diferencias, (grid_x, grid_y), method='linear', fill_value=np.nanmean(diferencias))
+    except:
+        grid_z = np.ones_like(grid_x) * np.mean(diferencias)
     
     # Mapa de calor con colores divergentes
     cmap = plt.cm.RdBu  # Rojo-Azul (divergente)
@@ -1500,9 +1470,13 @@ with st.sidebar:
     st.markdown("### 🌍 Google Earth Engine")
     if st.session_state.gee_authenticated:
         st.success(f"✅ **Autenticado**\nProyecto: {st.session_state.gee_project}")
+        st.info("Puedes usar imágenes satelitales reales de GEE")
     else:
-        st.error("❌ **No autenticado**")
-        st.info("Para usar imágenes reales, configura GEE en Streamlit Cloud o ejecuta localmente.")
+        st.warning("⚠️ **No autenticado**")
+        st.info("Usando datos simulados. Para imágenes reales:")
+        st.code("pip install earthengine-api")
+        st.info("Luego autentica con:")
+        st.code("earthengine authenticate")
     
     # Carga de archivos KML/KMZ/Shapefile
     st.markdown("### 📁 Cargar Parcela desde Archivo")
@@ -1517,6 +1491,7 @@ with st.sidebar:
         geometry = procesar_archivo_carga(uploaded_file)
         if geometry is not None:
             st.session_state.poligono = geometry
+            st.success("✅ Parcela cargada correctamente")
             st.rerun()
     
     # Selección de cultivo
@@ -1541,7 +1516,6 @@ with st.sidebar:
             'SENTINEL-2_GEE (10m, real)',
             'LANDSAT-8_GEE (30m, real)',
             'LANDSAT-9_GEE (30m, real)',
-            '---',
             'SENTINEL-2 (simulado)',
             'LANDSAT-8 (simulado)',
             'LANDSAT-9 (simulado)'
@@ -1579,6 +1553,7 @@ with st.sidebar:
             st.session_state.poligono = None
         if 'resultados_analisis' in st.session_state:
             del st.session_state.resultados_analisis
+        st.success("✅ Parcela y resultados limpiados")
         st.rerun()
 
 # ===== SECCIÓN DE MAPA INTERACTIVO =====
@@ -1714,6 +1689,7 @@ with col_btn1:
                 
                 progress_bar.progress(100)
                 st.success("✅ Análisis completado exitosamente!")
+                st.balloons()
 
 with col_btn2:
     if 'resultados_analisis' in st.session_state:
@@ -1733,6 +1709,7 @@ with col_btn3:
         if st.button("🗑️ Limpiar Resultados", use_container_width=True):
             if 'resultados_analisis' in st.session_state:
                 del st.session_state.resultados_analisis
+            st.success("✅ Resultados limpiados")
             st.rerun()
 
 # ===== MOSTRAR RESULTADOS SI EXISTEN =====
@@ -2366,6 +2343,4 @@ st.markdown("""
     <p><strong>🌾 Analizador Multicultivo Satelital con Google Earth Engine</strong></p>
     <p>Versión 3.2 | Desarrollado por Martin Ernesto Cano | Ingeniero Agrónomo</p>
     <p>📧 mawucano@gmail.com | 📱 +5493525 532313</p>
-    <p>© 2024 - Todos los derechos reservados</p>
-</div>
-""", unsafe_allow_html=True)
+    <p>© 2024 - Todos los derechos reservados</
