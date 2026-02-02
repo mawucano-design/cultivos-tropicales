@@ -1,12 +1,14 @@
 # ============================================================
-# 🌍 APP STREAMLIT CLOUD A4 FINAL
-# GEE + NDVI Overlay + Clima + DEM SRTM + NPK + KML + DOCX
+# 🌍 APP STREAMLIT CLOUD A4 FINAL CORREGIDA
+# GEE + NDVI Overlay + DEM SRTM + Clima + NPK + KML + DOCX
+# SOPORTA: ZIP SHP + GEOJSON + KML + KMZ
 # ============================================================
 
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
 import numpy as np
+
 import zipfile
 import tempfile
 import os
@@ -26,11 +28,12 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import folium
 from streamlit_folium import st_folium
 
-# KML
+# KML export
 import simplekml
 
 # Earth Engine
 import ee
+
 
 # ============================================================
 # CONFIG STREAMLIT
@@ -43,7 +46,7 @@ st.set_page_config(
 
 st.title("🌍 Plataforma Agrícola Completa A4 (FINAL)")
 st.markdown("""
-### Sentinel-2 NDVI Overlay + Clima + DEM SRTM + NPK + Export KML + Reporte DOCX
+### Sentinel-2 NDVI Overlay + DEM SRTM + Clima + NPK + Export KML + Reporte DOCX
 """)
 
 # ============================================================
@@ -75,7 +78,34 @@ def inicializar_gee():
 inicializar_gee()
 
 # ============================================================
-# 2. FUNCIONES GIS BÁSICAS
+# 2. FUNCIÓN CLAVE: GeoPandas → Earth Engine Geometry
+# ============================================================
+
+def gdf_a_ee_geometry(gdf):
+    """
+    Convierte Polygon o MultiPolygon de GeoPandas
+    en geometría válida Earth Engine
+    """
+
+    geom = gdf.iloc[0].geometry
+
+    # Reparar geometría inválida
+    if not geom.is_valid:
+        geom = geom.buffer(0)
+
+    # Si es MultiPolygon → usar el más grande
+    if geom.geom_type == "MultiPolygon":
+        geom = max(geom.geoms, key=lambda a: a.area)
+
+    # Coordenadas
+    coords = list(geom.exterior.coords)
+
+    # Earth Engine requiere [[[lon,lat],...]]
+    return ee.Geometry.Polygon([coords])
+
+
+# ============================================================
+# 3. FUNCIONES GIS
 # ============================================================
 
 def validar_crs(gdf):
@@ -114,7 +144,9 @@ def dividir_en_zonas(gdf, n_zonas):
             y1 = miny + r * dy
             y2 = y1 + dy
 
-            poly = Polygon([(x1, y1), (x2, y1), (x2, y2), (x1, y2)])
+            poly = Polygon([(x1, y1), (x2, y1),
+                            (x2, y2), (x1, y2)])
+
             inter = geom.intersection(poly)
 
             if not inter.is_empty:
@@ -126,11 +158,72 @@ def dividir_en_zonas(gdf, n_zonas):
 
 
 # ============================================================
-# 3. SENTINEL-2 INDICES + NDVI TILE OVERLAY
+# 4. CARGA DE ARCHIVOS: ZIP + GEOJSON + KML + KMZ
+# ============================================================
+
+def cargar_parcela(uploaded_file):
+    """
+    Soporta:
+    - ZIP shapefile
+    - GeoJSON
+    - KML
+    - KMZ
+    """
+
+    nombre = uploaded_file.name.lower()
+
+    # ---- ZIP SHAPEFILE ----
+    if nombre.endswith(".zip"):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = os.path.join(tmpdir, "file.zip")
+            with open(zip_path, "wb") as f:
+                f.write(uploaded_file.read())
+
+            with zipfile.ZipFile(zip_path, "r") as z:
+                z.extractall(tmpdir)
+
+            shp_files = [f for f in os.listdir(tmpdir) if f.endswith(".shp")]
+            shp_path = os.path.join(tmpdir, shp_files[0])
+
+            gdf = gpd.read_file(shp_path)
+
+    # ---- KMZ ----
+    elif nombre.endswith(".kmz"):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            kmz_path = os.path.join(tmpdir, "file.kmz")
+            with open(kmz_path, "wb") as f:
+                f.write(uploaded_file.read())
+
+            with zipfile.ZipFile(kmz_path, "r") as z:
+                z.extractall(tmpdir)
+
+            kml_files = [f for f in os.listdir(tmpdir) if f.endswith(".kml")]
+            kml_path = os.path.join(tmpdir, kml_files[0])
+
+            gdf = gpd.read_file(kml_path)
+
+    # ---- KML ----
+    elif nombre.endswith(".kml"):
+        gdf = gpd.read_file(uploaded_file)
+
+    # ---- GEOJSON ----
+    elif nombre.endswith(".geojson"):
+        gdf = gpd.read_file(uploaded_file)
+
+    else:
+        st.error("❌ Formato no soportado")
+        return None
+
+    return validar_crs(gdf)
+
+
+# ============================================================
+# 5. SENTINEL-2 NDVI/EVI/NDWI + TILE OVERLAY
 # ============================================================
 
 def obtener_indices_sentinel2(gdf, fecha_inicio, fecha_fin):
-    geom = ee.Geometry.Polygon(list(gdf.iloc[0].geometry.exterior.coords))
+
+    geom = gdf_a_ee_geometry(gdf)
 
     col = (
         ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
@@ -141,6 +234,9 @@ def obtener_indices_sentinel2(gdf, fecha_inicio, fecha_fin):
     )
 
     img = col.first()
+
+    if img is None:
+        return None, None
 
     ndvi = img.normalizedDifference(["B8", "B4"]).rename("NDVI")
 
@@ -168,24 +264,25 @@ def obtener_indices_sentinel2(gdf, fecha_inicio, fecha_fin):
 
 
 def obtener_ndvi_tile(ndvi_img):
-    """Convierte NDVI EE en tile overlay para Folium"""
+
     vis_params = {
         "min": 0,
         "max": 1,
-        "palette": ["white", "green"]
+        "palette": ["red", "yellow", "green"]
     }
 
-    map_id_dict = ee.Image(ndvi_img).getMapId(vis_params)
+    map_id = ee.Image(ndvi_img).getMapId(vis_params)
 
-    return map_id_dict["tile_fetcher"].url_format
+    return map_id["tile_fetcher"].url_format
 
 
 # ============================================================
-# 4. DEM REAL SRTM + PENDIENTE
+# 6. DEM REAL SRTM + PENDIENTE
 # ============================================================
 
 def obtener_dem_srtm(gdf):
-    geom = ee.Geometry.Polygon(list(gdf.iloc[0].geometry.exterior.coords))
+
+    geom = gdf_a_ee_geometry(gdf)
 
     dem = ee.Image("USGS/SRTMGL1_003").clip(geom)
     slope = ee.Terrain.slope(dem)
@@ -201,10 +298,11 @@ def obtener_dem_srtm(gdf):
 
 
 # ============================================================
-# 5. CLIMA NASA POWER
+# 7. CLIMA NASA POWER
 # ============================================================
 
 def obtener_clima_nasa_power(gdf, fecha_inicio, fecha_fin):
+
     centroid = gdf.geometry.centroid.iloc[0]
     lat, lon = centroid.y, centroid.x
 
@@ -214,7 +312,7 @@ def obtener_clima_nasa_power(gdf, fecha_inicio, fecha_fin):
     url = "https://power.larc.nasa.gov/api/temporal/daily/point"
 
     params = {
-        "parameters": "T2M,PRECTOTCORR,WS2M",
+        "parameters": "T2M,PRECTOTCORR",
         "community": "RE",
         "longitude": lon,
         "latitude": lat,
@@ -231,23 +329,19 @@ def obtener_clima_nasa_power(gdf, fecha_inicio, fecha_fin):
     df = pd.DataFrame({
         "fecha": pd.to_datetime(list(series["T2M"].keys())),
         "temp_C": list(series["T2M"].values()),
-        "prec_mm": list(series["PRECTOTCORR"].values()),
-        "viento": list(series["WS2M"].values())
+        "prec_mm": list(series["PRECTOTCORR"].values())
     })
 
     return df
 
 
 # ============================================================
-# 6. NPK + COSTOS POR ZONA
+# 8. NPK + COSTOS POR ZONA
 # ============================================================
 
 def estimar_npk_por_zona(zonas_gdf, ndvi_prom):
-    resultados = []
 
-    precio_urea = 550
-    precio_map = 800
-    precio_kcl = 650
+    resultados = []
 
     for _, row in zonas_gdf.iterrows():
         zona_id = row["id_zona"]
@@ -259,41 +353,28 @@ def estimar_npk_por_zona(zonas_gdf, ndvi_prom):
         else:
             N, P, K = 50, 20, 15
 
-        urea_kg = N / 0.46
-        map_kg = P / 0.22
-        kcl_kg = K / 0.50
-
-        costo = (
-            (urea_kg / 1000) * precio_urea +
-            (map_kg / 1000) * precio_map +
-            (kcl_kg / 1000) * precio_kcl
-        )
-
         resultados.append({
             "Zona": zona_id,
             "N_kg_ha": N,
             "P_kg_ha": P,
-            "K_kg_ha": K,
-            "Costo_USD_ha": round(costo, 2)
+            "K_kg_ha": K
         })
 
     return pd.DataFrame(resultados)
 
 
 # ============================================================
-# 7. EXPORTAR KML
+# 9. EXPORTAR KML
 # ============================================================
 
 def exportar_kml(zonas_gdf):
+
     kml = simplekml.Kml()
 
     for _, row in zonas_gdf.iterrows():
-        geom = row.geometry
-        zona_id = row["id_zona"]
+        coords = list(row.geometry.exterior.coords)
 
-        coords = list(geom.exterior.coords)
-
-        pol = kml.newpolygon(name=f"Zona {zona_id}")
+        pol = kml.newpolygon(name=f"Zona {row['id_zona']}")
         pol.outerboundaryis = coords
 
     buffer = BytesIO()
@@ -303,12 +384,12 @@ def exportar_kml(zonas_gdf):
 
 
 # ============================================================
-# 8. REPORTE DOCX
+# 10. REPORTE DOCX
 # ============================================================
 
 def generar_reporte(indices, dem_stats, clima_df, area_ha):
-    doc = Document()
 
+    doc = Document()
     title = doc.add_heading("REPORTE AGRÍCOLA A4 FINAL", 0)
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
@@ -318,7 +399,7 @@ def generar_reporte(indices, dem_stats, clima_df, area_ha):
     for k, v in indices.items():
         doc.add_paragraph(f"{k}: {v}")
 
-    doc.add_heading("2. DEM SRTM + Pendiente", level=1)
+    doc.add_heading("2. DEM + Pendiente", level=1)
     for k, v in dem_stats.items():
         doc.add_paragraph(f"{k}: {v}")
 
@@ -336,14 +417,14 @@ def generar_reporte(indices, dem_stats, clima_df, area_ha):
 
 
 # ============================================================
-# 9. INTERFAZ STREAMLIT
+# 11. INTERFAZ STREAMLIT
 # ============================================================
 
 st.sidebar.header("📤 Subir Parcela")
 
 uploaded = st.sidebar.file_uploader(
-    "Subir ZIP shapefile o GeoJSON",
-    type=["zip", "geojson"]
+    "ZIP shapefile / GeoJSON / KML / KMZ",
+    type=["zip", "geojson", "kml", "kmz"]
 )
 
 n_zonas = st.sidebar.slider("Número de zonas", 2, 20, 6)
@@ -353,70 +434,56 @@ fecha_fin = st.sidebar.date_input("Fecha fin", datetime(2024, 12, 31))
 
 if uploaded:
 
-    # Cargar shapefile ZIP
-    if uploaded.name.endswith(".zip"):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            zip_path = os.path.join(tmpdir, "file.zip")
-            with open(zip_path, "wb") as f:
-                f.write(uploaded.read())
+    gdf = cargar_parcela(uploaded)
 
-            with zipfile.ZipFile(zip_path, "r") as z:
-                z.extractall(tmpdir)
+    if gdf is None:
+        st.stop()
 
-            shp_files = [f for f in os.listdir(tmpdir) if f.endswith(".shp")]
-            shp_path = os.path.join(tmpdir, shp_files[0])
+    st.write("Tipo geometría:", gdf.iloc[0].geometry.geom_type)
+    st.write("Geometría válida:", gdf.iloc[0].geometry.is_valid)
 
-            gdf = gpd.read_file(shp_path)
-
-    else:
-        gdf = gpd.read_file(uploaded)
-
-    gdf = validar_crs(gdf)
     area = calcular_area_ha(gdf)
-
     st.success(f"✅ Parcela cargada | Área: {area:.2f} ha")
 
-    # Zonas
     zonas = dividir_en_zonas(gdf, n_zonas)
 
-    # Sentinel-2 índices
-    st.info("🌍 Calculando índices Sentinel-2...")
+    # Índices Sentinel-2
     indices, ndvi_img = obtener_indices_sentinel2(gdf, fecha_inicio, fecha_fin)
 
+    if indices is None:
+        st.error("❌ No se encontró imagen Sentinel-2 válida")
+        st.stop()
+
+    # NDVI tile overlay
     ndvi_tile = obtener_ndvi_tile(ndvi_img)
 
     # DEM SRTM
-    st.info("⛰️ Calculando DEM SRTM...")
     dem_stats = obtener_dem_srtm(gdf)
 
     # Clima
-    st.info("🌦️ Descargando clima NASA POWER...")
     clima = obtener_clima_nasa_power(gdf, fecha_inicio, fecha_fin)
 
-    # Tabla NPK
+    # NPK
     tabla_npk = estimar_npk_por_zona(zonas, indices["NDVI"])
 
     # =====================================================
-    # MAPA INTERACTIVO CON OVERLAY NDVI REAL
+    # MAPA INTERACTIVO
     # =====================================================
 
-    st.write("## 🗺️ Mapa Interactivo con NDVI Overlay")
+    st.write("## 🗺️ Mapa Interactivo NDVI Overlay")
 
     centro = gdf.geometry.centroid.iloc[0]
+
     m = folium.Map(location=[centro.y, centro.x], zoom_start=13)
 
-    # NDVI Overlay
     folium.TileLayer(
         tiles=ndvi_tile,
-        attr="Google Earth Engine",
         name="NDVI Sentinel-2",
-        overlay=True
+        overlay=True,
+        attr="Google Earth Engine"
     ).add_to(m)
 
-    # Parcela
     folium.GeoJson(gdf, name="Parcela").add_to(m)
-
-    # Zonas
     folium.GeoJson(zonas, name="Zonas").add_to(m)
 
     folium.LayerControl().add_to(m)
@@ -428,15 +495,16 @@ if uploaded:
     # =====================================================
 
     st.write("## 📊 Resultados")
-
     st.json(indices)
+
+    st.write("### ⛰️ DEM SRTM")
     st.json(dem_stats)
 
-    st.write("### 🌾 Fertilización NPK + Costos por Zona")
+    st.write("### 🌾 NPK por Zona")
     st.dataframe(tabla_npk)
 
     # Export KML
-    st.write("### 📤 Exportar zonas en KML")
+    st.write("### 📤 Descargar zonas KML")
     kml_buffer = exportar_kml(zonas)
 
     st.download_button(
@@ -447,8 +515,7 @@ if uploaded:
     )
 
     # Reporte DOCX
-    st.write("### 📄 Descargar Reporte Técnico DOCX")
-
+    st.write("### 📄 Descargar Reporte DOCX")
     buffer_docx = generar_reporte(indices, dem_stats, clima, area)
 
     st.download_button(
