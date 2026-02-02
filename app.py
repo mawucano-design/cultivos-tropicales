@@ -1,5 +1,4 @@
-[file name]: GEEmulticultivotrigo.py
-[file content begin]
+
 import streamlit as st
 import geopandas as gpd
 import numpy as np
@@ -2184,4 +2183,3 @@ st.markdown("""
     <p>© 2024 - Todos los derechos reservados</p>
 </div>
 """, unsafe_allow_html=True)
-[file content end]
