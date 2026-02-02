@@ -2343,4 +2343,6 @@ st.markdown("""
     <p><strong>🌾 Analizador Multicultivo Satelital con Google Earth Engine</strong></p>
     <p>Versión 3.2 | Desarrollado por Martin Ernesto Cano | Ingeniero Agrónomo</p>
     <p>📧 mawucano@gmail.com | 📱 +5493525 532313</p>
-    <p>© 2024 - Todos los derechos reservados</
+    <p>© 2024 - Todos los derechos reservados</p>
+</div>
+""", unsafe_allow_html=True)
