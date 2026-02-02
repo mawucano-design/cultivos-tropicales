@@ -12,7 +12,7 @@ import tempfile
 import zipfile
 import math
 from datetime import datetime, timedelta
-from shapely.geometry import Polygon, MultiPolygon, Point, LineString
+from shapely.geometry import Polygon, MultiPolygon, Point, LineString, shape
 from shapely.ops import unary_union
 import folium
 from folium.plugins import Draw
@@ -280,7 +280,7 @@ PARAMETROS_CULTIVOS = {
         'NDVI_OPTIMO': 0.68,
         'NDRE_OPTIMO': 0.32,
         'RENDIMIENTO_OPTIMO': 3800,
-        'COSTO_FERTILIZacion': 380,
+        'COSTO_FERTILIZACION': 380,
         'PRECIO_VENTA': 0.60,
         'icono': '🥜'
     }
@@ -388,7 +388,6 @@ def parsear_kml_con_fastkml(kml_content):
     try:
         # Intentar importar fastkml
         from fastkml import kml
-        from shapely.geometry import shape
         
         # Parsear KML
         k = kml.KML()
@@ -400,29 +399,31 @@ def parsear_kml_con_fastkml(kml_content):
         def extract_geometries(element):
             if hasattr(element, 'geometry'):
                 if element.geometry:
-                    geometries.append(element.geometry)
+                    # Convertir geometría fastkml a shapely
+                    from fastkml.geometry import Geometry
+                    if isinstance(element.geometry, Geometry):
+                        # Usar el método to_shapely si está disponible
+                        if hasattr(element.geometry, 'to_shapely'):
+                            geometries.append(element.geometry.to_shapely())
+                        else:
+                            # Alternativa: convertir a través de __geo_interface__
+                            if hasattr(element.geometry, '__geo_interface__'):
+                                geometries.append(shape(element.geometry.__geo_interface__))
             if hasattr(element, 'features'):
                 for feature in element.features:
                     extract_geometries(feature)
         
         # Buscar en todos los features del KML
-        for feature in k.features:
+        for feature in k.features():  # Aquí features() es un método
             extract_geometries(feature)
         
         if not geometries:
             st.warning("No se encontraron geometrías en el KML")
             return None
         
-        # Convertir a shapely geometries
-        shapely_geoms = []
-        for geom in geometries:
-            if hasattr(geom, '__geo_interface__'):
-                shapely_geom = shape(geom.__geo_interface__)
-                shapely_geoms.append(shapely_geom)
-        
         # Combinar todas las geometrías
-        if shapely_geoms:
-            combined_geom = unary_union(shapely_geoms)
+        if geometries:
+            combined_geom = unary_union(geometries)
             return combined_geom
         
         return None
@@ -444,22 +445,10 @@ def procesar_kml_avanzado(kml_path):
         # Intentar con fastkml primero
         geometry = parsear_kml_con_fastkml(kml_content)
         
-        if geometry is not None:
-            # Validar la geometría resultante
-            if geometry.is_empty:
-                st.warning("Geometría vacía obtenida del KML")
-                return None
-            
-            # Convertir a Polygon si es MultiPolygon
-            if geometry.geom_type == 'MultiPolygon':
-                # Tomar el polígono más grande
-                polygons = list(geometry.geoms)
-                polygons.sort(key=lambda p: p.area, reverse=True)
-                geometry = polygons[0]
-            
+        if geometry is not None and not geometry.is_empty:
             return geometry
         
-        # Fallback a geopandas si fastkml falla
+        # Fallback a geopandas si fastkml falla o no está instalado
         gdf = gpd.read_file(kml_path, driver='KML')
         
         if gdf.empty:
@@ -474,12 +463,6 @@ def procesar_kml_avanzado(kml_path):
         if combined_geom.is_empty:
             st.error("No se pudo extraer geometría válida del KML")
             return None
-        
-        # Si es MultiPolygon, tomar el más grande
-        if combined_geom.geom_type == 'MultiPolygon':
-            polygons = list(combined_geom.geoms)
-            polygons.sort(key=lambda p: p.area, reverse=True)
-            combined_geom = polygons[0]
         
         return combined_geom
         
@@ -528,13 +511,7 @@ def procesar_archivo_carga_mejorado(uploaded_file):
                 all_geometries = gdf.geometry.tolist()
                 combined_geom = unary_union(all_geometries)
                 
-                # Si es MultiPolygon, tomar el más grande
-                if combined_geom.geom_type == 'MultiPolygon':
-                    polygons = list(combined_geom.geoms)
-                    polygons.sort(key=lambda p: p.area, reverse=True)
-                    geometry = polygons[0]
-                else:
-                    geometry = combined_geom
+                geometry = combined_geom
                     
             elif file_ext == 'shp' or file_ext == 'zip':
                 # Usar la función original para shapefiles
@@ -550,15 +527,26 @@ def procesar_archivo_carga_mejorado(uploaded_file):
                 return None
             
             # Verificar tipo de geometría
-            if geometry.geom_type not in ['Polygon', 'MultiPolygon']:
+            if geometry.geom_type not in ['Polygon', 'MultiPolygon', 'GeometryCollection']:
                 st.error(f"Tipo de geometría no soportado: {geometry.geom_type}")
                 return None
             
-            # Si es MultiPolygon, convertir a Polygon
+            # Si es MultiPolygon, convertir a Polygon (tomar el más grande)
             if geometry.geom_type == 'MultiPolygon':
                 polygons = list(geometry.geoms)
                 polygons.sort(key=lambda p: p.area, reverse=True)
                 geometry = polygons[0]
+            
+            # Si es GeometryCollection, extraer polígonos
+            elif geometry.geom_type == 'GeometryCollection':
+                polygons = [geom for geom in geometry.geoms if geom.geom_type in ['Polygon', 'MultiPolygon']]
+                if polygons:
+                    # Tomar el polígono más grande
+                    polygons.sort(key=lambda p: p.area if hasattr(p, 'area') else 0, reverse=True)
+                    geometry = polygons[0]
+                else:
+                    st.error("GeometryCollection no contiene polígonos válidos")
+                    return None
             
             # Calcular área aproximada
             gdf_temp = gpd.GeoDataFrame({'geometry': [geometry]}, crs='EPSG:4326')
@@ -569,7 +557,7 @@ def procesar_archivo_carga_mejorado(uploaded_file):
             - **Nombre:** {uploaded_file.name}
             - **Tipo:** {geometry.geom_type}
             - **Área aproximada:** {area_ha:.2f} ha
-            - **Puntos en el polígono:** {len(geometry.exterior.coords)}
+            - **Puntos en el polígono:** {len(geometry.exterior.coords) if hasattr(geometry, 'exterior') else 'N/A'}
             """)
             
             return geometry
