@@ -15,4 +15,10 @@ rtree
 fastkml 
 matplotlib
 xlsxwriter
-cv2
+opencv-python
+ultralytics
+scikit-learn
+scipy
+plotly
+torch
+torchvision
