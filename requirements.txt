@@ -24,3 +24,4 @@ torch
 torchvision
 geojson
 contextily
+ultralytics
