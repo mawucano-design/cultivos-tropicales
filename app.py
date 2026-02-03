@@ -3110,18 +3110,19 @@ if uploaded_file:
             traceback.print_exc()
 
 # Mostrar resultados si el análisis está completado
-if st.session_state.analisis_completado and 'resultados_todos' in st.session_state:
-    resultados = st.session_state.resultados_todos
+
+        if st.session_state.analisis_completado and 'resultados_todos' in st.session_state:
+        resultados = st.session_state.resultados_todos
     
-   tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-    "📊 Fertilidad Actual",
-    "🧪 Recomendaciones NPK",
-    "💰 Análisis de Costos",
-    "🏗️ Textura del Suelo",
-    "📈 Proyecciones",
-    "🏔️ Curvas de Nivel y 3D",
-    "🌍 Visualización Satelital",
-    "🦠 Detección YOLO"  # NUEVA PESTAÑA
+       tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+        "📊 Fertilidad Actual",
+        "🧪 Recomendaciones NPK",
+        "💰 Análisis de Costos",
+        "🏗️ Textura del Suelo",
+        "📈 Proyecciones",
+        "🏔️ Curvas de Nivel y 3D",
+        "🌍 Visualización Satelital",
+        "🦠 Detección YOLO"  # NUEVA PESTAÑA
 ])
     
     with tab1:
