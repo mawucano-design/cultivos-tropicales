@@ -3110,11 +3110,11 @@ if uploaded_file:
             traceback.print_exc()
 
 # Mostrar resultados si el análisis está completado
-
-        if st.session_state.analisis_completado and 'resultados_todos' in st.session_state:
-        resultados = st.session_state.resultados_todos
+if st.session_state.analisis_completado and 'resultados_todos' in st.session_state:
+    resultados = st.session_state.resultados_todos
     
-       tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+    # Mostrar resultados en pestañas - AHORA CON 8 PESTAÑAS
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
         "📊 Fertilidad Actual",
         "🧪 Recomendaciones NPK",
         "💰 Análisis de Costos",
@@ -3123,9 +3123,10 @@ if uploaded_file:
         "🏔️ Curvas de Nivel y 3D",
         "🌍 Visualización Satelital",
         "🦠 Detección YOLO"  # NUEVA PESTAÑA
-])
+    ])
     
     with tab1:
+        # ... contenido de tab1 igual que antes ...
         st.subheader("FERTILIDAD ACTUAL")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
@@ -3162,6 +3163,7 @@ if uploaded_file:
         st.dataframe(tabla_fert)
     
     with tab2:
+        # ... contenido de tab2 igual que antes ...
         st.subheader("RECOMENDACIONES NPK")
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -3217,6 +3219,7 @@ if uploaded_file:
         st.dataframe(tabla_npk)
     
     with tab3:
+        # ... contenido de tab3 igual que antes ...
         st.subheader("ANÁLISIS DE COSTOS")
         costo_total = resultados['gdf_completo']['costo_costo_total'].sum()
         costo_prom = resultados['gdf_completo']['costo_costo_total'].mean()
@@ -3256,6 +3259,7 @@ if uploaded_file:
         st.dataframe(tabla_costos)
     
     with tab4:
+        # ... contenido de tab4 igual que antes ...
         st.subheader("TEXTURA DEL SUELO")
         textura_pred = resultados['gdf_completo']['textura_suelo'].mode()[0] if len(resultados['gdf_completo']) > 0 else "N/D"
         arena_prom = resultados['gdf_completo']['arena'].mean()
@@ -3303,6 +3307,7 @@ if uploaded_file:
         st.dataframe(tabla_text)
     
     with tab5:
+        # ... contenido de tab5 igual que antes ...
         st.subheader("PROYECCIONES DE COSECHA")
         rend_sin = resultados['gdf_completo']['proy_rendimiento_sin_fert'].sum()
         rend_con = resultados['gdf_completo']['proy_rendimiento_con_fert'].sum()
@@ -3339,6 +3344,7 @@ if uploaded_file:
         st.dataframe(tabla_proy)
     
     with tab6:
+        # ... contenido de tab6 igual que antes ...
         if 'dem_data' in resultados and resultados['dem_data']:
             dem_data = resultados['dem_data']
             st.subheader("🏔️ ANÁLISIS TOPOGRÁFICO")
@@ -3397,6 +3403,7 @@ if uploaded_file:
             st.info("ℹ️ No hay datos topográficos disponibles para esta parcela")
     
     with tab7:
+        # ... contenido de tab7 igual que antes ...
         st.subheader("🛰️ VISUALIZACIÓN SATELITAL RGB")
         
         # Selector de tipo de visualización
@@ -3498,8 +3505,23 @@ if uploaded_file:
         
         else:
             st.info("ℹ️ La visualización RGB natural está disponible solo para fuentes GEE (Sentinel-2, Landsat-8/9)")
-
-            with tab8:
+            
+            # Mostrar datos satelitales disponibles como fallback
+            if resultados['datos_satelitales']:
+                st.markdown("### 📊 Datos Satelitales Disponibles")
+                datos = resultados['datos_satelitales']
+                col_d1, col_d2 = st.columns(2)
+                with col_d1:
+                    st.write(f"**Fuente:** {datos.get('fuente', 'N/A')}")
+                    st.write(f"**Índice:** {datos.get('indice', 'N/A')}")
+                    st.write(f"**Valor:** {datos.get('valor_promedio', 0):.3f}")
+                with col_d2:
+                    st.write(f"**Fecha:** {datos.get('fecha_imagen', 'N/A')}")
+                    st.write(f"**Resolución:** {datos.get('resolucion', 'N/A')}")
+                    st.write(f"**Estado:** {datos.get('estado', 'N/A')}")
+    
+    with tab8:
+        # NUEVA PESTAÑA YOLO
         st.subheader("🦠 DETECCIÓN DE PLAGAS/ENFERMEDADES CON YOLO")
         
         # Opciones de análisis
@@ -3603,7 +3625,38 @@ if uploaded_file:
                         )
                         
                         # Mostrar resultados (similar a arriba)
-                        # ... código para mostrar resultados ...
+                        if imagen_resultado is not None:
+                            col_res1, col_res2 = st.columns(2)
+                            
+                            with col_res1:
+                                st.subheader("📷 Imagen Simulada")
+                                st.image(imagen_simulada, caption="Imagen simulada", use_container_width=True)
+                            
+                            with col_res2:
+                                st.subheader("🎯 Detecciones YOLO")
+                                st.image(imagen_resultado, caption="Detecciones", use_container_width=True)
+                            
+                            # Mostrar estadísticas
+                            if detecciones:
+                                st.subheader("📊 Estadísticas de Detección")
+                                df_detecciones = pd.DataFrame(detecciones)
+                                
+                                col_stats1, col_stats2, col_stats3 = st.columns(3)
+                                with col_stats1:
+                                    st.metric("Total detecciones", len(detecciones))
+                                with col_stats2:
+                                    clases_unicas = df_detecciones['clase'].nunique()
+                                    st.metric("Tipos encontrados", clases_unicas)
+                                with col_stats3:
+                                    conf_prom = df_detecciones['confianza'].mean()
+                                    st.metric("Confianza promedio", f"{conf_prom:.2f}")
+                                
+                                # Tabla detallada
+                                st.dataframe(df_detecciones)
+                                
+                                # Reporte
+                                reporte = generar_reporte_plagas(detecciones, cultivo)
+                                st.markdown(reporte)
         
         elif fuente_imagen == "Usar imagen satelital GEE":
             if st.session_state.gee_authenticated:
@@ -3612,85 +3665,72 @@ if uploaded_file:
                         # En producción, descargar imagen real de GEE
                         # Por ahora, simulamos
                         st.info("🛠️ Funcionalidad en desarrollo - Usando simulación")
-                        # ... código para descargar imagen GEE y analizar ...
+                        # Para implementar: descargar imagen real de GEE y analizar con YOLO
             else:
                 st.warning("⚠️ Necesitas autenticación GEE para esta función")
-        
-            # Mostrar datos satelitales disponibles como fallback
-            if resultados['datos_satelitales']:
-                st.markdown("### 📊 Datos Satelitales Disponibles")
-                datos = resultados['datos_satelitales']
-                col_d1, col_d2 = st.columns(2)
-                with col_d1:
-                    st.write(f"**Fuente:** {datos.get('fuente', 'N/A')}")
-                    st.write(f"**Índice:** {datos.get('indice', 'N/A')}")
-                    st.write(f"**Valor:** {datos.get('valor_promedio', 0):.3f}")
-                with col_d2:
-                    st.write(f"**Fecha:** {datos.get('fecha_imagen', 'N/A')}")
-                    st.write(f"**Resolución:** {datos.get('resolucion', 'N/A')}")
-                    st.write(f"**Estado:** {datos.get('estado', 'N/A')}")
-        
-        st.markdown("---")
-        st.subheader("💾 EXPORTAR RESULTADOS")
-        
-        col_exp1, col_exp2, col_exp3 = st.columns(3)
-        
-        with col_exp1:
-            st.markdown("**GeoJSON**")
-            if st.button("📤 Generar GeoJSON", key="generate_geojson"):
-                with st.spinner("Generando GeoJSON..."):
-                    geojson_data, nombre_geojson = exportar_a_geojson(
-                        resultados['gdf_completo'],
-                        f"analisis_{cultivo}"
-                    )
-                    if geojson_data:
-                        st.session_state.geojson_data = geojson_data
-                        st.session_state.nombre_geojson = nombre_geojson
-                        st.success("✅ GeoJSON generado correctamente")
-                        st.rerun()
-            
-            if 'geojson_data' in st.session_state and st.session_state.geojson_data:
-                st.download_button(
-                    label="📥 Descargar GeoJSON",
-                    data=st.session_state.geojson_data,
-                    file_name=st.session_state.nombre_geojson,
-                    mime="application/json",
-                    key="geojson_download"
+
+    # SECCIÓN DE EXPORTACIÓN (FUERA DE LAS PESTAÑAS)
+    st.markdown("---")
+    st.subheader("💾 EXPORTAR RESULTADOS")
+    
+    col_exp1, col_exp2, col_exp3 = st.columns(3)
+    
+    with col_exp1:
+        st.markdown("**GeoJSON**")
+        if st.button("📤 Generar GeoJSON", key="generate_geojson"):
+            with st.spinner("Generando GeoJSON..."):
+                geojson_data, nombre_geojson = exportar_a_geojson(
+                    resultados['gdf_completo'],
+                    f"analisis_{cultivo}"
                 )
+                if geojson_data:
+                    st.session_state.geojson_data = geojson_data
+                    st.session_state.nombre_geojson = nombre_geojson
+                    st.success("✅ GeoJSON generado correctamente")
+                    st.rerun()
         
-        with col_exp2:
-            st.markdown("**Reporte DOCX**")
-            if st.button("📄 Generar Reporte Completo", key="generate_report"):
-                with st.spinner("Generando reporte DOCX..."):
-                    reporte = generar_reporte_completo(
-                        resultados, 
-                        cultivo, 
-                        satelite_seleccionado, 
-                        fecha_inicio, 
-                        fecha_fin
-                    )
-                    if reporte:
-                        st.session_state.reporte_completo = reporte
-                        st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
-                        st.success("✅ Reporte generado correctamente")
-                        st.rerun()
-            
-            if 'reporte_completo' in st.session_state and st.session_state.reporte_completo:
-                st.download_button(
-                    label="📥 Descargar Reporte DOCX",
-                    data=st.session_state.reporte_completo,
-                    file_name=st.session_state.nombre_reporte,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    key="report_download"
+        if 'geojson_data' in st.session_state and st.session_state.geojson_data:
+            st.download_button(
+                label="📥 Descargar GeoJSON",
+                data=st.session_state.geojson_data,
+                file_name=st.session_state.nombre_geojson,
+                mime="application/json",
+                key="geojson_download"
+            )
+    
+    with col_exp2:
+        st.markdown("**Reporte DOCX**")
+        if st.button("📄 Generar Reporte Completo", key="generate_report"):
+            with st.spinner("Generando reporte DOCX..."):
+                reporte = generar_reporte_completo(
+                    resultados, 
+                    cultivo, 
+                    satelite_seleccionado, 
+                    fecha_inicio, 
+                    fecha_fin
                 )
+                if reporte:
+                    st.session_state.reporte_completo = reporte
+                    st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
+                    st.success("✅ Reporte generado correctamente")
+                    st.rerun()
         
-        with col_exp3:
-            st.markdown("**Limpiar Resultados**")
-            if st.button("🗑️ Limpiar Resultados", use_container_width=True):
-                for key in list(st.session_state.keys()):
-                    if key not in ['gee_authenticated', 'gee_project']:
-                        del st.session_state[key]
-                st.rerun()
+        if 'reporte_completo' in st.session_state and st.session_state.reporte_completo:
+            st.download_button(
+                label="📥 Descargar Reporte DOCX",
+                data=st.session_state.reporte_completo,
+                file_name=st.session_state.nombre_reporte,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="report_download"
+            )
+    
+    with col_exp3:
+        st.markdown("**Limpiar Resultados**")
+        if st.button("🗑️ Limpiar Resultados", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                if key not in ['gee_authenticated', 'gee_project']:
+                    del st.session_state[key]
+            st.rerun()
 # ===== PIE DE PÁGINA =====
 st.markdown("---")
 col_footer1, col_footer2, col_footer3 = st.columns(3)
