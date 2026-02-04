@@ -3311,14 +3311,21 @@ def crear_visualizacion_3d(X, Y, Z):
         return None
 
 # ===== FUNCIÓN PARA VISUALIZAR IMÁGENES GEE =====
-def visualizar_imagen_gee(gdf, satelite, fecha_inicio, fecha_fin):
-    """Generar y mostrar una imagen de GEE"""
+def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI'):
+    """Genera visualización de índices espectrales (NDVI, NDWI, EVI) - VERSIÓN CORREGIDA"""
     if not GEE_AVAILABLE or not st.session_state.gee_authenticated:
-        return None
+        return None, "❌ Google Earth Engine no está autenticado"
+    
     try:
-        # Obtener bounding box
+        # Obtener bounding box de la parcela
         bounds = gdf.total_bounds
         min_lon, min_lat, max_lon, max_lat = bounds
+        
+        # Expandir ligeramente el área para asegurar cobertura
+        min_lon -= 0.001
+        max_lon += 0.001
+        min_lat -= 0.001
+        max_lat += 0.001
         
         # Crear geometría
         geometry = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
@@ -3330,59 +3337,240 @@ def visualizar_imagen_gee(gdf, satelite, fecha_inicio, fecha_fin):
         # Seleccionar colección según satélite
         if satelite == 'SENTINEL-2_GEE':
             collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-            vis_params = {
-                'min': 0,
-                'max': 3000,
-                'bands': ['B4', 'B3', 'B2']
-            }
+            # Definir parámetros de visualización según el índice
+            if indice == 'NDVI':
+                title = "Sentinel-2 NDVI (Índice de Vegetación)"
+                # Escala de colores para NDVI: rojo (bajo) a verde (alto)
+                vis_params = {
+                    'min': -0.2,
+                    'max': 0.8,
+                    'palette': ['red', 'yellow', 'green']
+                }
+            elif indice == 'NDWI':
+                title = "Sentinel-2 NDWI (Índice de Agua)"
+                # Escala de colores para NDWI: marrón (seco) a azul (húmedo)
+                vis_params = {
+                    'min': -0.5,
+                    'max': 0.5,
+                    'palette': ['brown', 'white', 'blue']
+                }
+            elif indice == 'EVI':
+                title = "Sentinel-2 EVI (Índice de Vegetación Mejorado)"
+                vis_params = {
+                    'min': 0,
+                    'max': 0.8,
+                    'palette': ['red', 'yellow', 'green']
+                }
+            elif indice == 'SAVI':
+                title = "Sentinel-2 SAVI (Índice de Vegetación Ajustado al Suelo)"
+                vis_params = {
+                    'min': 0,
+                    'max': 0.8,
+                    'palette': ['red', 'yellow', 'green']
+                }
+            else:
+                # Por defecto usar NDVI
+                title = "Sentinel-2 NDVI"
+                vis_params = {
+                    'min': -0.2,
+                    'max': 0.8,
+                    'palette': ['red', 'yellow', 'green']
+                }
+            
         elif satelite == 'LANDSAT-8_GEE':
             collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
-            vis_params = {
-                'min': 0,
-                'max': 3000,
-                'bands': ['SR_B4', 'SR_B3', 'SR_B2']
-            }
+            # Similar para Landsat 8
+            if indice == 'NDVI':
+                title = "Landsat 8 NDVI"
+                vis_params = {
+                    'min': -0.2,
+                    'max': 0.8,
+                    'palette': ['red', 'yellow', 'green']
+                }
+            elif indice == 'NDWI':
+                title = "Landsat 8 NDWI"
+                vis_params = {
+                    'min': -0.5,
+                    'max': 0.5,
+                    'palette': ['brown', 'white', 'blue']
+                }
+            else:
+                title = "Landsat 8 NDVI"
+                vis_params = {
+                    'min': -0.2,
+                    'max': 0.8,
+                    'palette': ['red', 'yellow', 'green']
+                }
+            
         elif satelite == 'LANDSAT-9_GEE':
             collection = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
-            vis_params = {
-                'min': 0,
-                'max': 3000,
-                'bands': ['SR_B4', 'SR_B3', 'SR_B2']
-            }
+            # Similar para Landsat 9
+            if indice == 'NDVI':
+                title = "Landsat 9 NDVI"
+                vis_params = {
+                    'min': -0.2,
+                    'max': 0.8,
+                    'palette': ['red', 'yellow', 'green']
+                }
+            else:
+                title = "Landsat 9 NDVI"
+                vis_params = {
+                    'min': -0.2,
+                    'max': 0.8,
+                    'palette': ['red', 'yellow', 'green']
+                }
+            
         else:
-            return None
+            return None, "⚠️ Satélite no soportado para visualización de índices"
         
-        # Filtrar colección
-        image = (collection
-                .filterBounds(geometry)
-                .filterDate(start_date, end_date)
-                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
-                .sort('CLOUDY_PIXEL_PERCENTAGE')
-                .first())
-        
-        if image is None:
-            return None
-        
-        # Generar URL para visualización
-        map_id_dict = image.getMapId(vis_params)
-        
-        # Crear HTML para mostrar el mapa
-        html = f"""
-        <iframe
-            width="100%"
-            height="500"
-            src="https://earthengine.googleapis.com/map/{map_id_dict['mapid']}/{{z}}/{{x}}/{{y}}?token={map_id_dict['token']}"
-            frameborder="0"
-            allowfullscreen
-        ></iframe>
-        """
-        
-        return html
+        # Filtrar colección con criterios más flexibles
+        try:
+            filtered = (collection
+                       .filterBounds(geometry)
+                       .filterDate(start_date, end_date)
+                       .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 60)))
+            
+            # Verificar si hay imágenes
+            count = filtered.size().getInfo()
+            if count == 0:
+                return None, f"⚠️ No hay imágenes disponibles para {start_date} - {end_date}"
+            
+            # Tomar la imagen con menos nubes
+            image = filtered.sort('CLOUDY_PIXEL_PERCENTAGE').first()
+            
+            # Verificar que la imagen no sea nula
+            if image is None:
+                return None, "❌ Error: La imagen obtenida es nula"
+            
+            # Calcular el índice seleccionado
+            if indice == 'NDVI':
+                # NDVI = (NIR - RED) / (NIR + RED)
+                if satelite == 'SENTINEL-2_GEE':
+                    ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+                else:  # Landsat
+                    ndvi = image.normalizedDifference(['SR_B5', 'SR_B4']).rename('NDVI')
+                index_image = ndvi
+                
+            elif indice == 'NDWI':
+                # NDWI = (GREEN - NIR) / (GREEN + NIR)
+                if satelite == 'SENTINEL-2_GEE':
+                    ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
+                else:  # Landsat
+                    ndwi = image.normalizedDifference(['SR_B3', 'SR_B5']).rename('NDWI')
+                index_image = ndwi
+                
+            elif indice == 'EVI':
+                # EVI = 2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))
+                if satelite == 'SENTINEL-2_GEE':
+                    evi = image.expression(
+                        '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
+                        {
+                            'NIR': image.select('B8'),
+                            'RED': image.select('B4'),
+                            'BLUE': image.select('B2')
+                        }
+                    ).rename('EVI')
+                else:  # Landsat
+                    evi = image.expression(
+                        '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
+                        {
+                            'NIR': image.select('SR_B5'),
+                            'RED': image.select('SR_B4'),
+                            'BLUE': image.select('SR_B2')
+                        }
+                    ).rename('EVI')
+                index_image = evi
+                
+            elif indice == 'SAVI':
+                # SAVI = ((NIR - RED) / (NIR + RED + 0.5)) * 1.5
+                if satelite == 'SENTINEL-2_GEE':
+                    savi = image.expression(
+                        '((NIR - RED) / (NIR + RED + 0.5)) * 1.5',
+                        {
+                            'NIR': image.select('B8'),
+                            'RED': image.select('B4')
+                        }
+                    ).rename('SAVI')
+                else:  # Landsat
+                    savi = image.expression(
+                        '((NIR - RED) / (NIR + RED + 0.5)) * 1.5',
+                        {
+                            'NIR': image.select('SR_B5'),
+                            'RED': image.select('SR_B4')
+                        }
+                    ).rename('SAVI')
+                index_image = savi
+                
+            else:
+                # Por defecto usar NDVI
+                if satelite == 'SENTINEL-2_GEE':
+                    ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
+                else:
+                    ndvi = image.normalizedDifference(['SR_B5', 'SR_B4']).rename('NDVI')
+                index_image = ndvi
+                indice = 'NDVI'
+            
+            # Obtener información de la imagen
+            image_id = image.get('system:index').getInfo()
+            cloud_percent = image.get('CLOUDY_PIXEL_PERCENTAGE', ee.Number(0)).getInfo()
+            fecha_imagen = image.get('system:time_start').getInfo()
+            
+            if fecha_imagen:
+                fecha_str = datetime.fromtimestamp(fecha_imagen / 1000).strftime('%Y-%m-%d')
+                title += f" - {fecha_str}"
+            
+            # Generar URL del mapa
+            map_id_dict = index_image.getMapId(vis_params)
+            
+            if not map_id_dict or 'mapid' not in map_id_dict:
+                return None, "❌ Error generando URL del mapa"
+            
+            # Crear HTML para el iframe
+            html = f"""
+            <div style="border: 2px solid #3b82f6; border-radius: 10px; overflow: hidden;">
+                <iframe
+                    width="100%"
+                    height="500"
+                    src="https://earthengine.googleapis.com/map/{map_id_dict['mapid']}/{{z}}/{{x}}/{{y}}?token={map_id_dict['token']}"
+                    frameborder="0"
+                    allowfullscreen
+                    style="display: block;"
+                ></iframe>
+            </div>
+            <div style="background: #f0f9ff; padding: 10px; border-radius: 5px; margin-top: 10px;">
+                <p style="margin: 5px 0; font-size: 0.9em;">
+                    <strong>ℹ️ Información:</strong> {title} | Nubes: {cloud_percent}% | ID: {image_id}
+                </p>
+                <p style="margin: 5px 0; font-size: 0.85em; color: #666;">
+                    <strong>Interpretación {indice}:</strong> {get_interpretacion_indice(indice)}
+                </p>
+            </div>
+            """
+            
+            return html, f"✅ {title}"
+            
+        except Exception as e:
+            error_msg = str(e)
+            if "Parameter 'object' is required" in error_msg:
+                return None, f"❌ No se encontró imagen para el período {start_date} - {end_date}"
+            else:
+                return None, f"❌ Error GEE: {error_msg[:100]}"
         
     except Exception as e:
-        st.error(f"❌ Error generando visualización GEE: {str(e)}")
-        return None
+        return None, f"❌ Error general: {str(e)[:100]}"
 
+
+def get_interpretacion_indice(indice):
+    """Devuelve la interpretación del índice seleccionado"""
+    interpretaciones = {
+        'NDVI': 'Valores: -1 a 1. Verde saludable: >0.6, Vegetación moderada: 0.3-0.6, Suelo: 0.1-0.3, Agua/nubes: <0.1',
+        'NDWI': 'Valores: -1 a 1. Agua: >0.2, Vegetación húmeda: 0.1-0.2, Vegetación seca/Suelo: <0.1',
+        'EVI': 'Valores: -1 a 1. Similar a NDVI pero menos afectado por el suelo. Vegetación densa: >0.6',
+        'SAVI': 'Valores: -1 a 1. NDVI ajustado para suelos desnudos. Mejor para áreas con baja cobertura vegetal',
+        'NDRE': 'Valores: -1 a 1. Sensible al contenido de clorofila. Cultivos saludables: >0.4',
+        'GNDVI': 'Valores: -1 a 1. Similar a NDVI pero usando banda verde. Bueno para monitorear estrés hídrico'
+    }
+    return interpretaciones.get(indice, 'Índice de vegetación')
 # ===== FUNCIONES DE EXPORTACIÓN =====
 def exportar_a_geojson(gdf, nombre_base="parcela"):
     try:
@@ -4136,8 +4324,8 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         else:
             st.info("ℹ️ No hay datos topográficos disponibles para esta parcela")
     
-    with tab8:
-        st.subheader("🛰️ VISUALIZACIÓN SATELITAL RGB")
+       with tab8:
+        st.subheader("🛰️ VISUALIZACIÓN SATELITAL")
         
         # Selector de tipo de visualización
         col_viz1, col_viz2 = st.columns([2, 1])
@@ -4149,6 +4337,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 help="RGB: Rojo-Verde-Azul (visualización natural) | Índices: NDVI, NDWI, etc."
             )
         
+        # Mostrar visualización según selección
         if tipo_viz == "RGB Natural" and satelite_seleccionado in ['SENTINEL-2_GEE', 'LANDSAT-8_GEE', 'LANDSAT-9_GEE']:
             if st.session_state.gee_authenticated:
                 st.info(f"⏳ Cargando imagen RGB de {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}...")
@@ -4198,22 +4387,94 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 3. Reinicia la app después de configurar el secret
                 """)
         
-        else:
-            st.info("ℹ️ La visualización RGB natural está disponible solo para fuentes GEE (Sentinel-2, Landsat-8/9)")
-            
-            # Mostrar datos satelitales disponibles como fallback
-            if resultados['datos_satelitales']:
-                st.markdown("### 📊 Datos Satelitales Disponibles")
-                datos = resultados['datos_satelitales']
-                col_d1, col_d2 = st.columns(2)
-                with col_d1:
-                    st.write(f"**Fuente:** {datos.get('fuente', 'N/A')}")
-                    st.write(f"**Índice:** {datos.get('indice', 'N/A')}")
-                    st.write(f"**Valor:** {datos.get('valor_promedio', 0):.3f}")
-                with col_d2:
-                    st.write(f"**Fecha:** {datos.get('fecha_imagen', 'N/A')}")
-                    st.write(f"**Resolución:** {datos.get('resolucion', 'N/A')}")
-                    st.write(f"**Estado:** {datos.get('estado', 'N/A')}")
+        elif tipo_viz == "Índices Espectrales":
+            if satelite_seleccionado in ['SENTINEL-2_GEE', 'LANDSAT-8_GEE', 'LANDSAT-9_GEE']:
+                if st.session_state.gee_authenticated:
+                    st.info(f"⏳ Cargando {indice_seleccionado} de {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}...")
+                    
+                    # Generar visualización del índice
+                    with st.spinner("Generando mapa interactivo..."):
+                        html_indice, mensaje = visualizar_indice_gee(
+                            resultados['gdf_dividido'],
+                            satelite_seleccionado,
+                            fecha_inicio,
+                            fecha_fin,
+                            indice_seleccionado
+                        )
+                    
+                    if html_indice:
+                        st.success(mensaje)
+                        st.markdown(html_indice, unsafe_allow_html=True)
+                        
+                        # Mostrar interpretación del índice
+                        st.markdown("### 📊 Interpretación del Índice")
+                        interpretacion = get_interpretacion_indice(indice_seleccionado)
+                        st.info(f"**{indice_seleccionado}:** {interpretacion}")
+                        
+                        # Mostrar estadísticas si están disponibles
+                        if resultados['datos_satelitales']:
+                            datos = resultados['datos_satelitales']
+                            st.markdown("### 📈 Estadísticas del Índice")
+                            col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+                            with col_stat1:
+                                st.metric("Promedio", f"{datos['valor_promedio']:.3f}")
+                            with col_stat2:
+                                st.metric("Mínimo", f"{datos['valor_min']:.3f}")
+                            with col_stat3:
+                                st.metric("Máximo", f"{datos['valor_max']:.3f}")
+                            with col_stat4:
+                                st.metric("Desviación", f"{datos['valor_std']:.3f}")
+                    else:
+                        st.warning(mensaje)
+                        st.info("""
+                        🔍 **Consejos para mejorar la visualización:**
+                        - Amplía el rango temporal para encontrar imágenes con menos nubes
+                        - Selecciona una fecha específica con buen clima
+                        - Prueba con diferentes índices (NDVI, NDWI, EVI)
+                        """)
+                else:
+                    st.error("❌ Google Earth Engine no está autenticado")
+            else:
+                # Para satélites simulados, mostrar datos pero no visualización
+                if resultados['datos_satelitales']:
+                    st.markdown("### 📊 Datos Satelitales Simulados")
+                    datos = resultados['datos_satelitales']
+                    
+                    col_sim1, col_sim2, col_sim3, col_sim4 = st.columns(4)
+                    with col_sim1:
+                        st.metric("Índice", datos['indice'])
+                    with col_sim2:
+                        st.metric("Valor Promedio", f"{datos['valor_promedio']:.3f}")
+                    with col_sim3:
+                        st.metric("Fuente", datos['fuente'])
+                    with col_sim4:
+                        st.metric("Resolución", datos['resolucion'])
+                    
+                    # Mostrar interpretación
+                    interpretacion = get_interpretacion_indice(datos['indice'])
+                    st.info(f"**Interpretación {datos['indice']}:** {interpretacion}")
+                    
+                    # Gráfico de valores por zona
+                    st.markdown("### 📈 Distribución del Índice por Zona")
+                    try:
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        zonas = resultados['gdf_completo']['id_zona'].astype(str).tolist()
+                        valores = resultados['gdf_completo']['fert_ndvi'].tolist()
+                        
+                        ax.bar(zonas, valores, color='green', alpha=0.7)
+                        ax.axhline(y=datos['valor_promedio'], color='red', linestyle='--', 
+                                  label=f'Promedio: {datos["valor_promedio"]:.3f}')
+                        ax.set_xlabel('Zona')
+                        ax.set_ylabel(f'Valor {datos["indice"]}')
+                        ax.set_title(f'Distribución de {datos["indice"]} por Zona')
+                        ax.legend()
+                        ax.grid(True, alpha=0.3)
+                        
+                        st.pyplot(fig)
+                    except:
+                        st.info("ℹ️ No se pudo generar el gráfico de distribución")
+                else:
+                    st.warning("⚠️ No hay datos satelitales disponibles para visualizar")
     
     with tab9:
         # NUEVA PESTAÑA YOLO
