@@ -542,7 +542,7 @@ def crear_grafico_comparativo_potencial(gdf_completo, cultivo):
 
 # ===== NUEVA FUNCIÓN: VISUALIZACIÓN NDVI + NDRE GEE =====
 def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
-    """Genera visualización NDVI + NDRE - REEMPLAZA A RGB"""
+    """Genera visualización NDVI + NDRE - VERSIÓN CON CORRECCIÓN DE TOKEN"""
     if not GEE_AVAILABLE or not st.session_state.gee_authenticated:
         return None, "❌ Google Earth Engine no está autenticado"
     
@@ -567,23 +567,20 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
         # Seleccionar colección según satélite
         if satelite == 'SENTINEL-2_GEE':
             collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
-            # Parámetros para Sentinel-2
-            ndvi_bands = ['B8', 'B4']  # NIR, Rojo
-            ndre_bands = ['B8', 'B5']  # NIR, Borde Rojo
+            ndvi_bands = ['B8', 'B4']
+            ndre_bands = ['B8', 'B5']
             title = "Sentinel-2 NDVI + NDRE"
             
         elif satelite == 'LANDSAT-8_GEE':
             collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
-            # Parámetros para Landsat 8
-            ndvi_bands = ['SR_B5', 'SR_B4']  # NIR, Rojo
-            ndre_bands = ['SR_B5', 'SR_B6']  # NIR, SWIR1
+            ndvi_bands = ['SR_B5', 'SR_B4']
+            ndre_bands = ['SR_B5', 'SR_B6']
             title = "Landsat 8 NDVI + NDRE"
             
         elif satelite == 'LANDSAT-9_GEE':
             collection = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
-            # Parámetros para Landsat 9
-            ndvi_bands = ['SR_B5', 'SR_B4']  # NIR, Rojo
-            ndre_bands = ['SR_B5', 'SR_B6']  # NIR, SWIR1
+            ndvi_bands = ['SR_B5', 'SR_B4']
+            ndre_bands = ['SR_B5', 'SR_B6']
             title = "Landsat 9 NDVI + NDRE"
             
         else:
@@ -604,7 +601,6 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
             # Tomar la imagen con menos nubes
             image = filtered.sort('CLOUDY_PIXEL_PERCENTAGE').first()
             
-            # Verificar que la imagen no sea nula
             if image is None:
                 return None, "❌ Error: La imagen obtenida es nula"
             
@@ -617,7 +613,6 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
             # Obtener información de la imagen
             image_id = image.get('system:index').getInfo()
             
-            # CORRECCIÓN: Manejo correcto de get()
             cloud_percent_ee = image.get('CLOUDY_PIXEL_PERCENTAGE')
             cloud_percent = cloud_percent_ee.getInfo() if cloud_percent_ee else 0
             
@@ -628,31 +623,49 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
                 fecha_str = datetime.fromtimestamp(fecha_imagen / 1000).strftime('%Y-%m-%d')
                 title += f" - {fecha_str}"
             
-            # Parámetros de visualización para NDVI
+            # Parámetros de visualización
             ndvi_vis_params = {
                 'min': -0.2,
                 'max': 0.8,
                 'palette': ['red', 'yellow', 'green']
             }
             
-            # Parámetros de visualización para NDRE
             ndre_vis_params = {
                 'min': -0.1,
                 'max': 0.6,
                 'palette': ['blue', 'white', 'green']
             }
             
-            # Generar URLs de los mapas
+            # CORRECCIÓN CRÍTICA: Generar URLs SIN token
             ndvi_map_id_dict = ndvi.getMapId(ndvi_vis_params)
             ndre_map_id_dict = ndre.getMapId(ndre_vis_params)
             
             if not ndvi_map_id_dict or 'mapid' not in ndvi_map_id_dict:
-                return None, "❌ Error generando URL del mapa NDVI"
+                return None, "❌ Error generando mapa NDVI"
             
             if not ndre_map_id_dict or 'mapid' not in ndre_map_id_dict:
-                return None, "❌ Error generando URL del mapa NDRE"
+                return None, "❌ Error generando mapa NDRE"
             
-            # Crear HTML combinado para ambos mapas
+            # CORRECCIÓN: Usar URLs de tiles de Earth Engine SIN token
+            # Las service accounts de GEE no necesitan token en la URL para tiles públicos
+            ndvi_mapid = ndvi_map_id_dict['mapid']
+            ndre_mapid = ndre_map_id_dict['mapid']
+            
+            # Para service accounts, el mapid ya incluye el proyecto
+            # Formato: projects/earthengine-legacy/maps/{mapid}
+            
+            # Crear URLs de tiles
+            ndvi_tile_url = f"https://earthengine.googleapis.com/v1alpha/{ndvi_mapid}/tiles"
+            ndre_tile_url = f"https://earthengine.googleapis.com/v1alpha/{ndre_mapid}/tiles"
+            
+            # Si hay token, agregarlo como parámetro (opcional)
+            ndvi_token = ndvi_map_id_dict.get('token', '')
+            ndre_token = ndre_map_id_dict.get('token', '')
+            
+            ndvi_token_param = f"?token={ndvi_token}" if ndvi_token else ""
+            ndre_token_param = f"?token={ndre_token}" if ndre_token else ""
+            
+            # Crear HTML con iframes que funcionan
             html = f"""
             <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
                 <div style="flex: 1; min-width: 300px; border: 2px solid #3b82f6; border-radius: 10px; overflow: hidden;">
@@ -660,7 +673,7 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
                     <iframe
                         width="100%"
                         height="400"
-                        src="https://earthengine.googleapis.com/map/{ndvi_map_id_dict['mapid']}/{{z}}/{{x}}/{{y}}?token={ndvi_map_id_dict['token']}"
+                        src="{ndvi_tile_url}/{{z}}/{{x}}/{{y}}{ndvi_token_param}"
                         frameborder="0"
                         allowfullscreen
                         style="display: block;"
@@ -677,7 +690,7 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
                     <iframe
                         width="100%"
                         height="400"
-                        src="https://earthengine.googleapis.com/map/{ndre_map_id_dict['mapid']}/{{z}}/{{x}}/{{y}}?token={ndre_map_id_dict['token']}"
+                        src="{ndre_tile_url}/{{z}}/{{x}}/{{y}}{ndre_token_param}"
                         frameborder="0"
                         allowfullscreen
                         style="display: block;"
@@ -730,10 +743,10 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
             if "Parameter 'object' is required" in error_msg:
                 return None, f"❌ No se encontró imagen para el período {start_date} - {end_date}"
             else:
-                return None, f"❌ Error GEE: {error_msg[:100]}"
+                return None, f"❌ Error GEE: {error_msg}"
         
     except Exception as e:
-        return None, f"❌ Error general: {str(e)[:100]}"
+        return None, f"❌ Error general: {str(e)}"
 
 # ===== CORRECCIÓN FUNCIÓN obtener_datos_sentinel2_gee =====
 def obtener_datos_sentinel2_gee(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
