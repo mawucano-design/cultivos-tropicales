@@ -24,3 +24,4 @@ torch
 torchvision
 geojson
 contextily
+opencv-python-headless>=4.8.0
