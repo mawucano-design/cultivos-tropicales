@@ -4215,7 +4215,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                     st.write(f"**Resolución:** {datos.get('resolucion', 'N/A')}")
                     st.write(f"**Estado:** {datos.get('estado', 'N/A')}")
     
-   with tab9:
+  with tab9:
     # NUEVA PESTAÑA YOLO - VERSIÓN CORREGIDA
     st.subheader("🦠 DETECCIÓN DE PLAGAS/ENFERMEDADES CON YOLO")
     
@@ -4536,68 +4536,69 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         - Modelo demo: Simulación (~70-80% de precisión simulada)
         - Modelo entrenado: >90% con datos reales
         """)
-    # SECCIÓN DE EXPORTACIÓN (FUERA DE LAS PESTAÑAS)
-    st.markdown("---")
-    st.subheader("💾 EXPORTAR RESULTADOS")
-    
-    col_exp1, col_exp2, col_exp3 = st.columns(3)
-    
-    with col_exp1:
-        st.markdown("**GeoJSON**")
-        if st.button("📤 Generar GeoJSON", key="generate_geojson"):
-            with st.spinner("Generando GeoJSON..."):
-                geojson_data, nombre_geojson = exportar_a_geojson(
-                    resultados['gdf_completo'],
-                    f"analisis_{cultivo}"
-                )
-                if geojson_data:
-                    st.session_state.geojson_data = geojson_data
-                    st.session_state.nombre_geojson = nombre_geojson
-                    st.success("✅ GeoJSON generado correctamente")
-                    st.rerun()
-        
-        if 'geojson_data' in st.session_state and st.session_state.geojson_data:
-            st.download_button(
-                label="📥 Descargar GeoJSON",
-                data=st.session_state.geojson_data,
-                file_name=st.session_state.nombre_geojson,
-                mime="application/json",
-                key="geojson_download"
+
+# ===== SECCIÓN DE EXPORTACIÓN (FUERA DE LAS PESTAÑAS) =====
+st.markdown("---")
+st.subheader("💾 EXPORTAR RESULTADOS")
+
+col_exp1, col_exp2, col_exp3 = st.columns(3)
+
+with col_exp1:
+    st.markdown("**GeoJSON**")
+    if st.button("📤 Generar GeoJSON", key="generate_geojson"):
+        with st.spinner("Generando GeoJSON..."):
+            geojson_data, nombre_geojson = exportar_a_geojson(
+                resultados['gdf_completo'],
+                f"analisis_{cultivo}"
             )
+            if geojson_data:
+                st.session_state.geojson_data = geojson_data
+                st.session_state.nombre_geojson = nombre_geojson
+                st.success("✅ GeoJSON generado correctamente")
+                st.rerun()
     
-    with col_exp2:
-        st.markdown("**Reporte DOCX**")
-        if st.button("📄 Generar Reporte Completo", key="generate_report"):
-            with st.spinner("Generando reporte DOCX..."):
-                reporte = generar_reporte_completo(
-                    resultados, 
-                    cultivo, 
-                    satelite_seleccionado, 
-                    fecha_inicio, 
-                    fecha_fin
-                )
-                if reporte:
-                    st.session_state.reporte_completo = reporte
-                    st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
-                    st.success("✅ Reporte generado correctamente")
-                    st.rerun()
-        
-        if 'reporte_completo' in st.session_state and st.session_state.reporte_completo:
-            st.download_button(
-                label="📥 Descargar Reporte DOCX",
-                data=st.session_state.reporte_completo,
-                file_name=st.session_state.nombre_reporte,
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                key="report_download"
+    if 'geojson_data' in st.session_state and st.session_state.geojson_data:
+        st.download_button(
+            label="📥 Descargar GeoJSON",
+            data=st.session_state.geojson_data,
+            file_name=st.session_state.nombre_geojson,
+            mime="application/json",
+            key="geojson_download"
+        )
+
+with col_exp2:
+    st.markdown("**Reporte DOCX**")
+    if st.button("📄 Generar Reporte Completo", key="generate_report"):
+        with st.spinner("Generando reporte DOCX..."):
+            reporte = generar_reporte_completo(
+                resultados, 
+                cultivo, 
+                satelite_seleccionado, 
+                fecha_inicio, 
+                fecha_fin
             )
+            if reporte:
+                st.session_state.reporte_completo = reporte
+                st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
+                st.success("✅ Reporte generado correctamente")
+                st.rerun()
     
-    with col_exp3:
-        st.markdown("**Limpiar Resultados**")
-        if st.button("🗑️ Limpiar Resultados", use_container_width=True):
-            for key in list(st.session_state.keys()):
-                if key not in ['gee_authenticated', 'gee_project']:
-                    del st.session_state[key]
-            st.rerun()
+    if 'reporte_completo' in st.session_state and st.session_state.reporte_completo:
+        st.download_button(
+            label="📥 Descargar Reporte DOCX",
+            data=st.session_state.reporte_completo,
+            file_name=st.session_state.nombre_reporte,
+            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            key="report_download"
+        )
+
+with col_exp3:
+    st.markdown("**Limpiar Resultados**")
+    if st.button("🗑️ Limpiar Resultados", use_container_width=True):
+        for key in list(st.session_state.keys()):
+            if key not in ['gee_authenticated', 'gee_project']:
+                del st.session_state[key]
+        st.rerun()
 
 # ===== PIE DE PÁGINA =====
 st.markdown("---")
