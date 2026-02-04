@@ -1156,6 +1156,7 @@ TEXTURA_SUELO_OPTIMA = {
         'densidad_aparente_optima': 1.38,
         'porosidad_optima': 0.46
     },
+    # NUEVOS CULTIVOS AGREGADOS
     'VID': {
         'textura_optima': 'Franco-arenoso',
         'arena_optima': 50,
@@ -1171,6 +1172,46 @@ TEXTURA_SUELO_OPTIMA = {
         'arcilla_optima': 25,
         'densidad_aparente_optima': 1.35,
         'porosidad_optima': 0.48
+    },
+    'ALMENDRO': {
+        'textura_optima': 'Franco',
+        'arena_optima': 45,
+        'limo_optima': 35,
+        'arcilla_optima': 20,
+        'densidad_aparente_optima': 1.38,
+        'porosidad_optima': 0.47
+    },
+    'BANANO': {
+        'textura_optima': 'Franco-arcilloso',
+        'arena_optima': 35,
+        'limo_optima': 40,
+        'arcilla_optima': 25,
+        'densidad_aparente_optima': 1.20,
+        'porosidad_optima': 0.55
+    },
+    'CAFE': {
+        'textura_optima': 'Franco',
+        'arena_optima': 40,
+        'limo_optima': 40,
+        'arcilla_optima': 20,
+        'densidad_aparente_optima': 1.25,
+        'porosidad_optima': 0.52
+    },
+    'CACAO': {
+        'textura_optima': 'Franco-arcilloso',
+        'arena_optima': 30,
+        'limo_optima': 45,
+        'arcilla_optima': 25,
+        'densidad_aparente_optima': 1.15,
+        'porosidad_optima': 0.56
+    },
+    'PALMA_ACEITERA': {
+        'textura_optima': 'Franco',
+        'arena_optima': 45,
+        'limo_optima': 35,
+        'arcilla_optima': 20,
+        'densidad_aparente_optima': 1.30,
+        'porosidad_optima': 0.51
     }
 }
 
