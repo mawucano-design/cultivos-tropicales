@@ -1460,7 +1460,7 @@ PARAMETROS_CULTIVOS = {
         'RENDIMIENTO_OPTIMO': 20000,  # kg/ha de racimos
         'COSTO_FERTILIZACION': 1100,
         'PRECIO_VENTA': 0.40,  # USD/kg aceite
-        'VARIEDADES': VARIEDADES_CULTivos['PALMA_ACEITERA'],
+        'VARIEDADES': VARIEDADES_CULTIVOS['PALMA_ACEITERA'],
         'ZONAS_ARGENTINA': ['Formosa', 'Chaco', 'Misiones']
     }
 }
