@@ -3173,6 +3173,17 @@ def crear_grafico_proyecciones_rendimiento(zonas, sin_fert, con_fert):
         st.error(f"❌ Error creando gráfico de proyecciones: {str(e)}")
         return None
 
+# ===== FUNCIÓN PARA DESCARGAR PNG =====
+def crear_boton_descarga_png(buffer, nombre_archivo, texto_boton="📥 Descargar PNG"):
+    """Crear botón de descarga para archivos PNG"""
+    if buffer:
+        st.download_button(
+            label=texto_boton,
+            data=buffer,
+            file_name=nombre_archivo,
+            mime="image/png"
+        )
+
 # ===== FUNCIONES PARA CURVAS DE NIVEL Y 3D =====
 def crear_mapa_pendientes(X, Y, pendientes, gdf_original):
     """Crear mapa de pendientes"""
@@ -4310,6 +4321,8 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 if key not in ['gee_authenticated', 'gee_project']:
                     del st.session_state[key]
             st.rerun()
+
+
 
 # ===== PIE DE PÁGINA =====
 st.markdown("---")
