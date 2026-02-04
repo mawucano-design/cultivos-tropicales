@@ -616,9 +616,13 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
             
             # Obtener información de la imagen
             image_id = image.get('system:index').getInfo()
+            
+            # CORRECCIÓN: Manejo correcto de get()
             cloud_percent_ee = image.get('CLOUDY_PIXEL_PERCENTAGE')
             cloud_percent = cloud_percent_ee.getInfo() if cloud_percent_ee else 0
-            fecha_imagen = image.get('system:time_start').getInfo()
+            
+            fecha_imagen_ee = image.get('system:time_start')
+            fecha_imagen = fecha_imagen_ee.getInfo() if fecha_imagen_ee else None
             
             if fecha_imagen:
                 fecha_str = datetime.fromtimestamp(fecha_imagen / 1000).strftime('%Y-%m-%d')
@@ -828,9 +832,13 @@ def obtener_datos_sentinel2_gee(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
         
         # Obtener metadatos
         image_id = image.get('system:index').getInfo()
+        
+        # CORRECCIÓN: Manejo correcto de get()
         cloud_percent_ee = image.get('CLOUDY_PIXEL_PERCENTAGE')
         cloud_percent = cloud_percent_ee.getInfo() if cloud_percent_ee else 0
-        fecha_imagen = image.get('system:time_start').getInfo()
+        
+        fecha_imagen_ee = image.get('system:time_start')
+        fecha_imagen = fecha_imagen_ee.getInfo() if fecha_imagen_ee else None
         
         if fecha_imagen:
             fecha_imagen_str = datetime.fromtimestamp(fecha_imagen / 1000).strftime('%Y-%m-%d')
@@ -925,7 +933,6 @@ def obtener_datos_sentinel2_gee(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
     except Exception as e:
         st.error(f"❌ Error crítico en GEE: {str(e)}")
         return None
-
 # ===== INICIALIZACIÓN DE VARIABLES DE SESIÓN =====
 if 'reporte_completo' not in st.session_state:
     st.session_state.reporte_completo = None
