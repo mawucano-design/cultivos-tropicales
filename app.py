@@ -4074,7 +4074,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         else:
             st.info("ℹ️ No hay datos topográficos disponibles para esta parcela")
     
-       with tab8:
+    with tab8:
         # PESTAÑA 8: VISUALIZACIÓN NDVI + NDRE (REEMPLAZA A RGB)
         st.subheader("🌱 VISUALIZACIÓN NDVI + NDRE")
         
