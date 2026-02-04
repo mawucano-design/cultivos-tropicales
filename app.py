@@ -540,134 +540,18 @@ def crear_grafico_comparativo_potencial(gdf_completo, cultivo):
         st.error(f"❌ Error creando gráfico comparativo: {str(e)}")
         return None
 
-# ===== NUEVA FUNCIÓN: VISUALIZACIÓN NDVI + NDRE GEE =====
-with tab8:
-    # PESTAÑA 8: VISUALIZACIÓN NDVI + NDRE
-    st.subheader("🌱 VISUALIZACIÓN NDVI + NDRE")
-    
-    # Explicación de los índices
-    col_info1, col_info2 = st.columns(2)
-    
-    with col_info1:
-        st.markdown("""
-        ### 🌱 **NDVI (Índice de Vegetación de Diferencia Normalizada)**
-        - **Fórmula:** (NIR - Rojo) / (NIR + Rojo)
-        - **Rango:** -1.0 a 1.0
-        - **Interpretación:**
-          * < 0.1: Suelo desnudo/agua
-          * 0.2-0.3: Vegetación escasa
-          * 0.4-0.6: Vegetación moderada
-          * > 0.7: Vegetación densa y saludable
-        """)
-    
-    with col_info2:
-        st.markdown("""
-        ### 🌿 **NDRE (Índice de Borde Rojo Normalizado)**
-        - **Fórmula:** (NIR - Borde Rojo) / (NIR + Borde Rojo)
-        - **Rango:** -0.5 a 0.8
-        - **Ventajas:**
-          * Más sensible a clorofila en capas internas
-          * Menos saturación en vegetación densa
-          * Mejor para monitoreo de nitrógeno
-        - **Interpretación:**
-          * < 0.2: Estrés nutricional
-          * 0.3-0.5: Óptimo
-          * > 0.6: Exceso de nitrógeno
-        """)
-    
-    # Selector de fuente de datos
-    st.subheader("🛰️ Fuente de Datos")
-    
-    if satelite_seleccionado in ['SENTINEL-2_GEE', 'LANDSAT-8_GEE', 'LANDSAT-9_GEE']:
-        if st.session_state.gee_authenticated:
-            st.success(f"✅ Google Earth Engine autenticado - {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}")
-            
-            # Opciones de visualización
-            tipo_visualizacion = st.radio(
-                "Tipo de visualización:",
-                ["Mapas interactivos (iframes)", "Mapas estáticos (imágenes)"],
-                horizontal=True,
-                help="Mapas interactivos permiten zoom, estáticos son más confiables"
-            )
-            
-            # Botón para generar visualización
-            if st.button("🌍 Generar Mapas NDVI + NDRE", type="primary", use_container_width=True):
-                with st.spinner("Generando mapas NDVI y NDRE desde Google Earth Engine..."):
-                    
-                    if tipo_visualizacion == "Mapas interactivos (iframes)":
-                        html_indices, mensaje = visualizar_indices_gee(
-                            resultados['gdf_dividido'],
-                            satelite_seleccionado,
-                            fecha_inicio,
-                            fecha_fin
-                        )
-                    else:
-                        html_indices, mensaje = visualizar_indices_gee_estatico(
-                            resultados['gdf_dividido'],
-                            satelite_seleccionado,
-                            fecha_inicio,
-                            fecha_fin
-                        )
-                
-                if html_indices:
-                    st.success(mensaje)
-                    st.markdown(html_indices, unsafe_allow_html=True)
-                    
-                    # Mostrar información adicional
-                    st.markdown("### 📊 Información de Interpretación")
-                    
-                    col_inter1, col_inter2 = st.columns(2)
-                    
-                    with col_inter1:
-                        st.markdown("""
-                        **🔍 Comparación NDVI vs NDRE:**
-                        - **NDVI > NDRE:** Vegetación saludable, buen contenido de clorofila
-                        - **NDVI ≈ NDRE:** Vegetación en estado óptimo
-                        - **NDVI < NDRE:** Posible estrés temprano, deficiencia nutricional
-                        - **Ambos bajos:** Estrés severo o suelo desnudo
-                        """)
-                    
-                    with col_inter2:
-                        st.markdown("""
-                        **🎯 Recomendaciones según valores:**
-                        - **NDVI < 0.3:** Considerar resiembra o enmiendas
-                        - **NDRE < 0.2:** Aplicar fertilización nitrogenada
-                        - **Diferencia > 0.3:** Monitorear posibles enfermedades
-                        - **Valores estables:** Mantener prácticas actuales
-                        """)
-                else:
-                    st.warning(mensaje)
-                    st.info("""
-                    🔍 **Consejos para mejorar la obtención de imágenes:**
-                    1. Amplía el rango temporal (ej: últimos 60 días)
-                    2. Selecciona fechas con menor probabilidad de nubes
-                    3. Verifica que las coordenadas sean correctas
-                    4. Usa Landsat si Sentinel-2 no tiene imágenes disponibles
-                    5. Prueba con "Mapas estáticos" si los interactivos fallan
-                    """)
-        else:
-            st.error("❌ Google Earth Engine no está autenticado")
-    else:
-        st.warning("⚠️ Para visualizaciones NDVI+NDRE, selecciona una fuente GEE")
-
-# ===== CORRECCIÓN FUNCIÓN obtener_datos_sentinel2_gee =====
-def obtener_datos_sentinel2_gee(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
-    """Obtener datos reales de Sentinel-2 - VERSIÓN CORREGIDA"""
+# ===== NUEVA FUNCIÓN: VISUALIZACIÓN NDVI + NDRE GEE (INTERACTIVA) =====
+def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
+    """Genera visualización NDVI + NDRE interactiva con iframes"""
     if not GEE_AVAILABLE or not st.session_state.gee_authenticated:
-        st.warning("⚠️ GEE no disponible o no autenticado")
-        return None
+        return None, "❌ Google Earth Engine no está autenticado"
     
     try:
-        # Validar que el GeoDataFrame tenga geometría válida
-        if gdf is None or len(gdf) == 0:
-            st.error("❌ El área de estudio no es válida")
-            return None
-        
-        # Obtener bounding box
+        # Obtener bounding box de la parcela
         bounds = gdf.total_bounds
         min_lon, min_lat, max_lon, max_lat = bounds
         
-        # Expandir ligeramente para asegurar cobertura
+        # Expandir ligeramente el área para asegurar cobertura
         min_lon -= 0.001
         max_lon += 0.001
         min_lat -= 0.001
@@ -680,174 +564,330 @@ def obtener_datos_sentinel2_gee(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
         start_date = fecha_inicio.strftime('%Y-%m-%d')
         end_date = fecha_fin.strftime('%Y-%m-%d')
         
-        # Validar rango de fechas
-        if fecha_inicio > fecha_fin:
-            st.warning("⚠️ Fecha inicio posterior a fecha fin. Invertiendo fechas.")
-            start_date, end_date = end_date, start_date
-        
-        # Intentar diferentes colecciones y filtros
-        colecciones = [
-            'COPERNICUS/S2_SR_HARMONIZED',
-            'COPERNICUS/S2_SR'
-        ]
-        
-        image = None
-        coleccion_usada = None
-        
-        for coleccion_nombre in colecciones:
-            try:
-                collection = ee.ImageCollection(coleccion_nombre)
-                
-                filtered = (collection
-                          .filterBounds(geometry)
-                          .filterDate(start_date, end_date)
-                          .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80)))
-                
-                count = filtered.size().getInfo()
-                
-                if count > 0:
-                    image = filtered.sort('CLOUDY_PIXEL_PERCENTAGE').first()
-                    coleccion_usada = coleccion_nombre
-                    break
-                    
-            except Exception as e:
-                continue
-        
-        if image is None:
-            st.warning(f"⚠️ No se encontraron imágenes Sentinel-2 para el período")
+        # Seleccionar colección según satélite
+        if satelite == 'SENTINEL-2_GEE':
+            collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+            ndvi_bands = ['B8', 'B4']
+            ndre_bands = ['B8', 'B5']
+            title = "Sentinel-2 NDVI + NDRE"
             
-            # Intentar con un rango más amplio
-            fecha_inicio_ext = fecha_inicio - timedelta(days=60)
-            start_date_ext = fecha_inicio_ext.strftime('%Y-%m-%d')
+        elif satelite == 'LANDSAT-8_GEE':
+            collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+            ndvi_bands = ['SR_B5', 'SR_B4']
+            ndre_bands = ['SR_B5', 'SR_B6']
+            title = "Landsat 8 NDVI + NDRE"
             
-            st.info(f"🔄 Intentando con rango extendido: {start_date_ext} - {end_date}")
+        elif satelite == 'LANDSAT-9_GEE':
+            collection = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
+            ndvi_bands = ['SR_B5', 'SR_B4']
+            ndre_bands = ['SR_B5', 'SR_B6']
+            title = "Landsat 9 NDVI + NDRE"
             
-            for coleccion_nombre in colecciones:
-                try:
-                    collection = ee.ImageCollection(coleccion_nombre)
-                    filtered = (collection
-                              .filterBounds(geometry)
-                              .filterDate(start_date_ext, end_date)
-                              .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 80)))
-                    
-                    count = filtered.size().getInfo()
-                    
-                    if count > 0:
-                        image = filtered.sort('CLOUDY_PIXEL_PERCENTAGE').first()
-                        coleccion_usada = coleccion_nombre
-                        st.success(f"✅ Encontrada imagen con {count} días de extensión")
-                        break
-                        
-                except Exception as e:
-                    continue
-        
-        if image is None:
-            st.error("❌ No se pudieron obtener datos de GEE")
-            return None
-        
-        # Obtener metadatos
-        image_id = image.get('system:index').getInfo()
-        
-        # CORRECCIÓN: Manejo correcto de get()
-        cloud_percent_ee = image.get('CLOUDY_PIXEL_PERCENTAGE')
-        cloud_percent = cloud_percent_ee.getInfo() if cloud_percent_ee else 0
-        
-        fecha_imagen_ee = image.get('system:time_start')
-        fecha_imagen = fecha_imagen_ee.getInfo() if fecha_imagen_ee else None
-        
-        if fecha_imagen:
-            fecha_imagen_str = datetime.fromtimestamp(fecha_imagen / 1000).strftime('%Y-%m-%d')
         else:
-            fecha_imagen_str = "Desconocida"
+            return None, "⚠️ Satélite no soportado para visualización de índices"
         
-        # Calcular índice
+        # Filtrar colección
         try:
-            if indice == 'NDVI':
-                ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-                index_image = ndvi
-            elif indice == 'NDWI':
-                ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
-                index_image = ndwi
-            elif indice == 'EVI':
-                evi = image.expression(
-                    '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
-                    {
-                        'NIR': image.select('B8'),
-                        'RED': image.select('B4'),
-                        'BLUE': image.select('B2')
-                    }
-                ).rename('EVI')
-                index_image = evi
-            elif indice == 'NDRE':
-                ndre = image.normalizedDifference(['B8', 'B5']).rename('NDRE')
-                index_image = ndre
-            else:
-                ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-                index_image = ndvi
-                indice = 'NDVI'
-        except Exception as e:
-            st.warning(f"⚠️ Error calculando índice {indice}: {e}. Usando NDVI por defecto.")
-            ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
-            index_image = ndvi
-            indice = 'NDVI'
-        
-        # Calcular estadísticas
-        try:
-            stats = index_image.reduceRegion(
-                reducer=ee.Reducer.mean().combine(
-                    reducer2=ee.Reducer.minMax(),
-                    sharedInputs=True
-                ).combine(
-                    reducer2=ee.Reducer.stdDev(),
-                    sharedInputs=True
-                ),
-                geometry=geometry,
-                scale=30,  # Usar escala más grande para mayor estabilidad
-                bestEffort=True,
-                maxPixels=1e8
-            )
+            filtered = (collection
+                       .filterBounds(geometry)
+                       .filterDate(start_date, end_date)
+                       .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 60)))
             
-            stats_dict = stats.getInfo()
+            # Verificar si hay imágenes
+            count = filtered.size().getInfo()
+            if count == 0:
+                return None, f"⚠️ No hay imágenes disponibles para {start_date} - {end_date}"
             
-            if not stats_dict:
-                # Valores por defecto si no se obtienen estadísticas
-                valor_promedio = 0.6
-                valor_min = 0.3
-                valor_max = 0.9
-                valor_std = 0.1
-                st.warning("⚠️ No se pudieron calcular estadísticas completas")
-            else:
-                valor_promedio = stats_dict.get(f'{indice}_mean', 0.6)
-                valor_min = stats_dict.get(f'{indice}_min', 0.3)
-                valor_max = stats_dict.get(f'{indice}_max', 0.9)
-                valor_std = stats_dict.get(f'{indice}_stdDev', 0.1)
+            # Tomar la imagen con menos nubes
+            image = filtered.sort('CLOUDY_PIXEL_PERCENTAGE').first()
+            
+            if image is None:
+                return None, "❌ Error: La imagen obtenida es nula"
+            
+            # Calcular NDVI
+            ndvi = image.normalizedDifference(ndvi_bands).rename('NDVI')
+            
+            # Calcular NDRE
+            ndre = image.normalizedDifference(ndre_bands).rename('NDRE')
+            
+            # Obtener información de la imagen
+            image_id = image.get('system:index').getInfo()
+            
+            cloud_percent_ee = image.get('CLOUDY_PIXEL_PERCENTAGE')
+            cloud_percent = cloud_percent_ee.getInfo() if cloud_percent_ee else 0
+            
+            fecha_imagen_ee = image.get('system:time_start')
+            fecha_imagen = fecha_imagen_ee.getInfo() if fecha_imagen_ee else None
+            
+            if fecha_imagen:
+                fecha_str = datetime.fromtimestamp(fecha_imagen / 1000).strftime('%Y-%m-%d')
+                title += f" - {fecha_str}"
+            
+            # Parámetros de visualización
+            ndvi_vis_params = {
+                'min': -0.2,
+                'max': 0.8,
+                'palette': ['red', 'yellow', 'green']
+            }
+            
+            ndre_vis_params = {
+                'min': -0.1,
+                'max': 0.6,
+                'palette': ['blue', 'white', 'green']
+            }
+            
+            # Generar URLs de los mapas
+            ndvi_map_id_dict = ndvi.getMapId(ndvi_vis_params)
+            ndre_map_id_dict = ndre.getMapId(ndre_vis_params)
+            
+            if not ndvi_map_id_dict or 'mapid' not in ndvi_map_id_dict:
+                return None, "❌ Error generando mapa NDVI"
+            
+            if not ndre_map_id_dict or 'mapid' not in ndre_map_id_dict:
+                return None, "❌ Error generando mapa NDRE"
+            
+            # Usar URLs de tiles de Earth Engine
+            ndvi_mapid = ndvi_map_id_dict['mapid']
+            ndre_mapid = ndre_map_id_dict['mapid']
+            
+            # Si hay token, agregarlo como parámetro
+            ndvi_token = ndvi_map_id_dict.get('token', '')
+            ndre_token = ndre_map_id_dict.get('token', '')
+            
+            ndvi_token_param = f"?token={ndvi_token}" if ndvi_token else ""
+            ndre_token_param = f"?token={ndre_token}" if ndre_token else ""
+            
+            # Crear HTML con iframes
+            html = f"""
+            <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
+                <div style="flex: 1; min-width: 300px; border: 2px solid #3b82f6; border-radius: 10px; overflow: hidden;">
+                    <h4 style="text-align: center; background: linear-gradient(135deg, #ff4444, #ffff44, #44ff44); color: #000; padding: 10px; margin: 0;">🌱 MAPA NDVI</h4>
+                    <iframe
+                        width="100%"
+                        height="400"
+                        src="https://earthengine.googleapis.com/v1alpha/{ndvi_mapid}/tiles/{{z}}/{{x}}/{{y}}{ndvi_token_param}"
+                        frameborder="0"
+                        allowfullscreen
+                        style="display: block;"
+                    ></iframe>
+                    <div style="background: #f0f9ff; padding: 8px; border-top: 1px solid #3b82f6;">
+                        <p style="margin: 5px 0; font-size: 0.8em;">
+                            <strong>Escala:</strong> -0.2 (rojo) a 0.8 (verde)
+                        </p>
+                    </div>
+                </div>
                 
+                <div style="flex: 1; min-width: 300px; border: 2px solid #10b981; border-radius: 10px; overflow: hidden;">
+                    <h4 style="text-align: center; background: linear-gradient(135deg, #0000ff, #ffffff, #00ff00); color: #000; padding: 10px; margin: 0;">🌿 MAPA NDRE</h4>
+                    <iframe
+                        width="100%"
+                        height="400"
+                        src="https://earthengine.googleapis.com/v1alpha/{ndre_mapid}/tiles/{{z}}/{{x}}/{{y}}{ndre_token_param}"
+                        frameborder="0"
+                        allowfullscreen
+                        style="display: block;"
+                    ></iframe>
+                    <div style="background: #f0f9ff; padding: 8px; border-top: 1px solid #10b981;">
+                        <p style="margin: 5px 0; font-size: 0.8em;">
+                            <strong>Escala:</strong> -0.1 (azul) a 0.6 (verde)
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e2e8f0;">
+                <h4 style="margin-top: 0; color: #3b82f6;">📊 INFORMACIÓN DE LOS ÍNDICES</h4>
+                <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <h5 style="color: #3b82f6; margin-bottom: 8px;">🌱 NDVI (Índice de Vegetación de Diferencia Normalizada)</h5>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 0.9em;">
+                            <li><strong>Rango saludable:</strong> 0.3 - 0.8</li>
+                            <li><strong>Valores bajos (&lt;0.2):</strong> Suelo desnudo, estrés hídrico</li>
+                            <li><strong>Valores medios (0.3-0.5):</strong> Vegetación moderada</li>
+                            <li><strong>Valores altos (&gt;0.6):</strong> Vegetación densa y saludable</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="flex: 1; min-width: 200px;">
+                        <h5 style="color: #10b981; margin-bottom: 8px;">🌿 NDRE (Índice de Borde Rojo Normalizado)</h5>
+                        <ul style="margin: 0; padding-left: 20px; font-size: 0.9em;">
+                            <li><strong>Rango saludable:</strong> 0.2 - 0.5</li>
+                            <li><strong>Sensibilidad:</strong> Clorofila en capas internas</li>
+                            <li><strong>Uso:</strong> Monitoreo de nitrógeno</li>
+                            <li><strong>Ventaja:</strong> Menos saturación en vegetación densa</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 15px; padding: 10px; background: #e0f2fe; border-radius: 5px; border-left: 4px solid #3b82f6;">
+                    <p style="margin: 0; font-size: 0.85em;">
+                        <strong>ℹ️ Información técnica:</strong> {title} | Nubes: {cloud_percent}% | ID: {image_id} | 
+                        <strong>Interpretación:</strong> Compara ambos índices para detectar estrés temprano
+                    </p>
+                </div>
+            </div>
+            """
+            
+            return html, f"✅ {title}"
+            
         except Exception as e:
-            st.warning(f"⚠️ Error en estadísticas: {e}. Usando valores simulados.")
-            valor_promedio = 0.6 + np.random.normal(0, 0.1)
-            valor_min = max(0.1, valor_promedio - 0.3)
-            valor_max = min(0.95, valor_promedio + 0.3)
-            valor_std = 0.1
-        
-        return {
-            'indice': indice,
-            'valor_promedio': valor_promedio,
-            'valor_min': valor_min,
-            'valor_max': valor_max,
-            'valor_std': valor_std,
-            'fuente': f'Sentinel-2 GEE ({coleccion_usada})',
-            'fecha_descarga': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'fecha_imagen': fecha_imagen_str,
-            'resolucion': '10-20m',
-            'estado': 'exitosa',
-            'cobertura_nubes': f"{cloud_percent}%" if cloud_percent else 'N/A',
-            'id_imagen': image_id,
-            'nota': f"Colección: {coleccion_usada}"
-        }
+            error_msg = str(e)
+            if "Parameter 'object' is required" in error_msg:
+                return None, f"❌ No se encontró imagen para el período {start_date} - {end_date}"
+            else:
+                return None, f"❌ Error GEE: {error_msg}"
         
     except Exception as e:
-        st.error(f"❌ Error crítico en GEE: {str(e)}")
-        return None
+        return None, f"❌ Error general: {str(e)}"
+
+
+# ===== FUNCIÓN: VISUALIZACIÓN NDVI + NDRE GEE (ESTÁTICA) =====
+def visualizar_indices_gee_estatico(gdf, satelite, fecha_inicio, fecha_fin):
+    """Versión alternativa con mapas estáticos - NO usa iframes"""
+    if not GEE_AVAILABLE or not st.session_state.gee_authenticated:
+        return None, "❌ Google Earth Engine no está autenticado"
+    
+    try:
+        # Obtener bounding box de la parcela
+        bounds = gdf.total_bounds
+        min_lon, min_lat, max_lon, max_lat = bounds
+        
+        # Crear geometría
+        geometry = ee.Geometry.Rectangle([min_lon, min_lat, max_lon, max_lat])
+        
+        # Formatear fechas
+        start_date = fecha_inicio.strftime('%Y-%m-%d')
+        end_date = fecha_fin.strftime('%Y-%m-%d')
+        
+        # Seleccionar colección según satélite
+        if satelite == 'SENTINEL-2_GEE':
+            collection = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+            ndvi_bands = ['B8', 'B4']
+            ndre_bands = ['B8', 'B5']
+            title = "Sentinel-2"
+            
+        elif satelite == 'LANDSAT-8_GEE':
+            collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
+            ndvi_bands = ['SR_B5', 'SR_B4']
+            ndre_bands = ['SR_B5', 'SR_B6']
+            title = "Landsat 8"
+            
+        elif satelite == 'LANDSAT-9_GEE':
+            collection = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
+            ndvi_bands = ['SR_B5', 'SR_B4']
+            ndre_bands = ['SR_B5', 'SR_B6']
+            title = "Landsat 9"
+            
+        else:
+            return None, "⚠️ Satélite no soportado"
+        
+        # Filtrar colección
+        filtered = (collection
+                   .filterBounds(geometry)
+                   .filterDate(start_date, end_date)
+                   .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 60)))
+        
+        # Verificar si hay imágenes
+        count = filtered.size().getInfo()
+        if count == 0:
+            return None, f"⚠️ No hay imágenes disponibles"
+        
+        # Tomar la imagen con menos nubes
+        image = filtered.sort('CLOUDY_PIXEL_PERCENTAGE').first()
+        
+        # Calcular índices
+        ndvi = image.normalizedDifference(ndvi_bands).rename('NDVI')
+        ndre = image.normalizedDifference(ndre_bands).rename('NDRE')
+        
+        # Generar URLs de miniaturas (thumbnails) estáticas
+        try:
+            ndvi_thumbnail_url = ndvi.getThumbURL({
+                'min': -0.2,
+                'max': 0.8,
+                'palette': ['red', 'yellow', 'green'],
+                'dimensions': 800,
+                'region': geometry,
+                'format': 'png'
+            })
+            
+            ndre_thumbnail_url = ndre.getThumbURL({
+                'min': -0.1,
+                'max': 0.6,
+                'palette': ['blue', 'white', 'green'],
+                'dimensions': 800,
+                'region': geometry,
+                'format': 'png'
+            })
+        except Exception as e:
+            return None, f"❌ Error generando imágenes estáticas: {str(e)}"
+        
+        # Crear HTML con imágenes estáticas
+        html = f"""
+        <div style="display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 20px;">
+            <div style="flex: 1; min-width: 300px; border: 2px solid #3b82f6; border-radius: 10px; overflow: hidden;">
+                <h4 style="text-align: center; background: linear-gradient(135deg, #ff4444, #ffff44, #44ff44); color: #000; padding: 10px; margin: 0;">🌱 MAPA NDVI</h4>
+                <img src="{ndvi_thumbnail_url}" 
+                     width="100%" 
+                     style="display: block; height: 400px; object-fit: cover;"
+                     alt="Mapa NDVI">
+                <div style="background: #f0f9ff; padding: 8px; border-top: 1px solid #3b82f6;">
+                    <p style="margin: 5px 0; font-size: 0.8em;">
+                        <strong>Escala:</strong> -0.2 (rojo) a 0.8 (verde)
+                    </p>
+                </div>
+            </div>
+            
+            <div style="flex: 1; min-width: 300px; border: 2px solid #10b981; border-radius: 10px; overflow: hidden;">
+                <h4 style="text-align: center; background: linear-gradient(135deg, #0000ff, #ffffff, #00ff00); color: #000; padding: 10px; margin: 0;">🌿 MAPA NDRE</h4>
+                <img src="{ndre_thumbnail_url}" 
+                     width="100%" 
+                     style="display: block; height: 400px; object-fit: cover;"
+                     alt="Mapa NDRE">
+                <div style="background: #f0f9ff; padding: 8px; border-top: 1px solid #10b981;">
+                    <p style="margin: 5px 0; font-size: 0.8em;">
+                        <strong>Escala:</strong> -0.1 (azul) a 0.6 (verde)
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <div style="background: #f8fafc; padding: 15px; border-radius: 8px; margin-top: 15px; border: 1px solid #e2e8f0;">
+            <h4 style="margin-top: 0; color: #3b82f6;">📊 INFORMACIÓN DE LOS ÍNDICES</h4>
+            <div style="display: flex; flex-wrap: wrap; gap: 20px;">
+                <div style="flex: 1; min-width: 200px;">
+                    <h5 style="color: #3b82f6; margin-bottom: 8px;">🌱 NDVI (Índice de Vegetación de Diferencia Normalizada)</h5>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 0.9em;">
+                        <li><strong>Rango saludable:</strong> 0.3 - 0.8</li>
+                        <li><strong>Valores bajos (&lt;0.2):</strong> Suelo desnudo, estrés hídrico</li>
+                        <li><strong>Valores medios (0.3-0.5):</strong> Vegetación moderada</li>
+                        <li><strong>Valores altos (&gt;0.6):</strong> Vegetación densa y saludable</li>
+                    </ul>
+                </div>
+                
+                <div style="flex: 1; min-width: 200px;">
+                    <h5 style="color: #10b981; margin-bottom: 8px;">🌿 NDRE (Índice de Borde Rojo Normalizado)</h5>
+                    <ul style="margin: 0; padding-left: 20px; font-size: 0.9em;">
+                        <li><strong>Rango saludable:</strong> 0.2 - 0.5</li>
+                        <li><strong>Sensibilidad:</strong> Clorofila en capas internas</li>
+                        <li><strong>Uso:</strong> Monitoreo de nitrógeno</li>
+                        <li><strong>Ventaja:</strong> Menos saturación en vegetación densa</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div style="margin-top: 15px; padding: 10px; background: #e0f2fe; border-radius: 5px; border-left: 4px solid #3b82f6;">
+                <p style="margin: 0; font-size: 0.85em;">
+                    <strong>ℹ️ Información técnica:</strong> {title} | 
+                    <strong>Nota:</strong> Mapas estáticos generados desde Google Earth Engine
+                </p>
+            </div>
+        </div>
+        """
+        
+        return html, f"✅ {title} - Mapas estáticos generados"
+        
+    except Exception as e:
+        return None, f"❌ Error: {str(e)}"
 # ===== INICIALIZACIÓN DE VARIABLES DE SESIÓN =====
 if 'reporte_completo' not in st.session_state:
     st.session_state.reporte_completo = None
