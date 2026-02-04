@@ -3310,9 +3310,9 @@ def crear_visualizacion_3d(X, Y, Z):
         st.error(f"❌ Error creando visualización 3D: {str(e)}")
         return None
 
-# ===== FUNCIÓN PARA VISUALIZAR IMÁGENES GEE =====
+# ===== NUEVA FUNCIÓN PARA VISUALIZAR ÍNDICES ESPECTRALES =====
 def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI'):
-    """Genera visualización de índices espectrales (NDVI, NDWI, EVI) - VERSIÓN CORREGIDA"""
+    """Genera visualización de índices espectrales (NDVI, NDWI, EVI)"""
     if not GEE_AVAILABLE or not st.session_state.gee_authenticated:
         return None, "❌ Google Earth Engine no está autenticado"
     
@@ -3340,7 +3340,6 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
             # Definir parámetros de visualización según el índice
             if indice == 'NDVI':
                 title = "Sentinel-2 NDVI (Índice de Vegetación)"
-                # Escala de colores para NDVI: rojo (bajo) a verde (alto)
                 vis_params = {
                     'min': -0.2,
                     'max': 0.8,
@@ -3348,7 +3347,6 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
                 }
             elif indice == 'NDWI':
                 title = "Sentinel-2 NDWI (Índice de Agua)"
-                # Escala de colores para NDWI: marrón (seco) a azul (húmedo)
                 vis_params = {
                     'min': -0.5,
                     'max': 0.5,
@@ -3361,15 +3359,7 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
                     'max': 0.8,
                     'palette': ['red', 'yellow', 'green']
                 }
-            elif indice == 'SAVI':
-                title = "Sentinel-2 SAVI (Índice de Vegetación Ajustado al Suelo)"
-                vis_params = {
-                    'min': 0,
-                    'max': 0.8,
-                    'palette': ['red', 'yellow', 'green']
-                }
             else:
-                # Por defecto usar NDVI
                 title = "Sentinel-2 NDVI"
                 vis_params = {
                     'min': -0.2,
@@ -3379,7 +3369,6 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
             
         elif satelite == 'LANDSAT-8_GEE':
             collection = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2')
-            # Similar para Landsat 8
             if indice == 'NDVI':
                 title = "Landsat 8 NDVI"
                 vis_params = {
@@ -3404,7 +3393,6 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
             
         elif satelite == 'LANDSAT-9_GEE':
             collection = ee.ImageCollection('LANDSAT/LC09/C02/T1_L2')
-            # Similar para Landsat 9
             if indice == 'NDVI':
                 title = "Landsat 9 NDVI"
                 vis_params = {
@@ -3423,7 +3411,7 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
         else:
             return None, "⚠️ Satélite no soportado para visualización de índices"
         
-        # Filtrar colección con criterios más flexibles
+        # Filtrar colección
         try:
             filtered = (collection
                        .filterBounds(geometry)
@@ -3438,13 +3426,11 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
             # Tomar la imagen con menos nubes
             image = filtered.sort('CLOUDY_PIXEL_PERCENTAGE').first()
             
-            # Verificar que la imagen no sea nula
             if image is None:
                 return None, "❌ Error: La imagen obtenida es nula"
             
             # Calcular el índice seleccionado
             if indice == 'NDVI':
-                # NDVI = (NIR - RED) / (NIR + RED)
                 if satelite == 'SENTINEL-2_GEE':
                     ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
                 else:  # Landsat
@@ -3452,7 +3438,6 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
                 index_image = ndvi
                 
             elif indice == 'NDWI':
-                # NDWI = (GREEN - NIR) / (GREEN + NIR)
                 if satelite == 'SENTINEL-2_GEE':
                     ndwi = image.normalizedDifference(['B3', 'B8']).rename('NDWI')
                 else:  # Landsat
@@ -3460,7 +3445,6 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
                 index_image = ndwi
                 
             elif indice == 'EVI':
-                # EVI = 2.5 * ((NIR - RED) / (NIR + 6*RED - 7.5*BLUE + 1))
                 if satelite == 'SENTINEL-2_GEE':
                     evi = image.expression(
                         '2.5 * ((NIR - RED) / (NIR + 6 * RED - 7.5 * BLUE + 1))',
@@ -3481,28 +3465,7 @@ def visualizar_indice_gee(gdf, satelite, fecha_inicio, fecha_fin, indice='NDVI')
                     ).rename('EVI')
                 index_image = evi
                 
-            elif indice == 'SAVI':
-                # SAVI = ((NIR - RED) / (NIR + RED + 0.5)) * 1.5
-                if satelite == 'SENTINEL-2_GEE':
-                    savi = image.expression(
-                        '((NIR - RED) / (NIR + RED + 0.5)) * 1.5',
-                        {
-                            'NIR': image.select('B8'),
-                            'RED': image.select('B4')
-                        }
-                    ).rename('SAVI')
-                else:  # Landsat
-                    savi = image.expression(
-                        '((NIR - RED) / (NIR + RED + 0.5)) * 1.5',
-                        {
-                            'NIR': image.select('SR_B5'),
-                            'RED': image.select('SR_B4')
-                        }
-                    ).rename('SAVI')
-                index_image = savi
-                
             else:
-                # Por defecto usar NDVI
                 if satelite == 'SENTINEL-2_GEE':
                     ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI')
                 else:
@@ -3571,343 +3534,7 @@ def get_interpretacion_indice(indice):
         'GNDVI': 'Valores: -1 a 1. Similar a NDVI pero usando banda verde. Bueno para monitorear estrés hídrico'
     }
     return interpretaciones.get(indice, 'Índice de vegetación')
-# ===== FUNCIONES DE EXPORTACIÓN =====
-def exportar_a_geojson(gdf, nombre_base="parcela"):
-    try:
-        gdf = validar_y_corregir_crs(gdf)
-        geojson_data = gdf.to_json()
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        nombre_archivo = f"{nombre_base}_{timestamp}.geojson"
-        return geojson_data, nombre_archivo
-    except Exception as e:
-        st.error(f"❌ Error exportando a GeoJSON: {str(e)}")
-        return None, None
 
-def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_fin):
-    """Generar reporte DOCX con todos los análisis"""
-    try:
-        doc = Document()
-        # Título
-        title = doc.add_heading(f'REPORTE COMPLETO DE ANÁLISIS - {cultivo}', 0)
-        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Subtítulo con variedad
-        subtitle = doc.add_paragraph(f'Fecha: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
-        subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        doc.add_paragraph()
-        
-        # 1. INFORMACIÓN GENERAL
-        doc.add_heading('1. INFORMACIÓN GENERAL', level=1)
-        info_table = doc.add_table(rows=6, cols=2)  # Aumentado a 6 filas
-        info_table.style = 'Table Grid'
-        info_table.cell(0, 0).text = 'Cultivo'
-        info_table.cell(0, 1).text = cultivo
-        info_table.cell(1, 0).text = 'Área Total'
-        info_table.cell(1, 1).text = f'{resultados["area_total"]:.2f} ha'
-        info_table.cell(2, 0).text = 'Zonas Analizadas'
-        info_table.cell(2, 1).text = str(len(resultados['gdf_completo']))
-        info_table.cell(3, 0).text = 'Satélite'
-        info_table.cell(3, 1).text = satelite
-        info_table.cell(4, 0).text = 'Período de Análisis'
-        info_table.cell(4, 1).text = f'{fecha_inicio.strftime("%d/%m/%Y")} a {fecha_fin.strftime("%d/%m/%Y")}'
-        info_table.cell(5, 0).text = 'Fuente de Datos'
-        info_table.cell(5, 1).text = resultados['datos_satelitales']['fuente'] if resultados['datos_satelitales'] else 'N/A'
-        
-        # Información de datos satelitales
-        if 'datos_satelitales' in resultados and resultados['datos_satelitales']:
-            datos_sat = resultados['datos_satelitales']
-            doc.add_paragraph()
-            doc.add_heading('1.1. DATOS SATELITALES', level=2)
-            doc.add_paragraph(f'Fuente: {datos_sat.get("fuente", "N/D")}')
-            doc.add_paragraph(f'Índice: {datos_sat.get("indice", "N/D")}')
-            doc.add_paragraph(f'Valor promedio: {datos_sat.get("valor_promedio", 0):.3f}')
-            doc.add_paragraph(f'Estado: {datos_sat.get("estado", "N/D")}')
-            if datos_sat.get("nota"):
-                doc.add_paragraph(f'Nota: {datos_sat.get("nota")}')
-        
-        doc.add_paragraph()
-        
-        # 2. FERTILIDAD ACTUAL
-        doc.add_heading('2. FERTILIDAD ACTUAL', level=1)
-        doc.add_paragraph('Resumen de parámetros de fertilidad por zona:')
-        
-        # Tabla de fertilidad
-        fert_table = doc.add_table(rows=1, cols=7)
-        fert_table.style = 'Table Grid'
-        headers = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI', 'NDRE', 'Materia Org (%)', 'Humedad']
-        for i, header in enumerate(headers):
-            fert_table.cell(0, i).text = header
-        
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = fert_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = f"{resultados['gdf_completo'].iloc[i]['area_ha']:.2f}"
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['fert_npk_actual']:.3f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['fert_ndvi']:.3f}"
-            row[4].text = f"{resultados['gdf_completo'].iloc[i]['fert_ndre']:.3f}"
-            row[5].text = f"{resultados['gdf_completo'].iloc[i]['fert_materia_organica']:.1f}"
-            row[6].text = f"{resultados['gdf_completo'].iloc[i]['fert_humedad_suelo']:.3f}"
-        
-        doc.add_paragraph()
-        
-        # 3. RECOMENDACIONES NPK
-        doc.add_heading('3. RECOMENDACIONES NPK', level=1)
-        doc.add_paragraph('Recomendaciones de fertilización por zona (kg/ha):')
-        
-        # Tabla de NPK
-        npk_table = doc.add_table(rows=1, cols=4)
-        npk_table.style = 'Table Grid'
-        npk_headers = ['Zona', 'Nitrógeno (N)', 'Fósforo (P)', 'Potasio (K)']
-        for i, header in enumerate(npk_headers):
-            npk_table.cell(0, i).text = header
-        
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = npk_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = f"{resultados['gdf_completo'].iloc[i]['rec_N']:.1f}"
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['rec_P']:.1f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['rec_K']:.1f}"
-        
-        doc.add_paragraph()
-        
-        # 4. ANÁLISIS DE COSTOS
-        doc.add_heading('4. ANÁLISIS DE COSTOS', level=1)
-        doc.add_paragraph('Costos estimados de fertilización por zona (USD/ha):')
-        
-        # Tabla de costos
-        costo_table = doc.add_table(rows=1, cols=5)
-        costo_table.style = 'Table Grid'
-        costo_headers = ['Zona', 'Costo N', 'Costo P', 'Costo K', 'Costo Total']
-        for i, header in enumerate(costo_headers):
-            costo_table.cell(0, i).text = header
-        
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = costo_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_nitrogeno']:.2f}"
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_fosforo']:.2f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_potasio']:.2f}"
-            row[4].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_total']:.2f}"
-        
-        # Resumen de costos totales
-        doc.add_paragraph()
-        costo_total = resultados['gdf_completo']['costo_costo_total'].sum()
-        costo_promedio = resultados['gdf_completo']['costo_costo_total'].mean()
-        doc.add_paragraph(f'Costo total estimado: ${costo_total:.2f} USD')
-        doc.add_paragraph(f'Costo promedio por hectárea: ${costo_promedio:.2f} USD/ha')
-        
-        doc.add_paragraph()
-        
-        # 5. TEXTURA DEL SUELO
-        doc.add_heading('5. TEXTURA DEL SUELO', level=1)
-        doc.add_paragraph('Composición granulométrica por zona:')
-        
-        # Tabla de textura
-        text_table = doc.add_table(rows=1, cols=5)
-        text_table.style = 'Table Grid'
-        text_headers = ['Zona', 'Textura', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
-        for i, header in enumerate(text_headers):
-            text_table.cell(0, i).text = header
-        
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = text_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = str(resultados['gdf_completo'].iloc[i]['textura_suelo'])
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['arena']:.1f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['limo']:.1f}"
-            row[4].text = f"{resultados['gdf_completo'].iloc[i]['arcilla']:.1f}"
-        
-        doc.add_paragraph()
-        
-        # 6. PROYECCIONES DE COSECHA
-        doc.add_heading('6. PROYECCIONES DE COSECHA', level=1)
-        doc.add_paragraph('Proyecciones de rendimiento con y sin fertilización (kg/ha):')
-        
-        # Tabla de proyecciones
-        proy_table = doc.add_table(rows=1, cols=4)
-        proy_table.style = 'Table Grid'
-        proy_headers = ['Zona', 'Sin Fertilización', 'Con Fertilización', 'Incremento (%)']
-        for i, header in enumerate(proy_headers):
-            proy_table.cell(0, i).text = header
-        
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = proy_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = f"{resultados['gdf_completo'].iloc[i]['proy_rendimiento_sin_fert']:.0f}"
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['proy_rendimiento_con_fert']:.0f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['proy_incremento_esperado']:.1f}"
-        
-        # Resumen de proyecciones
-        doc.add_paragraph()
-        rend_sin_total = resultados['gdf_completo']['proy_rendimiento_sin_fert'].sum()
-        rend_con_total = resultados['gdf_completo']['proy_rendimiento_con_fert'].sum()
-        incremento_prom = resultados['gdf_completo']['proy_incremento_esperado'].mean()
-        
-        doc.add_paragraph(f'Rendimiento total sin fertilización: {rend_sin_total:.0f} kg')
-        doc.add_paragraph(f'Rendimiento total con fertilización: {rend_con_total:.0f} kg')
-        doc.add_paragraph(f'Incremento promedio esperado: {incremento_prom:.1f}%')
-        
-        doc.add_paragraph()
-        
-        # 7. TOPOGRAFÍA Y CURVAS DE NIVEL
-        if 'dem_data' in resultados and resultados['dem_data']:
-            doc.add_heading('7. TOPOGRAFÍA Y CURVAS DE NIVEL', level=1)
-            
-            dem_stats = {
-                'Elevación mínima': f"{np.nanmin(resultados['dem_data']['Z']):.1f} m",
-                'Elevación máxima': f"{np.nanmax(resultados['dem_data']['Z']):.1f} m",
-                'Elevación promedio': f"{np.nanmean(resultados['dem_data']['Z']):.1f} m",
-                'Pendiente promedio': f"{np.nanmean(resultados['dem_data']['pendientes']):.1f} %",
-                'Número de curvas': f"{len(resultados['dem_data'].get('curvas_nivel', []))}"
-            }
-            
-            for key, value in dem_stats.items():
-                p = doc.add_paragraph()
-                run_key = p.add_run(f'{key}: ')
-                run_key.bold = True
-                p.add_run(value)
-        
-        doc.add_paragraph()
-        
-        # 8. RECOMENDACIONES FINALES
-        doc.add_heading('8. RECOMENDACIONES FINALES', level=1)
-        
-        recomendaciones = [
-            f"Aplicar fertilización diferenciada por zonas según el análisis NPK",
-            f"Priorizar zonas con índice de fertilidad inferior a 0.5",
-            f"Considerar enmiendas orgánicas en zonas con materia orgánica < 2%",
-            f"Implementar riego suplementario en zonas con humedad < 0.2",
-            f"Realizar análisis de suelo de laboratorio para validar resultados",
-            f"Considerar agricultura de precisión para aplicación variable de insumos"
-        ]
-        
-        for rec in recomendaciones:
-            p = doc.add_paragraph(style='List Bullet')
-            p.add_run(rec)
-        
-        doc.add_paragraph()
-        
-        # 9. METADATOS TÉCNICOS
-        doc.add_heading('9. METADATOS TÉCNICOS', level=1)
-        metadatos = [
-            ('Generado por', 'Analizador Multi-Cultivo Satelital'),
-            ('Versión', '5.0 - Cultivos Extensivos con Google Earth Engine'),
-            ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-            ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
-            ('Número de zonas', str(len(resultados['gdf_completo']))),
-            ('Resolución satelital', SATELITES_DISPONIBLES[satelite]['resolucion']),
-            ('Resolución DEM', f'{resolucion_dem} m'),
-            ('Intervalo curvas de nivel', f'{intervalo_curvas} m')
-        ]
-        
-        for key, value in metadatos:
-            p = doc.add_paragraph()
-            run_key = p.add_run(f'{key}: ')
-            run_key.bold = True
-            p.add_run(value)
-        
-        # Guardar documento
-        docx_output = BytesIO()
-        doc.save(docx_output)
-        docx_output.seek(0)
-        
-        return docx_output
-        
-    except Exception as e:
-        st.error(f"❌ Error generando reporte DOCX: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return None
-
-# ===== FUNCIÓN PARA DESCARGAR PNG =====
-def crear_boton_descarga_png(buffer, nombre_archivo, texto_boton="📥 Descargar PNG"):
-    """Crear botón de descarga para archivos PNG"""
-    if buffer:
-        st.download_button(
-            label=texto_boton,
-            data=buffer,
-            file_name=nombre_archivo,
-            mime="image/png"
-        )
-
-# ===== INTERFAZ PRINCIPAL =====
-st.title("ANALIZADOR MULTI-CULTIVO SATELITAL")
-
-if uploaded_file:
-    with st.spinner("Cargando parcela..."):
-        try:
-            gdf = cargar_archivo_parcela(uploaded_file)
-            if gdf is not None:
-                st.success(f"✅ Parcela cargada exitosamente: {len(gdf)} polígono(s)")
-                area_total = calcular_superficie(gdf)
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**📊 INFORMACIÓN DE LA PARCELA:**")
-                    st.write(f"- Polígonos: {len(gdf)}")
-                    st.write(f"- Área total: {area_total:.1f} ha")
-                    st.write(f"- CRS: {gdf.crs}")
-                    st.write(f"- Formato: {uploaded_file.name.split('.')[-1].upper()}")
-                    
-                    # Vista previa
-                    fig, ax = plt.subplots(figsize=(8, 6))
-                    gdf.plot(ax=ax, color='lightgreen', edgecolor='darkgreen', alpha=0.7)
-                    ax.set_title(f"Parcela: {uploaded_file.name}")
-                    ax.set_xlabel("Longitud")
-                    ax.set_ylabel("Latitud")
-                    ax.grid(True, alpha=0.3)
-                    st.pyplot(fig)
-                    
-                    # Botón descarga vista previa
-                    buf_vista = io.BytesIO()
-                    plt.savefig(buf_vista, format='png', dpi=150, bbox_inches='tight')
-                    buf_vista.seek(0)
-                    crear_boton_descarga_png(
-                        buf_vista,
-                        f"vista_previa_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
-                        "📥 Descargar Vista Previa PNG"
-                    )
-                    
-                with col2:
-                    st.write("**🎯 CONFIGURACIÓN**")
-                    st.write(f"- Cultivo: {ICONOS_CULTIVOS[cultivo]} {cultivo}")
-                    st.write(f"- Variedad: {variedad}")
-                    st.write(f"- Zonas: {n_divisiones}")
-                    st.write(f"- Satélite: {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}")
-                    st.write(f"- Período: {fecha_inicio} a {fecha_fin}")
-                    st.write(f"- Intervalo curvas: {intervalo_curvas} m")
-                    st.write(f"- Resolución DEM: {resolucion_dem} m")
-                    
-                    # Mostrar estado de GEE
-                    if satelite_seleccionado in ['SENTINEL-2_GEE', 'LANDSAT-8_GEE', 'LANDSAT-9_GEE']:
-                        if st.session_state.gee_authenticated:
-                            st.success("✅ GEE autenticado")
-                        else:
-                            st.error("❌ GEE no autenticado - usando datos simulados")
-                
-                if st.button("🚀 EJECUTAR ANÁLISIS COMPLETO", type="primary", use_container_width=True):
-                    with st.spinner("Ejecutando análisis completo..."):
-                        resultados = ejecutar_analisis_completo(
-                            gdf, cultivo, n_divisiones, 
-                            satelite_seleccionado, fecha_inicio, fecha_fin,
-                            intervalo_curvas, resolucion_dem
-                        )
-                        
-                        if resultados['exitoso']:
-                            st.session_state.resultados_todos = resultados
-                            st.session_state.analisis_completado = True
-                            st.success("✅ Análisis completado exitosamente!")
-                            st.rerun()
-                        else:
-                            st.error("❌ Error en el análisis completo")
-            
-            else:
-                st.error("❌ Error al cargar la parcela. Verifica el formato del archivo.")
-        
-        except Exception as e:
-            st.error(f"❌ Error en el análisis: {str(e)}")
-            import traceback
-            traceback.print_exc()
 
 # Mostrar resultados si el análisis está completado
 if st.session_state.analisis_completado and 'resultados_todos' in st.session_state:
@@ -3920,7 +3547,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         "💰 Análisis de Costos",
         "🏗️ Textura del Suelo",
         "📈 Proyecciones",
-        "🎯 Potencial de Cosecha",  # NUEVA PESTAÑA
+        "🎯 Potencial de Cosecha",
         "🏔️ Curvas de Nivel y 3D",
         "🌍 Visualización Satelital",
         "🦠 Detección YOLO"
@@ -4139,7 +3766,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         tabla_proy.columns = ['Zona', 'Área (ha)', 'Sin Fertilización (kg)', 'Con Fertilización (kg)', 'Incremento (%)']
         st.dataframe(tabla_proy)
     
-    # ===== NUEVA PESTAÑA 6: POTENCIAL DE COSECHA =====
+    # ===== PESTAÑA 6: POTENCIAL DE COSECHA =====
     with tab6:
         st.subheader("🎯 POTENCIAL DE COSECHA")
         
@@ -4324,7 +3951,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         else:
             st.info("ℹ️ No hay datos topográficos disponibles para esta parcela")
     
-       with tab8:
+    with tab8:
         st.subheader("🛰️ VISUALIZACIÓN SATELITAL")
         
         # Selector de tipo de visualización
@@ -4477,8 +4104,15 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                     st.warning("⚠️ No hay datos satelitales disponibles para visualizar")
     
     with tab9:
-        # NUEVA PESTAÑA YOLO
+        # PESTAÑA YOLO
         st.subheader("🦠 DETECCIÓN DE PLAGAS/ENFERMEDADES CON YOLO")
+        
+        st.info("""
+        ⚠️ **Nota importante:** 
+        - YOLO está diseñado para imágenes de **campo/dron** (alta resolución, >1cm/pixel)
+        - **No es posible** detectar plagas directamente en imágenes satelitales (10m/pixel Sentinel-2)
+        - Para análisis satelital, usar **índices de estrés** (NDVI, NDWI) en la pestaña anterior
+        """)
         
         # Opciones de análisis
         col_yolo1, col_yolo2 = st.columns([2, 1])
@@ -4486,8 +4120,9 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         with col_yolo1:
             fuente_imagen = st.radio(
                 "Fuente de imagen para análisis:",
-                ["Subir imagen de campo", "Generar imagen simulada", "Usar imagen satelital GEE"],
-                horizontal=True
+                ["Subir imagen de campo/dron", "Generar imagen simulada"],
+                horizontal=True,
+                help="YOLO requiere imágenes de alta resolución (cámara de campo o dron)"
             )
         
         with col_yolo2:
@@ -4499,7 +4134,6 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 try:
                     from ultralytics import YOLO
                     # Modelo preentrenado para demostración
-                    # En producción, usar modelo personalizado: 'yolo_plagas_cultivos.pt'
                     st.session_state.modelo_yolo = YOLO('yolov8n.pt')
                     st.success("✅ Modelo YOLO cargado")
                 except Exception as e:
@@ -4507,7 +4141,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                     st.info("Instala con: pip install ultralytics")
         
         # Procesar según fuente seleccionada
-        if fuente_imagen == "Subir imagen de campo":
+        if fuente_imagen == "Subir imagen de campo/dron":
             uploaded_image = st.file_uploader(
                 "Sube imagen de campo/dron", 
                 type=['jpg', 'jpeg', 'png', 'bmp'],
@@ -4580,7 +4214,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                             confianza_minima=confianza
                         )
                         
-                        # Mostrar resultados (similar a arriba)
+                        # Mostrar resultados
                         if imagen_resultado is not None:
                             col_res1, col_res2 = st.columns(2)
                             
@@ -4613,17 +4247,6 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                                 # Reporte
                                 reporte = generar_reporte_plagas(detecciones, cultivo)
                                 st.markdown(reporte)
-        
-        elif fuente_imagen == "Usar imagen satelital GEE":
-            if st.session_state.gee_authenticated:
-                if st.button("📡 Descargar y Analizar Imagen GEE", type="primary"):
-                    with st.spinner("Descargando imagen de Google Earth Engine..."):
-                        # En producción, descargar imagen real de GEE
-                        # Por ahora, simulamos
-                        st.info("🛠️ Funcionalidad en desarrollo - Usando simulación")
-                        # Para implementar: descargar imagen real de GEE y analizar con YOLO
-            else:
-                st.warning("⚠️ Necesitas autenticación GEE para esta función")
 
     # SECCIÓN DE EXPORTACIÓN (FUERA DE LAS PESTAÑAS)
     st.markdown("---")
