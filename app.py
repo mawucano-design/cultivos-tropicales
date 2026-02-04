@@ -616,7 +616,8 @@ def visualizar_indices_gee(gdf, satelite, fecha_inicio, fecha_fin):
             
             # Obtener información de la imagen
             image_id = image.get('system:index').getInfo()
-            cloud_percent = image.get('CLOUDY_PIXEL_PERCENTAGE', ee.Number(0)).getInfo()
+            cloud_percent_ee = image.get('CLOUDY_PIXEL_PERCENTAGE')
+            cloud_percent = cloud_percent_ee.getInfo() if cloud_percent_ee else 0
             fecha_imagen = image.get('system:time_start').getInfo()
             
             if fecha_imagen:
@@ -827,7 +828,8 @@ def obtener_datos_sentinel2_gee(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
         
         # Obtener metadatos
         image_id = image.get('system:index').getInfo()
-        cloud_percent = image.get('CLOUDY_PIXEL_PERCENTAGE', ee.Number(0)).getInfo()
+        cloud_percent_ee = image.get('CLOUDY_PIXEL_PERCENTAGE')
+        cloud_percent = cloud_percent_ee.getInfo() if cloud_percent_ee else 0
         fecha_imagen = image.get('system:time_start').getInfo()
         
         if fecha_imagen:
