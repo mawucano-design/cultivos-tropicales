@@ -2400,7 +2400,9 @@ def obtener_datos_landsat_gee(gdf, fecha_inicio, fecha_fin, dataset='LANDSAT/LC0
         valor_std = stats_dict.get(f'{indice}_stdDev', 0)
         
         # Obtener fecha de la imagen
-        fecha_imagen = image.get('system:time_start').getInfo()
+        fecha_imagen_ee = image.get('system:time_start')
+        fecha_imagen = fecha_imagen_ee.getInfo() if fecha_imagen_ee else None
+        
         if fecha_imagen:
             fecha_imagen = datetime.fromtimestamp(fecha_imagen / 1000).strftime('%Y-%m-%d')
         
@@ -2411,6 +2413,10 @@ def obtener_datos_landsat_gee(gdf, fecha_inicio, fecha_fin, dataset='LANDSAT/LC0
             nombre_satelite = 'Landsat 9'
         else:
             nombre_satelite = 'Landsat'
+        
+        # CORRECCIÓN: Manejo correcto de get()
+        cloud_cover_ee = image.get('CLOUD_COVER')
+        cloud_cover = cloud_cover_ee.getInfo() if cloud_cover_ee else 'N/A'
         
         return {
             'indice': indice,
@@ -2423,13 +2429,12 @@ def obtener_datos_landsat_gee(gdf, fecha_inicio, fecha_fin, dataset='LANDSAT/LC0
             'fecha_imagen': fecha_imagen,
             'resolucion': '30m',
             'estado': 'exitosa',
-            'cobertura_nubes': image.get('CLOUD_COVER').getInfo() if image.get('CLOUD_COVER') else 'N/A'
+            'cobertura_nubes': f"{cloud_cover}%" if cloud_cover != 'N/A' else 'N/A'
         }
         
     except Exception as e:
         st.error(f"❌ Error obteniendo datos de Landsat desde GEE: {str(e)}")
         return None
-
 def descargar_datos_satelitales_gee(gdf, fecha_inicio, fecha_fin, satelite, indice='NDVI'):
     """Descargar datos satelitales usando Google Earth Engine"""
     if satelite == 'SENTINEL-2_GEE':
