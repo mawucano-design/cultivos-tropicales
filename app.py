@@ -4076,12 +4076,12 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
     
     with tab8:
     # PESTAÑA 8: VISUALIZACIÓN NDVI + NDRE (REEMPLAZA A RGB)
-    st.subheader("🌱 VISUALIZACIÓN NDVI + NDRE")
+        st.subheader("🌱 VISUALIZACIÓN NDVI + NDRE")
     
     # Explicación de los índices
-    col_info1, col_info2 = st.columns(2)
+        col_info1, col_info2 = st.columns(2)
     
-    with col_info1:
+            with col_info1:
         st.markdown("""
         ### 🌱 **NDVI (Índice de Vegetación de Diferencia Normalizada)**
         - **Fórmula:** (NIR - Rojo) / (NIR + Rojo)
@@ -4093,7 +4093,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
           * > 0.7: Vegetación densa y saludable
         """)
     
-    with col_info2:
+            with col_info2:
         st.markdown("""
         ### 🌿 **NDRE (Índice de Borde Rojo Normalizado)**
         - **Fórmula:** (NIR - Borde Rojo) / (NIR + Borde Rojo)
