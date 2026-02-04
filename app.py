@@ -4152,51 +4152,84 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
             if st.session_state.gee_authenticated:
                 st.success(f"✅ Google Earth Engine autenticado - {SATELITES_DISPONIBLES[satelite_seleccionado]['nombre']}")
                 
-                # Botón para generar visualización
-                if st.button("🌍 Generar Mapas NDVI + NDRE", type="primary", use_container_width=True):
-                    with st.spinner("Generando mapas NDVI y NDRE desde Google Earth Engine..."):
-                        html_indices, mensaje = visualizar_indices_gee(
-                            resultados['gdf_dividido'],
-                            satelite_seleccionado,
-                            fecha_inicio,
-                            fecha_fin
-                        )
+                # Crear subpestañas para interactivo y estático
+                subtab1, subtab2 = st.tabs(["🌍 Interactivo (Iframes)", "📷 Estático (Imágenes)"])
+                
+                with subtab1:
+                    st.markdown("### 🌍 Visualización Interactiva")
+                    st.info("Nota: La visualización interactiva puede demorar unos segundos en cargar y requiere conexión a Internet.")
                     
-                    if html_indices:
-                        st.success(mensaje)
-                        st.markdown(html_indices, unsafe_allow_html=True)
+                    if st.button("🔄 Generar Visualización Interactiva", key="generate_interactive", type="primary"):
+                        with st.spinner("Generando mapas interactivos NDVI y NDRE desde Google Earth Engine..."):
+                            html_indices, mensaje = visualizar_indices_gee(
+                                resultados['gdf_dividido'],
+                                satelite_seleccionado,
+                                fecha_inicio,
+                                fecha_fin
+                            )
                         
-                        # Mostrar información adicional
-                        st.markdown("### 📊 Información de Interpretación")
-                        
-                        col_inter1, col_inter2 = st.columns(2)
-                        
-                        with col_inter1:
-                            st.markdown("""
-                            **🔍 Comparación NDVI vs NDRE:**
-                            - **NDVI > NDRE:** Vegetación saludable, buen contenido de clorofila
-                            - **NDVI ≈ NDRE:** Vegetación en estado óptimo
-                            - **NDVI < NDRE:** Posible estrés temprano, deficiencia nutricional
-                            - **Ambos bajos:** Estrés severo o suelo desnudo
+                        if html_indices:
+                            st.success(mensaje)
+                            st.markdown(html_indices, unsafe_allow_html=True)
+                        else:
+                            st.warning(mensaje)
+                            st.info("""
+                            🔍 **Consejos para mejorar la obtención de imágenes:**
+                            1. Amplía el rango temporal (ej: últimos 60 días)
+                            2. Selecciona fechas con menor probabilidad de nubes
+                            3. Verifica que las coordenadas sean correctas
+                            4. Usa Landsat si Sentinel-2 no tiene imágenes disponibles
                             """)
+                
+                with subtab2:
+                    st.markdown("### 📷 Visualización Estática")
+                    st.info("Nota: Las imágenes estáticas son instantáneas de los mapas NDVI y NDRE.")
+                    
+                    if st.button("🔄 Generar Imágenes Estáticas", key="generate_static", type="primary"):
+                        with st.spinner("Generando imágenes estáticas NDVI y NDRE desde Google Earth Engine..."):
+                            html_indices_estatico, mensaje = visualizar_indices_gee_estatico(
+                                resultados['gdf_dividido'],
+                                satelite_seleccionado,
+                                fecha_inicio,
+                                fecha_fin
+                            )
                         
-                        with col_inter2:
-                            st.markdown("""
-                            **🎯 Recomendaciones según valores:**
-                            - **NDVI < 0.3:** Considerar resiembra o enmiendas
-                            - **NDRE < 0.2:** Aplicar fertilización nitrogenada
-                            - **Diferencia > 0.3:** Monitorear posibles enfermedades
-                            - **Valores estables:** Mantener prácticas actuales
+                        if html_indices_estatico:
+                            st.success(mensaje)
+                            st.markdown(html_indices_estatico, unsafe_allow_html=True)
+                        else:
+                            st.warning(mensaje)
+                            st.info("""
+                            🔍 **Consejos para mejorar la obtención de imágenes:**
+                            1. Amplía el rango temporal (ej: últimos 60 días)
+                            2. Selecciona fechas con menor probabilidad de nubes
+                            3. Verifica que las coordenadas sean correctas
+                            4. Usa Landsat si Sentinel-2 no tiene imágenes disponibles
                             """)
-                    else:
-                        st.warning(mensaje)
-                        st.info("""
-                        🔍 **Consejos para mejorar la obtención de imágenes:**
-                        1. Amplía el rango temporal (ej: últimos 60 días)
-                        2. Selecciona fechas con menor probabilidad de nubes
-                        3. Verifica que las coordenadas sean correctas
-                        4. Usa Landsat si Sentinel-2 no tiene imágenes disponibles
-                        """)
+                
+                # Mostrar información adicional
+                st.markdown("### 📊 Información de Interpretación")
+                
+                col_inter1, col_inter2 = st.columns(2)
+                
+                with col_inter1:
+                    st.markdown("""
+                    **🔍 Comparación NDVI vs NDRE:**
+                    - **NDVI > NDRE:** Vegetación saludable, buen contenido de clorofila
+                    - **NDVI ≈ NDRE:** Vegetación en estado óptimo
+                    - **NDVI < NDRE:** Posible estrés temprano, deficiencia nutricional
+                    - **Ambos bajos:** Estrés severo o suelo desnudo
+                    """)
+                
+                with col_inter2:
+                    st.markdown("""
+                    **🎯 Recomendaciones según valores:**
+                    - **NDVI < 0.3:** Considerar resiembra o enmiendas
+                    - **NDRE < 0.2:** Aplicar fertilización nitrogenada
+                    - **Diferencia > 0.3:** Monitorear posibles enfermedades
+                    - **Valores estables:** Mantener prácticas actuales
+                    """)
+                
             else:
                 st.error("❌ Google Earth Engine no está autenticado")
                 st.info("""
