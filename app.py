@@ -1048,37 +1048,61 @@ PARAMETROS_CULTIVOS = {
         'VARIEDADES': VARIEDADES_CULTIVOS['OLIVO'],
         'ZONAS_ARGENTINA': ['La Rioja', 'Catamarca', 'San Juan', 'Mendoza']
     },
-        'BANANO': {
-        'textura_optima': 'Franco-arcilloso',
-        'arena_optima': 35,
-        'limo_optima': 40,
-        'arcilla_optima': 25,
-        'densidad_aparente_optima': 1.20,
-        'porosidad_optima': 0.55
+           'BANANO': {
+        'NITROGENO': {'min': 200, 'max': 350},
+        'FOSFORO': {'min': 60, 'max': 120},
+        'POTASIO': {'min': 300, 'max': 500},
+        'MATERIA_ORGANICA_OPTIMA': 4.0,
+        'HUMEDAD_OPTIMA': 0.45,
+        'NDVI_OPTIMO': 0.78,
+        'NDRE_OPTIMO': 0.40,
+        'RENDIMIENTO_OPTIMO': 40000,  # kg/ha de banano
+        'COSTO_FERTILIZACION': 1200,
+        'PRECIO_VENTA': 0.30,  # USD/kg banano
+        'VARIEDADES': VARIEDADES_CULTIVOS['BANANO'],
+        'ZONAS_ARGENTINA': ['Formosa', 'Misiones', 'Corrientes']
     },
     'CAFE': {
-        'textura_optima': 'Franco',
-        'arena_optima': 40,
-        'limo_optima': 40,
-        'arcilla_optima': 20,
-        'densidad_aparente_optima': 1.25,
-        'porosidad_optima': 0.52
+        'NITROGENO': {'min': 100, 'max': 200},
+        'FOSFORO': {'min': 40, 'max': 80},
+        'POTASIO': {'min': 150, 'max': 250},
+        'MATERIA_ORGANICA_OPTIMA': 3.5,
+        'HUMEDAD_OPTIMA': 0.40,
+        'NDVI_OPTIMO': 0.70,
+        'NDRE_OPTIMO': 0.38,
+        'RENDIMIENTO_OPTIMO': 2000,  # kg/ha de café verde
+        'COSTO_FERTILIZACION': 900,
+        'PRECIO_VENTA': 3.50,  # USD/kg café
+        'VARIEDADES': VARIEDADES_CULTIVOS['CAFE'],
+        'ZONAS_ARGENTINA': ['Misiones', 'Corrientes', 'Jujuy']
     },
     'CACAO': {
-        'textura_optima': 'Franco-arcilloso',
-        'arena_optima': 30,
-        'limo_optima': 45,
-        'arcilla_optima': 25,
-        'densidad_aparente_optima': 1.15,
-        'porosidad_optima': 0.56
+        'NITROGENO': {'min': 80, 'max': 150},
+        'FOSFORO': {'min': 30, 'max': 60},
+        'POTASIO': {'min': 120, 'max': 200},
+        'MATERIA_ORGANICA_OPTIMA': 4.0,
+        'HUMEDAD_OPTIMA': 0.50,
+        'NDVI_OPTIMO': 0.72,
+        'NDRE_OPTIMO': 0.38,
+        'RENDIMIENTO_OPTIMO': 1500,  # kg/ha de cacao seco
+        'COSTO_FERTILIZACION': 850,
+        'PRECIO_VENTA': 5.00,  # USD/kg cacao
+        'VARIEDADES': VARIEDADES_CULTIVOS['CACAO'],
+        'ZONAS_ARGENTINA': ['Misiones', 'Corrientes', 'Formosa']
     },
     'PALMA_ACEITERA': {
-        'textura_optima': 'Franco',
-        'arena_optima': 45,
-        'limo_optima': 35,
-        'arcilla_optima': 20,
-        'densidad_aparente_optima': 1.30,
-        'porosidad_optima': 0.51
+        'NITROGENO': {'min': 150, 'max': 250},
+        'FOSFORO': {'min': 50, 'max': 100},
+        'POTASIO': {'min': 200, 'max': 350},
+        'MATERIA_ORGANICA_OPTIMA': 3.8,
+        'HUMEDAD_OPTIMA': 0.55,
+        'NDVI_OPTIMO': 0.75,
+        'NDRE_OPTIMO': 0.42,
+        'RENDIMIENTO_OPTIMO': 20000,  # kg/ha de racimos
+        'COSTO_FERTILIZACION': 1100,
+        'PRECIO_VENTA': 0.40,  # USD/kg aceite
+        'VARIEDADES': VARIEDADES_CULTIVOS['PALMA_ACEITERA'],
+        'ZONAS_ARGENTINA': ['Formosa', 'Chaco', 'Misiones']
     }
 }
 
