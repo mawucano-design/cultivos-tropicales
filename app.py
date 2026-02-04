@@ -4082,33 +4082,33 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         col_info1, col_info2 = st.columns(2)
     
             with col_info1:
-        st.markdown("""
-        ### 🌱 **NDVI (Índice de Vegetación de Diferencia Normalizada)**
-        - **Fórmula:** (NIR - Rojo) / (NIR + Rojo)
-        - **Rango:** -1.0 a 1.0
-        - **Interpretación:**
-          * < 0.1: Suelo desnudo/agua
-          * 0.2-0.3: Vegetación escasa
-          * 0.4-0.6: Vegetación moderada
-          * > 0.7: Vegetación densa y saludable
-        """)
+                st.markdown("""
+                ### 🌱 **NDVI (Índice de Vegetación de Diferencia Normalizada)**
+                - **Fórmula:** (NIR - Rojo) / (NIR + Rojo)
+                - **Rango:** -1.0 a 1.0
+                - **Interpretación:**
+                  * < 0.1: Suelo desnudo/agua
+                  * 0.2-0.3: Vegetación escasa
+                  * 0.4-0.6: Vegetación moderada
+                  * > 0.7: Vegetación densa y saludable
+                """)
     
             with col_info2:
-        st.markdown("""
-        ### 🌿 **NDRE (Índice de Borde Rojo Normalizado)**
-        - **Fórmula:** (NIR - Borde Rojo) / (NIR + Borde Rojo)
-        - **Rango:** -0.5 a 0.8
-        - **Ventajas:**
-          * Más sensible a clorofila en capas internas
-          * Menos saturación en vegetación densa
-          * Mejor para monitoreo de nitrógeno
-        - **Interpretación:**
-          * < 0.2: Estrés nutricional
-          * 0.3-0.5: Óptimo
-          * > 0.6: Exceso de nitrógeno
-        """)
-    
-    # Selector de fuente de datos
+                st.markdown("""
+                ### 🌿 **NDRE (Índice de Borde Rojo Normalizado)**
+                - **Fórmula:** (NIR - Borde Rojo) / (NIR + Borde Rojo)
+                - **Rango:** -0.5 a 0.8
+                - **Ventajas:**
+                  * Más sensible a clorofila en capas internas
+                  * Menos saturación en vegetación densa
+                  * Mejor para monitoreo de nitrógeno
+                - **Interpretación:**
+                  * < 0.2: Estrés nutricional
+                  * 0.3-0.5: Óptimo
+                  * > 0.6: Exceso de nitrógeno
+                """)
+            
+            # Selector de fuente de datos
     st.subheader("🛰️ Generar Mapas Estáticos")
     
     if satelite_seleccionado in ['SENTINEL-2_GEE', 'LANDSAT-8_GEE', 'LANDSAT-9_GEE']:
