@@ -1460,7 +1460,7 @@ PARAMETROS_CULTIVOS = {
         'RENDIMIENTO_OPTIMO': 20000,  # kg/ha de racimos
         'COSTO_FERTILIZACION': 1100,
         'PRECIO_VENTA': 0.40,  # USD/kg aceite
-        'VARIEDADES': VARIEDADES_CULTIVOS['PALMA_ACEITERA'],
+        'VARIEDADES': VARIEDADES_CULTivos['PALMA_ACEITERA'],
         'ZONAS_ARGENTINA': ['Formosa', 'Chaco', 'Misiones']
     }
 }
@@ -4215,170 +4215,51 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                     st.write(f"**Resolución:** {datos.get('resolucion', 'N/A')}")
                     st.write(f"**Estado:** {datos.get('estado', 'N/A')}")
     
-  with tab9:
-    # NUEVA PESTAÑA YOLO - VERSIÓN CORREGIDA
-    st.subheader("🦠 DETECCIÓN DE PLAGAS/ENFERMEDADES CON YOLO")
-    
-    # Configuración para evitar problemas con OpenGL/CUDA
-    st.caption("⚠️ Para análisis real, instala: pip install ultralytics opencv-python")
-    
-    # Opciones de análisis
-    col_yolo1, col_yolo2 = st.columns([2, 1])
-    
-    with col_yolo1:
-        fuente_imagen = st.radio(
-            "Fuente de imagen para análisis:",
-            ["Subir imagen de campo", "Generar imagen simulada", "Usar imagen satelital GEE"],
-            horizontal=True
-        )
-    
-    with col_yolo2:
-        confianza = st.slider("Confianza mínima", 0.3, 0.9, 0.5, 0.05)
-    
-    # Verificar si ultralytics está instalado
-    try:
-        from ultralytics import YOLO
-        ultralytics_instalado = True
-    except ImportError:
-        ultralytics_instalado = False
-        st.warning("⚠️ ultralytics no está instalado. Usando demostración simulada.")
-        st.code("pip install ultralytics")
-    
-    # Cargar modelo YOLO (o crear demo)
-    if 'modelo_yolo' not in st.session_state:
-        with st.spinner("Inicializando modelo de detección..."):
-            if ultralytics_instalado:
+    with tab9:
+        # NUEVA PESTAÑA YOLO
+        st.subheader("🦠 DETECCIÓN DE PLAGAS/ENFERMEDADES CON YOLO")
+        
+        # Opciones de análisis
+        col_yolo1, col_yolo2 = st.columns([2, 1])
+        
+        with col_yolo1:
+            fuente_imagen = st.radio(
+                "Fuente de imagen para análisis:",
+                ["Subir imagen de campo", "Generar imagen simulada", "Usar imagen satelital GEE"],
+                horizontal=True
+            )
+        
+        with col_yolo2:
+            confianza = st.slider("Confianza mínima", 0.3, 0.9, 0.5, 0.05)
+        
+        # Cargar modelo YOLO
+        if 'modelo_yolo' not in st.session_state:
+            with st.spinner("Cargando modelo YOLO..."):
                 try:
-                    # Intentar cargar modelo de demo
+                    from ultralytics import YOLO
+                    # Modelo preentrenado para demostración
+                    # En producción, usar modelo personalizado: 'yolo_plagas_cultivos.pt'
                     st.session_state.modelo_yolo = YOLO('yolov8n.pt')
-                    st.success("✅ Modelo YOLO cargado (yolov8n.pt)")
+                    st.success("✅ Modelo YOLO cargado")
                 except Exception as e:
                     st.error(f"❌ Error cargando YOLO: {str(e)}")
-                    # Crear modelo demo
-                    class ModeloDemo:
-                        def __init__(self):
-                            self.names = {
-                                0: 'Plaga_Gusano', 
-                                1: 'Enfermedad_Roya', 
-                                2: 'Deficiencia_Nutricional',
-                                3: 'Plaga_Pulgón',
-                                4: 'Enfermedad_Oídio',
-                                5: 'Plaga_Mosca_Blanca',
-                                6: 'Enfermedad_Mildiu',
-                                7: 'Plaga_Araña_Roja',
-                                8: 'Daño_Mecánico',
-                                9: 'Estrés_Hídrico'
-                            }
-                        
-                        def predict(self, img, conf=0.5, **kwargs):
-                            import cv2
-                            import numpy as np
-                            from PIL import Image
-                            
-                            # Convertir imagen a numpy array
-                            if isinstance(img, str):
-                                img_np = cv2.imread(img)
-                            elif hasattr(img, 'read'):
-                                img_np = np.array(Image.open(img))
-                                if len(img_np.shape) == 2:
-                                    img_np = cv2.cvtColor(img_np, cv2.COLOR_GRAY2BGR)
-                                else:
-                                    img_np = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-                            else:
-                                img_np = img
-                            
-                            # Crear resultados simulados
-                            class ResultadoDemo:
-                                def __init__(self):
-                                    self.boxes = None
-                                    self.orig_img = img_np
-                                
-                                def plot(self):
-                                    # Dibujar detecciones simuladas
-                                    img_copy = self.orig_img.copy()
-                                    altura, ancho = img_copy.shape[:2]
-                                    
-                                    np.random.seed(hash(str(datetime.now())) % 10000)
-                                    n_detecciones = np.random.randint(3, 8)
-                                    
-                                    for i in range(n_detecciones):
-                                        x1 = np.random.randint(0, ancho - 100)
-                                        y1 = np.random.randint(0, altura - 100)
-                                        ancho_bbox = np.random.randint(50, 200)
-                                        alto_bbox = np.random.randint(50, 200)
-                                        x2 = min(x1 + ancho_bbox, ancho)
-                                        y2 = min(y1 + alto_bbox, altura)
-                                        
-                                        clase_id = np.random.choice(list(self.names.keys()))
-                                        confianza = np.random.uniform(conf, 0.95)
-                                        
-                                        # Color según tipo
-                                        if 'Plaga' in self.names[clase_id]:
-                                            color = (0, 255, 0)  # Verde
-                                        elif 'Enfermedad' in self.names[clase_id]:
-                                            color = (0, 0, 255)  # Rojo
-                                        else:
-                                            color = (255, 255, 0)  # Amarillo
-                                        
-                                        cv2.rectangle(img_copy, (x1, y1), (x2, y2), color, 2)
-                                        label = f"{self.names[clase_id]}: {confianza:.2f}"
-                                        cv2.putText(img_copy, label, (x1, y1-10), 
-                                                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-                                    
-                                    return cv2.cvtColor(img_copy, cv2.COLOR_BGR2RGB)
-                            
-                            return [ResultadoDemo()]
-                    
-                    st.session_state.modelo_yolo = ModeloDemo()
-                    st.info("ℹ️ Usando modelo de demostración")
-            else:
-                # Crear modelo demo básico
-                class ModeloDemoSimple:
-                    def __init__(self):
-                        self.names = {}
-                    
-                    def predict(self, img, conf=0.5, **kwargs):
-                        class ResultadoSimple:
-                            def __init__(self):
-                                self.boxes = None
-                                self.orig_img = None
-                            
-                            def plot(self):
-                                return np.zeros((300, 300, 3), dtype=np.uint8)
-                        
-                        return [ResultadoSimple()]
-                
-                st.session_state.modelo_yolo = ModeloDemoSimple()
-                st.warning("⚠️ Usando simulador básico - Instala ultralytics para detección real")
-    
-    # Procesar según fuente seleccionada
-    if fuente_imagen == "Subir imagen de campo":
-        uploaded_image = st.file_uploader(
-            "Sube imagen de campo/dron", 
-            type=['jpg', 'jpeg', 'png', 'bmp'],
-            help="Imágenes de cultivo para detección de plagas"
-        )
+                    st.info("Instala con: pip install ultralytics")
         
-        if uploaded_image and st.button("🔍 Analizar con YOLO", type="primary"):
-            with st.spinner("Procesando imagen..."):
-                try:
-                    # Leer y procesar imagen
-                    from PIL import Image
-                    import numpy as np
-                    
-                    # Convertir a BytesIO para procesamiento
+        # Procesar según fuente seleccionada
+        if fuente_imagen == "Subir imagen de campo":
+            uploaded_image = st.file_uploader(
+                "Sube imagen de campo/dron", 
+                type=['jpg', 'jpeg', 'png', 'bmp'],
+                help="Imágenes de cultivo para detección de plagas"
+            )
+            
+            if uploaded_image and st.button("🔍 Analizar con YOLO", type="primary"):
+                with st.spinner("Procesando imagen con YOLO..."):
+                    # Convertir a BytesIO
                     image_bytes = BytesIO(uploaded_image.read())
-                    uploaded_image.seek(0)  # Resetear para mostrar
-                    
-                    # Mostrar imagen original
-                    st.subheader("📷 Imagen Original")
-                    img_display = Image.open(uploaded_image)
-                    st.image(img_display, caption="Imagen subida", use_container_width=True)
+                    uploaded_image.seek(0)
                     
                     # Ejecutar detección
-                    st.subheader("🎯 Resultados de Detección")
-                    
-                    # Usar función mejorada de detección
                     detecciones, imagen_resultado = detectar_plagas_yolo(
                         image_bytes, 
                         st.session_state.modelo_yolo,
@@ -4386,59 +4267,44 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                     )
                     
                     if imagen_resultado is not None:
-                        # Mostrar imagen con detecciones
-                        st.image(imagen_resultado, caption="Detecciones encontradas", use_container_width=True)
+                        # Mostrar resultados
+                        col_res1, col_res2 = st.columns(2)
+                        
+                        with col_res1:
+                            st.subheader("📷 Imagen Analizada")
+                            st.image(uploaded_image, caption="Imagen original", use_container_width=True)
+                        
+                        with col_res2:
+                            st.subheader("🎯 Detecciones YOLO")
+                            st.image(imagen_resultado, caption="Detecciones", use_container_width=True)
                         
                         # Mostrar estadísticas
+                        st.subheader("📊 Estadísticas de Detección")
                         if detecciones:
-                            st.subheader("📊 Estadísticas de Detección")
-                            
-                            # Crear DataFrame
                             df_detecciones = pd.DataFrame(detecciones)
                             
-                            col1, col2, col3 = st.columns(3)
-                            with col1:
+                            col_stats1, col_stats2, col_stats3 = st.columns(3)
+                            with col_stats1:
                                 st.metric("Total detecciones", len(detecciones))
-                            with col2:
+                            with col_stats2:
                                 clases_unicas = df_detecciones['clase'].nunique()
-                                st.metric("Tipos diferentes", clases_unicas)
-                            with col3:
+                                st.metric("Tipos encontrados", clases_unicas)
+                            with col_stats3:
                                 conf_prom = df_detecciones['confianza'].mean()
                                 st.metric("Confianza promedio", f"{conf_prom:.2f}")
                             
-                            # Mostrar tabla de detecciones
+                            # Tabla detallada
                             st.dataframe(df_detecciones)
                             
-                            # Generar reporte
-                            st.subheader("📋 Reporte de Análisis")
+                            # Reporte
                             reporte = generar_reporte_plagas(detecciones, cultivo)
                             st.markdown(reporte)
-                            
-                            # Descargar imagen procesada
-                            st.subheader("💾 Descargar Resultados")
-                            img_pil = Image.fromarray(imagen_resultado)
-                            buf = BytesIO()
-                            img_pil.save(buf, format='PNG')
-                            buf.seek(0)
-                            
-                            st.download_button(
-                                label="📥 Descargar imagen con detecciones",
-                                data=buf,
-                                file_name=f"detecciones_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
-                                mime="image/png"
-                            )
                         else:
-                            st.success("✅ No se detectaron plagas/enfermedades con la confianza mínima seleccionada")
-                    else:
-                        st.warning("⚠️ No se pudo procesar la imagen")
-                
-                except Exception as e:
-                    st.error(f"❌ Error procesando imagen: {str(e)}")
-    
-    elif fuente_imagen == "Generar imagen simulada":
-        if st.button("🔄 Generar y Analizar Imagen Simulada", type="primary"):
-            with st.spinner("Generando imagen de simulación..."):
-                try:
+                            st.info("ℹ️ No se detectaron plagas/enfermedades con la confianza seleccionada")
+        
+        elif fuente_imagen == "Generar imagen simulada":
+            if st.button("🔄 Generar y Analizar Imagen Simulada", type="primary"):
+                with st.spinner("Generando imagen de simulación..."):
                     # Generar imagen sintética
                     imagen_simulada = analizar_imagen_dron(
                         resultados['gdf_dividido'],
@@ -4446,11 +4312,6 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                     )
                     
                     if imagen_simulada:
-                        # Mostrar imagen simulada
-                        st.subheader("🌾 Imagen Simulada de Cultivo")
-                        img_sim = Image.open(imagen_simulada)
-                        st.image(img_sim, caption="Imagen simulada de dron", use_container_width=True)
-                        
                         # Ejecutar detección
                         detecciones, imagen_resultado = detectar_plagas_yolo(
                             imagen_simulada,
@@ -4458,147 +4319,113 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                             confianza_minima=confianza
                         )
                         
+                        # Mostrar resultados (similar a arriba)
                         if imagen_resultado is not None:
-                            # Mostrar resultados
-                            st.subheader("🎯 Detecciones en Imagen Simulada")
-                            st.image(imagen_resultado, caption="Detecciones simuladas", use_container_width=True)
+                            col_res1, col_res2 = st.columns(2)
                             
+                            with col_res1:
+                                st.subheader("📷 Imagen Simulada")
+                                st.image(imagen_simulada, caption="Imagen simulada", use_container_width=True)
+                            
+                            with col_res2:
+                                st.subheader("🎯 Detecciones YOLO")
+                                st.image(imagen_resultado, caption="Detecciones", use_container_width=True)
+                            
+                            # Mostrar estadísticas
                             if detecciones:
-                                # Mostrar estadísticas
+                                st.subheader("📊 Estadísticas de Detección")
                                 df_detecciones = pd.DataFrame(detecciones)
                                 
-                                col1, col2, col3 = st.columns(3)
-                                with col1:
+                                col_stats1, col_stats2, col_stats3 = st.columns(3)
+                                with col_stats1:
                                     st.metric("Total detecciones", len(detecciones))
-                                with col2:
+                                with col_stats2:
                                     clases_unicas = df_detecciones['clase'].nunique()
-                                    st.metric("Tipos diferentes", clases_unicas)
-                                with col3:
+                                    st.metric("Tipos encontrados", clases_unicas)
+                                with col_stats3:
                                     conf_prom = df_detecciones['confianza'].mean()
                                     st.metric("Confianza promedio", f"{conf_prom:.2f}")
                                 
-                                # Mostrar tabla
+                                # Tabla detallada
                                 st.dataframe(df_detecciones)
                                 
-                                # Generar reporte
+                                # Reporte
                                 reporte = generar_reporte_plagas(detecciones, cultivo)
                                 st.markdown(reporte)
-                            else:
-                                st.info("ℹ️ No se simularon detecciones en esta imagen")
-                        else:
-                            st.warning("⚠️ No se pudo procesar la imagen simulada")
-                    else:
-                        st.error("❌ No se pudo generar imagen simulada")
-                
-                except Exception as e:
-                    st.error(f"❌ Error en simulación: {str(e)}")
+        
+        elif fuente_imagen == "Usar imagen satelital GEE":
+            if st.session_state.gee_authenticated:
+                if st.button("📡 Descargar y Analizar Imagen GEE", type="primary"):
+                    with st.spinner("Descargando imagen de Google Earth Engine..."):
+                        # En producción, descargar imagen real de GEE
+                        # Por ahora, simulamos
+                        st.info("🛠️ Funcionalidad en desarrollo - Usando simulación")
+                        # Para implementar: descargar imagen real de GEE y analizar con YOLO
+            else:
+                st.warning("⚠️ Necesitas autenticación GEE para esta función")
+
+    # SECCIÓN DE EXPORTACIÓN (FUERA DE LAS PESTAÑAS)
+    st.markdown("---")
+    st.subheader("💾 EXPORTAR RESULTADOS")
     
-    elif fuente_imagen == "Usar imagen satelital GEE":
-        st.info("🛠️ Esta funcionalidad está en desarrollo")
-        st.write("""
-        **Próximamente:** 
-        - Descarga automática de imágenes Sentinel-2/Landsat
-        - Análisis multiespectral para detección de estrés
-        - Mapas de calor de plagas/enfermedades
-        """)
-        
-        if st.button("🚀 Simular Análisis con Datos GEE", type="secondary"):
-            with st.spinner("Simulando análisis satelital..."):
-                # Simular análisis
-                st.success("✅ Simulación completada")
-                st.write("""
-                **Resultados simulados del análisis satelital:**
-                
-                - **NDVI promedio:** 0.72 (Saludable)
-                - **Áreas de estrés detectadas:** 12.5% de la parcela
-                - **Posibles focos de enfermedad:** 3 zonas
-                - **Recomendación:** Revisar zonas Z08, Z15, Z22
-                """)
+    col_exp1, col_exp2, col_exp3 = st.columns(3)
     
-    # Información adicional
-    with st.expander("ℹ️ Información sobre detección YOLO"):
-        st.write("""
-        **¿Qué es YOLO?**
-        YOLO (You Only Look Once) es un algoritmo de detección de objetos en tiempo real.
+    with col_exp1:
+        st.markdown("**GeoJSON**")
+        if st.button("📤 Generar GeoJSON", key="generate_geojson"):
+            with st.spinner("Generando GeoJSON..."):
+                geojson_data, nombre_geojson = exportar_a_geojson(
+                    resultados['gdf_completo'],
+                    f"analisis_{cultivo}"
+                )
+                if geojson_data:
+                    st.session_state.geojson_data = geojson_data
+                    st.session_state.nombre_geojson = nombre_geojson
+                    st.success("✅ GeoJSON generado correctamente")
+                    st.rerun()
         
-        **Para uso real:**
-        1. Instala: `pip install ultralytics opencv-python`
-        2. Entrena tu propio modelo con imágenes de tus cultivos
-        3. Sube el modelo entrenado (.pt) a la app
-        
-        **Plagas/enfermedades detectables:**
-        - Gusano del maíz, Roya del trigo, Pulgón, Oídio
-        - Mildiu, Araña roja, Mosca blanca
-        - Deficiencias nutricionales (N, P, K)
-        - Estrés hídrico/térmico
-        
-        **Precisión:** 
-        - Modelo demo: Simulación (~70-80% de precisión simulada)
-        - Modelo entrenado: >90% con datos reales
-        """)
-
-# ===== SECCIÓN DE EXPORTACIÓN (FUERA DE LAS PESTAÑAS) =====
-st.markdown("---")
-st.subheader("💾 EXPORTAR RESULTADOS")
-
-col_exp1, col_exp2, col_exp3 = st.columns(3)
-
-with col_exp1:
-    st.markdown("**GeoJSON**")
-    if st.button("📤 Generar GeoJSON", key="generate_geojson"):
-        with st.spinner("Generando GeoJSON..."):
-            geojson_data, nombre_geojson = exportar_a_geojson(
-                resultados['gdf_completo'],
-                f"analisis_{cultivo}"
+        if 'geojson_data' in st.session_state and st.session_state.geojson_data:
+            st.download_button(
+                label="📥 Descargar GeoJSON",
+                data=st.session_state.geojson_data,
+                file_name=st.session_state.nombre_geojson,
+                mime="application/json",
+                key="geojson_download"
             )
-            if geojson_data:
-                st.session_state.geojson_data = geojson_data
-                st.session_state.nombre_geojson = nombre_geojson
-                st.success("✅ GeoJSON generado correctamente")
-                st.rerun()
     
-    if 'geojson_data' in st.session_state and st.session_state.geojson_data:
-        st.download_button(
-            label="📥 Descargar GeoJSON",
-            data=st.session_state.geojson_data,
-            file_name=st.session_state.nombre_geojson,
-            mime="application/json",
-            key="geojson_download"
-        )
-
-with col_exp2:
-    st.markdown("**Reporte DOCX**")
-    if st.button("📄 Generar Reporte Completo", key="generate_report"):
-        with st.spinner("Generando reporte DOCX..."):
-            reporte = generar_reporte_completo(
-                resultados, 
-                cultivo, 
-                satelite_seleccionado, 
-                fecha_inicio, 
-                fecha_fin
+    with col_exp2:
+        st.markdown("**Reporte DOCX**")
+        if st.button("📄 Generar Reporte Completo", key="generate_report"):
+            with st.spinner("Generando reporte DOCX..."):
+                reporte = generar_reporte_completo(
+                    resultados, 
+                    cultivo, 
+                    satelite_seleccionado, 
+                    fecha_inicio, 
+                    fecha_fin
+                )
+                if reporte:
+                    st.session_state.reporte_completo = reporte
+                    st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
+                    st.success("✅ Reporte generado correctamente")
+                    st.rerun()
+        
+        if 'reporte_completo' in st.session_state and st.session_state.reporte_completo:
+            st.download_button(
+                label="📥 Descargar Reporte DOCX",
+                data=st.session_state.reporte_completo,
+                file_name=st.session_state.nombre_reporte,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="report_download"
             )
-            if reporte:
-                st.session_state.reporte_completo = reporte
-                st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
-                st.success("✅ Reporte generado correctamente")
-                st.rerun()
     
-    if 'reporte_completo' in st.session_state and st.session_state.reporte_completo:
-        st.download_button(
-            label="📥 Descargar Reporte DOCX",
-            data=st.session_state.reporte_completo,
-            file_name=st.session_state.nombre_reporte,
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key="report_download"
-        )
-
-with col_exp3:
-    st.markdown("**Limpiar Resultados**")
-    if st.button("🗑️ Limpiar Resultados", use_container_width=True):
-        for key in list(st.session_state.keys()):
-            if key not in ['gee_authenticated', 'gee_project']:
-                del st.session_state[key]
-        st.rerun()
+    with col_exp3:
+        st.markdown("**Limpiar Resultados**")
+        if st.button("🗑️ Limpiar Resultados", use_container_width=True):
+            for key in list(st.session_state.keys()):
+                if key not in ['gee_authenticated', 'gee_project']:
+                    del st.session_state[key]
+            st.rerun()
 
 # ===== PIE DE PÁGINA =====
 st.markdown("---")
