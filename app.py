@@ -3292,7 +3292,7 @@ cultivo = st.sidebar.selectbox(
     options=list(PARAMETROS_CULTIVOS.keys()),
     format_func=lambda x: f"{ICONOS_CULTIVOS.get(x, '🌾')} {x.replace('_', ' ').title()}"
 )
-…    </ul>
+    </ul>
     <p style="color: #1e293b; font-size: 0.85em; margin: 10px 0 0 0; font-style: italic;">
         Requiere: <code>pip install rasterio affine</code>
     </p>
