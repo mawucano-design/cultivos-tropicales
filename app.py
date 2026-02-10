@@ -2043,8 +2043,9 @@ def descargar_datos_landsat8(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
             'fecha': datetime.now().strftime('%Y-%m-%d'),
             'id_escena': f"LC08_{np.random.randint(1000000, 9999999)}",
             'cobertura_nubes': f"{np.random.randint(0, 15)}%",
-…        st.error(f"❌ Error procesando Sentinel-2: {str(e)}")
+            st.error(f"❌ Error procesando Sentinel-2: {str(e)}")
         return None
+        
 # ===== FUNCIONES GOOGLE EARTH ENGINE =====
 def obtener_datos_sentinel2_gee(gdf, fecha_inicio, fecha_fin, indice='NDVI'):
     """Obtener datos reales de Sentinel-2 usando Google Earth Engine con manejo robusto"""
