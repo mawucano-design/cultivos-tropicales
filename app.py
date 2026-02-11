@@ -95,236 +95,221 @@ if 'gee_authenticated' not in st.session_state:
     if GEE_AVAILABLE:
         inicializar_gee()
 
-# ===== FUNCIONES YOLO PARA DETECCIÓN DE PLAGAS/ENFERMEDADES (CORREGIDO) =====
+# ===== FUNCIONES YOLO PARA DETECCIÓN DE PLAGAS/ENFERMEDADES (VERSIÓN PIL - SIN OpenCV) =====
 def cargar_modelo_yolo(modelo_path='yolo_plagas.pt'):
-    """Carga el modelo YOLO para detección - VERSIÓN SEGURA SIN OpenGL"""
+    """
+    Carga el modelo YOLO para detección.
+    Si falla la carga real, devuelve un modelo de demostración.
+    """
     try:
-        # Configurar entorno para evitar problemas con OpenGL
-        os.environ['OPENCV_VIDEOIO_PRIORITY_MSMF'] = '0'
-        
-        # Intentar importar con manejo de errores
+        # Intentar importar ultralytics
         try:
             from ultralytics import YOLO
         except ImportError:
-            st.error("❌ Ultralytics no está instalado. Instala con: pip install ultralytics")
-            return None
-        
-        # Cargar modelo (usar modelo pequeño para demo)
+            st.warning("⚠️ Ultralytics no instalado. Usando simulador YOLO.")
+            return _crear_modelo_demo()
+
+        # Intentar cargar modelo real
         try:
-            # Primero intentar cargar modelo personalizado
             if os.path.exists(modelo_path):
                 modelo = YOLO(modelo_path)
+                st.success(f"✅ Modelo YOLO personalizado cargado: {modelo_path}")
+                return modelo
             else:
-                # Usar modelo preentrenado de demo
                 modelo = YOLO('yolov8n.pt')
                 st.info("ℹ️ Usando modelo YOLO de demostración (yolov8n.pt)")
-            
-            return modelo
+                return modelo
         except Exception as e:
-            st.error(f"❌ Error cargando archivo del modelo: {str(e)}")
-            # Crear modelo simulado para demo
-            class ModeloDemo:
-                def __init__(self):
-                    self.names = {
-                        0: 'Plaga_Gusano', 
-                        1: 'Enfermedad_Roya', 
-                        2: 'Deficiencia_Nutricional',
-                        3: 'Plaga_Pulgón',
-                        4: 'Enfermedad_Oídio'
-                    }
-                
-                def __call__(self, img, conf=0.5):
-                    class ResultadoDemo:
-                        def __init__(self):
-                            self.boxes = None
-                            self.plot = lambda: img
-                    
-                    return [ResultadoDemo()]
-            
-            st.warning("⚠️ Usando modelo de demostración simulado")
-            return ModeloDemo()
-    
+            st.warning(f"⚠️ No se pudo cargar modelo YOLO real: {e}. Usando simulador.")
+            return _crear_modelo_demo()
+
     except Exception as e:
         st.error(f"❌ Error crítico en YOLO: {str(e)}")
-        return None
+        return _crear_modelo_demo()
+
+def _crear_modelo_demo():
+    """Crea un modelo de demostración para simular detecciones."""
+    class ModeloDemo:
+        def __init__(self):
+            self.names = {
+                0: 'Plaga_Gusano',
+                1: 'Enfermedad_Roya',
+                2: 'Deficiencia_Nutricional',
+                3: 'Plaga_Pulgón',
+                4: 'Enfermedad_Oídio'
+            }
+        def __call__(self, img, conf=0.5):
+            # Solo para compatibilidad, no se usa en predicción real
+            return None
+    return ModeloDemo()
 
 def detectar_plagas_yolo(imagen_path, modelo, confianza_minima=0.5):
-    """Ejecuta detección de plagas/enfermedades con YOLO - VERSIÓN SEGURA"""
+    """
+    Ejecuta detección de plagas/enfermedades con YOLO.
+    - Utiliza PIL para cargar y dibujar (sin OpenCV).
+    - Si el modelo es de demostración, genera detecciones aleatorias realistas.
+    """
     try:
-        # Verificar si es un modelo demo
-        if hasattr(modelo, 'names') and not hasattr(modelo, 'predict'):
-            # Modelo de demostración - generar detecciones simuladas
-            import cv2
-            import numpy as np
-            from PIL import Image
-            
-            # Cargar imagen
-            if isinstance(imagen_path, BytesIO):
-                imagen_path.seek(0)
-                img_np = np.array(Image.open(imagen_path))
-                img = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-            elif isinstance(imagen_path, str):
-                img = cv2.imread(imagen_path)
-            else:
-                img = cv2.imdecode(np.frombuffer(imagen_path.read(), np.uint8), cv2.IMREAD_COLOR)
-            
-            # Generar detecciones simuladas para demo
-            altura, ancho = img.shape[:2]
-            detecciones = []
-            
-            # Generar 3-8 detecciones aleatorias
+        from PIL import Image, ImageDraw, ImageFont
+        import numpy as np
+
+        # --- 1. Cargar imagen de forma segura ---
+        if isinstance(imagen_path, BytesIO):
+            imagen_path.seek(0)
+            img_pil = Image.open(imagen_path).convert('RGB')
+        elif isinstance(imagen_path, str):
+            img_pil = Image.open(imagen_path).convert('RGB')
+        else:
+            # Si es otro tipo de buffer (ej. UploadedFile)
+            img_pil = Image.open(imagen_path).convert('RGB')
+
+        img_np = np.array(img_pil)  # Para el modelo YOLO
+
+        # --- 2. Determinar si es modelo demo o real ---
+        es_demo = hasattr(modelo, 'names') and not hasattr(modelo, 'predict')
+
+        # --- 3. Obtener detecciones ---
+        detecciones = []
+
+        if es_demo:
+            # ========== MODELO DE DEMOSTRACIÓN ==========
+            altura, ancho = img_np.shape[:2]
             np.random.seed(int(datetime.now().timestamp()))
             n_detecciones = np.random.randint(3, 8)
-            
-            for i in range(n_detecciones):
+
+            for _ in range(n_detecciones):
                 x1 = np.random.randint(0, ancho - 100)
                 y1 = np.random.randint(0, altura - 100)
                 ancho_bbox = np.random.randint(50, 200)
                 alto_bbox = np.random.randint(50, 200)
                 x2 = min(x1 + ancho_bbox, ancho)
                 y2 = min(y1 + alto_bbox, altura)
-                
+
                 clase_id = np.random.choice(list(modelo.names.keys()))
                 confianza = np.random.uniform(confianza_minima, 0.95)
-                
+
                 detecciones.append({
                     'clase': modelo.names[clase_id],
                     'confianza': confianza,
                     'bbox': [x1, y1, x2, y2],
                     'area': (x2 - x1) * (y2 - y1)
                 })
-                
-                # Dibujar bbox en imagen
-                color = (0, 255, 0) if 'Plaga' in modelo.names[clase_id] else (0, 0, 255)
-                cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
-                cv2.putText(img, f"{modelo.names[clase_id]}: {confianza:.2f}", 
-                           (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-            
-            img_con_detecciones_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            return detecciones, img_con_detecciones_rgb
-        
-        # Para modelo real de YOLO
-        import cv2
-        from PIL import Image
-        import numpy as np
-        
-        # Cargar imagen
-        if isinstance(imagen_path, BytesIO):
-            imagen_path.seek(0)
-            img_np = np.array(Image.open(imagen_path))
-            img = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-        elif isinstance(imagen_path, str):
-            img = cv2.imread(imagen_path)
+
         else:
-            img = cv2.imdecode(np.frombuffer(imagen_path.read(), np.uint8), cv2.IMREAD_COLOR)
-        
-        # Ejecutar detección
-        resultados = modelo(img, conf=confianza_minima)
-        
-        # Procesar resultados
-        detecciones = []
-        for r in resultados:
-            if r.boxes is not None:
-                for box in r.boxes:
-                    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                    conf = float(box.conf[0])
-                    cls = int(box.cls[0])
-                    nombre_clase = modelo.names[cls]
-                    
-                    detecciones.append({
-                        'clase': nombre_clase,
-                        'confianza': conf,
-                        'bbox': [x1, y1, x2, y2],
-                        'area': (x2 - x1) * (y2 - y1)
-                    })
-        
-        # Dibujar bounding boxes
-        img_con_detecciones = resultados[0].plot()
-        img_con_detecciones_rgb = cv2.cvtColor(img_con_detecciones, cv2.COLOR_BGR2RGB)
-        
-        return detecciones, img_con_detecciones_rgb
-    
+            # ========== MODELO REAL DE YOLO ==========
+            from ultralytics import YOLO
+
+            # Ejecutar predicción
+            resultados = modelo(img_np, conf=confianza_minima)
+
+            for r in resultados:
+                if r.boxes is not None:
+                    boxes = r.boxes.xyxy.cpu().numpy()
+                    confs = r.boxes.conf.cpu().numpy()
+                    cls_ids = r.boxes.cls.cpu().numpy().astype(int)
+
+                    for box, conf, cls_id in zip(boxes, confs, cls_ids):
+                        x1, y1, x2, y2 = map(int, box)
+                        nombre_clase = modelo.names[cls_id]
+                        detecciones.append({
+                            'clase': nombre_clase,
+                            'confianza': float(conf),
+                            'bbox': [x1, y1, x2, y2],
+                            'area': (x2 - x1) * (y2 - y1)
+                        })
+
+        # --- 4. Dibujar bounding boxes con PIL ---
+        draw = ImageDraw.Draw(img_pil)
+        try:
+            font = ImageFont.truetype("arial.ttf", 14)
+        except:
+            font = ImageFont.load_default()
+
+        for det in detecciones:
+            x1, y1, x2, y2 = det['bbox']
+            conf = det['confianza']
+            label = f"{det['clase']} {conf:.2f}"
+
+            # Color según tipo (demo o real)
+            if es_demo:
+                color = 'green' if 'Plaga' in det['clase'] else 'red'
+            else:
+                color = 'lime'
+
+            draw.rectangle([x1, y1, x2, y2], outline=color, width=3)
+            draw.text((x1, y1 - 16), label, fill=color, font=font)
+
+        return detecciones, np.array(img_pil)
+
     except Exception as e:
         st.error(f"❌ Error en detección YOLO: {str(e)}")
         return [], None
 
 def analizar_imagen_dron(gdf, fecha_analisis):
-    """Descarga o simula imágenes de dron para análisis YOLO"""
+    """
+    Simula una imagen de dron usando PIL (sin OpenCV).
+    """
     try:
-        # Obtener bounds de la parcela
-        bounds = gdf.total_bounds
-        min_lon, min_lat, max_lon, max_lat = bounds
-        
-        # Simular imagen de dron sin OpenGL
-        import numpy as np
         from PIL import Image, ImageDraw
-        
-        # Tamaño de imagen
+        import numpy as np
+
         ancho, altura = 1000, 800
-        
-        # Crear imagen base (verde para cultivo)
         img_pil = Image.new('RGB', (ancho, altura), color=(100, 150, 100))
         draw = ImageDraw.Draw(img_pil)
-        
-        # Simular patrones de plagas/enfermedades
+
         np.random.seed(int(fecha_analisis.timestamp()))
         num_anomalias = np.random.randint(5, 15)
-        
+
         for _ in range(num_anomalias):
             x = np.random.randint(0, ancho)
             y = np.random.randint(0, altura)
             radio = np.random.randint(20, 60)
-            
-            # Color según tipo de anomalía
+
             tipo = np.random.choice(['plaga', 'enfermedad', 'deficiencia'])
             if tipo == 'plaga':
-                color = (255, 0, 0)  # Rojo
+                color = (255, 0, 0)      # Rojo
             elif tipo == 'enfermedad':
-                color = (0, 0, 255)  # Azul
+                color = (0, 0, 255)      # Azul
             else:
-                color = (255, 255, 0)  # Amarillo
-            
+                color = (255, 255, 0)    # Amarillo
+
             draw.ellipse([x-radio, y-radio, x+radio, y+radio], fill=color)
-        
-        # Convertir a BytesIO
+
         imagen_bytes = BytesIO()
         img_pil.save(imagen_bytes, format='JPEG')
         imagen_bytes.seek(0)
-        
         return imagen_bytes
-    
+
     except Exception as e:
         st.error(f"❌ Error generando imagen de dron: {str(e)}")
         return None
 
 def generar_reporte_plagas(detecciones, cultivo):
-    """Genera reporte de análisis de plagas"""
+    """
+    Genera un reporte detallado de las plagas/enfermedades detectadas.
+    """
     try:
         if not detecciones:
             return "✅ No se detectaron plagas/enfermedades significativas."
-        
-        # Agrupar por tipo
+
         conteo_plagas = {}
         areas_plagas = {}
-        
+
         for det in detecciones:
             clase = det['clase']
             conteo_plagas[clase] = conteo_plagas.get(clase, 0) + 1
             areas_plagas[clase] = areas_plagas.get(clase, 0) + det['area']
-        
-        # Generar reporte
+
         reporte = f"## 🦠 REPORTE DE PLAGAS/ENFERMEDADES - {cultivo}\n\n"
         reporte += f"**Total de detecciones:** {len(detecciones)}\n\n"
-        
         reporte += "**Distribución por tipo:**\n"
         for clase, conteo in conteo_plagas.items():
             porcentaje = (conteo / len(detecciones)) * 100
             area_prom = areas_plagas[clase] / conteo
             reporte += f"- **{clase}**: {conteo} detecciones ({porcentaje:.1f}%), área promedio: {area_prom:.0f} px²\n"
-        
-        # Recomendaciones según cultivo
+
+        # Recomendaciones específicas por cultivo
         reporte += "\n**🧪 RECOMENDACIONES ESPECÍFICAS:**\n"
-        
         if cultivo in ['TRIGO', 'MAIZ', 'SORGO']:
             if any('roya' in clase.lower() for clase in conteo_plagas.keys()):
                 reporte += "- **Fungicida**: Aplicar Triazol (0.5-1.0 L/ha) cada 15 días\n"
@@ -332,7 +317,6 @@ def generar_reporte_plagas(detecciones, cultivo):
                 reporte += "- **Insecticida**: Lambda-cialotrina (0.2-0.3 L/ha) en detección temprana\n"
             if any('pulgón' in clase.lower() for clase in conteo_plagas.keys()):
                 reporte += "- **Control biológico**: Liberar Aphidius colemani (parásito de pulgones)\n"
-                
         elif cultivo in ['VID', 'OLIVO', 'ALMENDRO']:
             if any('oidio' in clase.lower() for clase in conteo_plagas.keys()):
                 reporte += "- **Azufre micronizado**: 3-5 kg/ha aplicado preventivamente\n"
@@ -340,14 +324,15 @@ def generar_reporte_plagas(detecciones, cultivo):
                 reporte += "- **Trampas amarillas**: 50-100 trampas/ha + Spinosad (0.3 L/ha)\n"
             if any('polilla' in clase.lower() for clase in conteo_plagas.keys()):
                 reporte += "- **Confusión sexual**: Difusores de feromonas (500-1000 unidades/ha)\n"
-        
+
         # Recomendaciones generales
         reporte += "\n**📋 RECOMENDACIONES GENERALES:**\n"
         reporte += "- **Monitoreo**: Revisar cada 7-10 días durante períodos críticos\n"
         reporte += "- **Umbrales**: Actuar cuando >5% de plantas muestren síntomas\n"
         reporte += "- **Rotación**: Alternar modos de acción para evitar resistencias\n"
         reporte += "- **Registro**: Documentar todas las aplicaciones y resultados\n"
-        
+
+        # Acciones inmediatas según severidad
         reporte += "\n**⚠️ ACCIONES INMEDIATAS:**\n"
         if len(detecciones) > 20:
             reporte += "- **ALERTA ROJA**: Incidencia crítica. Aplicación urgente requerida\n"
@@ -358,18 +343,17 @@ def generar_reporte_plagas(detecciones, cultivo):
         else:
             reporte += "- **SITUACIÓN CONTROLADA**: Continuar monitoreo rutinario\n"
             reporte += "- **Preventivo**: Aplicar tratamiento preventivo en próximos 15 días\n"
-        
-        # Información adicional
+
+        # Métricas de gravedad
         reporte += "\n**📊 MÉTRICAS DE GRAVEDAD:**\n"
         severidad_total = sum(d['area'] * d['confianza'] for d in detecciones)
         reporte += f"- Índice de Severidad: {severidad_total:.0f}\n"
         reporte += f"- Área Total Afectada: {sum(d['area'] for d in detecciones):.0f} px²\n"
-        
+
         return reporte
-    
+
     except Exception as e:
         return f"❌ Error generando reporte: {str(e)}"
-
 # ===== NUEVAS FUNCIONES PARA MAPAS DE POTENCIAL DE COSECHA =====
 def crear_mapa_potencial_cosecha(gdf_completo, cultivo):
     """Crear mapa de potencial de cosecha"""
