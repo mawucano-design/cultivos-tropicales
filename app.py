@@ -936,36 +936,45 @@ def crear_boton_descarga_tiff(buffer_png, gdf, nombre_archivo, texto_boton="📥
     else:
         st.warning("No hay datos para exportar")
 
-# ===== CURVAS DE NIVEL - DEM REAL (SRTM 30m) CON FALLBACK =====
 def obtener_dem_opentopography(gdf, api_key=None):
     """
     Descarga DEM SRTM 1 arc-seg (30m) desde OpenTopography.
     Retorna (dem_array, meta, transform) o (None, None, None) si falla.
+    Maneja errores de API, coordenadas fuera de cobertura y problemas de memoria.
     """
     if not CURVAS_OK:
+        st.warning("⚠️ Librerías rasterio/scikit-image no instaladas. No se puede descargar DEM real.")
         return None, None, None
 
+    # 1. Obtener API Key (prioridad: argumento > variable entorno > secret)
     if api_key is None:
         api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY", None)
     if not api_key:
-        st.warning("⚠️ No se encontró API_KEY de OpenTopography. Usando DEM sintético.")
+        st.warning("⚠️ No se encontró API Key de OpenTopography. Se usará DEM sintético.")
+        st.info("📌 Obtén una API Key gratuita en: https://opentopography.org/")
         return None, None, None
 
     try:
+        # 2. Obtener bounding box y validar que esté dentro de la cobertura SRTM (latitudes entre -60 y 60)
         bounds = gdf.total_bounds
         west, south, east, north = bounds
 
-        # Expandir 5% para cubrir bordes
+        # Verificar límites
+        if south < -60 or north > 60:
+            st.warning("⚠️ El área está fuera de la cobertura de SRTM (latitudes > 60° o < -60°). Usando DEM sintético.")
+            return None, None, None
+
+        # 3. Expandir un 5% para cubrir bordes (evita problemas con polígonos que tocan el borde)
         lon_span = east - west
         lat_span = north - south
-        west -= lon_span * 0.05
-        east += lon_span * 0.05
-        south -= lat_span * 0.05
-        north += lat_span * 0.05
+        west = max(west - 0.05 * lon_span, -180)
+        east = min(east + 0.05 * lon_span, 180)
+        south = max(south - 0.05 * lat_span, -60)
+        north = min(north + 0.05 * lat_span, 60)
 
-        url = "https://portal.opentopography.org/API/globaldem"
+        # 4. Construir parámetros de la API
         params = {
-            "demtype": "SRTMGL1",
+            "demtype": "SRTMGL1",           # SRTM 1 arc-seg global
             "south": south,
             "north": north,
             "west": west,
@@ -974,13 +983,28 @@ def obtener_dem_opentopography(gdf, api_key=None):
             "API_Key": api_key
         }
 
-        response = requests.get(url, params=params, timeout=60)
-        response.raise_for_status()
+        url = "https://portal.opentopography.org/API/globaldem"
+        
+        with st.spinner("🛰️ Descargando DEM desde OpenTopography..."):
+            response = requests.get(url, params=params, timeout=60)
+            
+        # 5. Manejar códigos de error HTTP
+        if response.status_code == 403:
+            st.error("❌ API Key inválida o no autorizada. Verifica tu clave en OpenTopography.")
+            return None, None, None
+        elif response.status_code == 404:
+            st.error("❌ No se encontraron datos SRTM para esta área (puede ser océano o latitudes extremas).")
+            return None, None, None
+        elif response.status_code != 200:
+            st.error(f"❌ Error en OpenTopography: HTTP {response.status_code}")
+            return None, None, None
 
+        # 6. Leer el GeoTIFF desde memoria
         dem_bytes = BytesIO(response.content)
         with rasterio.open(dem_bytes) as src:
+            # Recortar exactamente al polígono de la parcela
             geom = [mapping(gdf.unary_union)]
-            out_image, out_transform = mask(src, geom, crop=True, nodata=-32768)
+            out_image, out_transform = mask(src, geom, crop=True, nodata=-32768, all_touched=True)
             out_meta = src.meta.copy()
             out_meta.update({
                 "driver": "GTiff",
@@ -992,12 +1016,21 @@ def obtener_dem_opentopography(gdf, api_key=None):
 
         dem_array = out_image.squeeze()
         dem_array = np.ma.masked_where(dem_array <= -32768, dem_array)
+        
+        # 7. Verificar que el DEM no esté completamente enmascarado (sin datos)
+        if dem_array.mask.all() if isinstance(dem_array, np.ma.MaskedArray) else np.all(dem_array <= -32768):
+            st.warning("⚠️ El DEM descargado no contiene datos válidos dentro del polígono.")
+            return None, None, None
+
+        st.success("✅ DEM SRTM 30m descargado y recortado exitosamente.")
         return dem_array, out_meta, out_transform
 
-    except Exception as e:
-        st.warning(f"⚠️ Error descargando DEM: {str(e)[:200]}")
+    except requests.exceptions.Timeout:
+        st.error("❌ Tiempo de espera agotado al conectar con OpenTopography.")
         return None, None, None
-
+    except Exception as e:
+        st.error(f"❌ Error inesperado al obtener DEM: {str(e)[:200]}")
+        return None, None, None
 def generar_curvas_nivel_reales(dem_array, transform, intervalo=10):
     """
     Genera curvas de nivel a partir de un DEM real (array) y su transform.
