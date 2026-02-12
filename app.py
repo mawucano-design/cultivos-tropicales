@@ -2968,8 +2968,9 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
         textura = analizar_textura_suelo(gdf_dividido, cultivo)
         resultados['textura'] = textura
         
-        # ----- 6. Análisis DEM y curvas de nivel (REAL con OpenTopography + fallback) -----
+               # ----- 6. Análisis DEM y curvas de nivel (PRIORIDAD: REAL > SINTÉTICO) -----
         try:
+            # 1. Intentar obtener DEM real desde OpenTopography
             api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY", None)
             dem_array, dem_meta, dem_transform = obtener_dem_opentopography(gdf, api_key)
 
@@ -2982,8 +2983,11 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
             }
 
             if dem_array is not None:
-                st.info("✅ DEM SRTM 30m obtenido desde OpenTopography")
+                # ========== DEM REAL ==========
+                st.info("✅ Usando DEM real SRTM 30m (OpenTopography)")
                 dem_data['fuente'] = 'SRTM 30m'
+                
+                # Reconstruir coordenadas geográficas a partir del transform
                 height, width = dem_array.shape
                 cols = np.arange(width)
                 rows = np.arange(height)
@@ -2992,21 +2996,30 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
                 Y_geo = dem_transform[5] + dem_transform[3] * X_grid + dem_transform[4] * Y_grid
                 Z = dem_array.filled(np.nan) if isinstance(dem_array, np.ma.MaskedArray) else dem_array.copy()
                 Z[Z <= -32768] = np.nan
+                
                 dem_data.update({
                     'X': X_geo, 'Y': Y_geo, 'Z': Z,
                     'bounds': gdf.total_bounds
                 })
+                
+                # Generar curvas de nivel reales (solo si scikit-image está disponible)
                 if CURVAS_OK:
                     curvas_con_elev = generar_curvas_nivel_reales(dem_array, dem_transform, intervalo_curvas)
                     if curvas_con_elev:
                         dem_data['curvas_con_elevacion'] = curvas_con_elev
                         dem_data['curvas_nivel'] = [line for line, _ in curvas_con_elev]
                         dem_data['elevaciones'] = [e for _, e in curvas_con_elev]
+                        st.success(f"✅ Generadas {len(curvas_con_elev)} curvas de nivel reales.")
+                else:
+                    st.warning("⚠️ scikit-image no instalado. No se generan curvas de nivel reales.")
+
             else:
-                st.info("ℹ️ Usando DEM sintético y curvas simuladas")
+                # ========== FALLBACK: DEM sintético ==========
+                st.info("ℹ️ Usando DEM sintético (OpenTopography no disponible o falló)")
                 dem_data['fuente'] = 'Sintético'
                 X, Y, Z, bounds = generar_dem_sintetico_fallback(gdf, resolucion_dem)
                 dem_data.update({'X': X, 'Y': Y, 'Z': Z, 'bounds': bounds})
+                
                 if CURVAS_OK:
                     curvas_con_elev = generar_curvas_nivel_simuladas(gdf, intervalo_curvas)
                     if curvas_con_elev:
@@ -3014,60 +3027,26 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
                         dem_data['curvas_nivel'] = [line for line, _ in curvas_con_elev]
                         dem_data['elevaciones'] = [e for _, e in curvas_con_elev]
 
+            # Calcular pendientes (si tenemos Z)
             if dem_data['Z'] is not None and not np.all(np.isnan(dem_data['Z'])):
                 try:
                     Z_grid = dem_data['Z']
-                    dy = np.gradient(Z_grid, axis=0) / (resolucion_dem * 111000)
-                    dx = np.gradient(Z_grid, axis=1) / (resolucion_dem * 111000)
+                    Z_filled = np.nan_to_num(Z_grid, nan=np.nanmean(Z_grid))
+                    dy = np.gradient(Z_filled, axis=0) / (resolucion_dem * 111000)
+                    dx = np.gradient(Z_filled, axis=1) / (resolucion_dem * 111000)
                     pendientes = np.sqrt(dx**2 + dy**2) * 100
                     pendientes = np.clip(pendientes, 0, 100)
+                    pendientes[np.isnan(Z_grid)] = np.nan
                     dem_data['pendientes'] = pendientes
                 except Exception as e:
                     st.warning(f"⚠️ No se pudieron calcular pendientes: {str(e)[:50]}")
                     dem_data['pendientes'] = None
-            else:
-                dem_data['pendientes'] = None
 
             resultados['dem_data'] = dem_data
 
         except Exception as e:
-            st.warning(f"⚠️ Error general en análisis DEM: {str(e)[:100]}")
-            resultados['dem_data'] = {
-                'X': None, 'Y': None, 'Z': None,
-                'bounds': None,
-                'curvas_nivel': [], 'elevaciones': [],
-                'curvas_con_elevacion': [], 'pendientes': None,
-                'fuente': 'Error'
-            }
-        
-        gdf_completo = textura.copy()
-        
-        for i, fert in enumerate(fertilidad_actual):
-            for key, value in fert.items():
-                gdf_completo.at[gdf_completo.index[i], f'fert_{key}'] = value
-        
-        gdf_completo['rec_N'] = rec_n
-        gdf_completo['rec_P'] = rec_p
-        gdf_completo['rec_K'] = rec_k
-        
-        for i, costo in enumerate(costos):
-            for key, value in costo.items():
-                gdf_completo.at[gdf_completo.index[i], f'costo_{key}'] = value
-        
-        for i, proy in enumerate(proyecciones):
-            for key, value in proy.items():
-                gdf_completo.at[gdf_completo.index[i], f'proy_{key}'] = value
-        
-        resultados['gdf_completo'] = gdf_completo
-        resultados['exitoso'] = True
-        
-        return resultados
-        
-    except Exception as e:
-        st.error(f"❌ Error en análisis completo: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return resultados
+            st.error(f"❌ Error crítico en análisis DEM: {str(e)[:100]}")
+            resultados['dem_data'] = None
 
 # ===== FUNCIONES DE VISUALIZACIÓN CON BOTONES DESCARGA =====
 def crear_mapa_fertilidad(gdf_completo, cultivo, satelite):
