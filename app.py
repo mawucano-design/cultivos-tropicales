@@ -3936,9 +3936,9 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
     
     with tab7:
         st.subheader("🏔️ ANÁLISIS TOPOGRÁFICO Y CURVAS DE NIVEL")
-        if 'dem_data' in resultados and resultados['dem_data']:
-        dem_data = resultados['dem_data']
-        if dem_data['Z'] is not None and not np.all(np.isnan(dem_data['Z'])):
+            if 'dem_data' in resultados and resultados['dem_data']:
+            dem_data = resultados['dem_data']
+            if dem_data['Z'] is not None and not np.all(np.isnan(dem_data['Z'])):
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 elev_min = np.nanmin(dem_data['Z'])
