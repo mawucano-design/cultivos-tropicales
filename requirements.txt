@@ -28,6 +28,3 @@ opencv-python-headless>=4.8.0
 scikit-image
 rasterio
 branca
-folium 
-branca 
-streamlit-folium
