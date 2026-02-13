@@ -938,6 +938,9 @@ def crear_boton_descarga_tiff(buffer_png, gdf, nombre_archivo, texto_boton="📥
         st.warning("No hay datos para exportar")
 
 def obtener_dem_opentopography(gdf, api_key=None):
+    if api_key is None:
+        # api_key = os.environ.get("OPENTOPOGRAPHY_API_KEY", None)
+        api_key = "584795e463e3ab0134642fe0e989735d"  # Hardcodeada para pruebas
     """
     Descarga DEM SRTM 1 arc-seg (30m) desde OpenTopography.
     Retorna (dem_array, meta, transform) o (None, None, None) si falla.
