@@ -1,5 +1,6 @@
 # app.py - Versión con visualización NDVI+NDRE en lugar de RGB
 # CORREGIDO: YOLO sin OpenCV, DEM real SRTM 30m con OpenTopography, mapas Folium interactivos
+# FIX: Error "Cannot convert fill_value nan to dtype int16" solucionado
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
@@ -2992,8 +2993,13 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
                 X_grid, Y_grid = np.meshgrid(cols, rows)
                 X_geo = dem_transform[2] + dem_transform[0] * X_grid + dem_transform[1] * Y_grid
                 Y_geo = dem_transform[5] + dem_transform[3] * X_grid + dem_transform[4] * Y_grid
-                Z = dem_array.filled(np.nan) if isinstance(dem_array, np.ma.MaskedArray) else dem_array.copy()
-                Z[Z <= -32768] = np.nan
+                
+                # Convertir a float antes de rellenar con NaN para evitar errores de tipo
+                if isinstance(dem_array, np.ma.MaskedArray):
+                    Z = dem_array.astype(float).filled(np.nan)
+                else:
+                    Z = dem_array.astype(float)
+                    Z[Z <= -32768] = np.nan
                 
                 dem_data.update({
                     'X': X_geo, 'Y': Y_geo, 'Z': Z,
@@ -3001,6 +3007,7 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
                 })
                 
                 if CURVAS_OK:
+                    # Pasar el array original (masked) a la función de curvas, que maneja enteros
                     curvas_con_elev = generar_curvas_nivel_reales(dem_array, dem_transform, intervalo_curvas)
                     if curvas_con_elev:
                         dem_data['curvas_con_elevacion'] = curvas_con_elev
