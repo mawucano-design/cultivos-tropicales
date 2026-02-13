@@ -3933,51 +3933,113 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
             'Incremento (%)', 'Índice Fertilidad'
         ]
         st.dataframe(tabla_potencial.sort_values('Potencial Base (kg/ha)', ascending=False))
-    
     with tab7:
-        st.subheader("🏔️ ANÁLISIS TOPOGRÁFICO Y CURVAS DE NIVEL")
-        if 'dem_data' in resultados and resultados['dem_data']:
-            dem_data = resultados['dem_data']
-        if dem_data['Z'] is not None and not np.all(np.isnan(dem_data['Z'])):
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                elev_min = np.nanmin(dem_data['Z'])
-                st.metric("Elevación Mínima", f"{elev_min:.1f} m" if not np.isnan(elev_min) else "N/A")
-            with col2:
-                elev_max = np.nanmax(dem_data['Z'])
-                st.metric("Elevación Máxima", f"{elev_max:.1f} m" if not np.isnan(elev_max) else "N/A")
-            with col3:
-                elev_prom = np.nanmean(dem_data['Z'])
-                st.metric("Elevación Promedio", f"{elev_prom:.1f} m" if not np.isnan(elev_prom) else "N/A")
-            with col4:
-                fuente = dem_data.get('fuente', 'Desconocida')
-                st.metric("Fuente DEM", fuente)
+    st.subheader("🏔️ ANÁLISIS TOPOGRÁFICO Y CURVAS DE NIVEL")
+    
+    # Verificar si existen datos topográficos válidos
+    if ('dem_data' in resultados and resultados['dem_data'] and 
+        resultados['dem_data']['Z'] is not None and 
+        not np.all(np.isnan(resultados['dem_data']['Z']))):
+        
+        dem_data = resultados['dem_data']
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            elev_min = np.nanmin(dem_data['Z'])
+            st.metric("Elevación Mínima", f"{elev_min:.1f} m" if not np.isnan(elev_min) else "N/A")
+        with col2:
+            elev_max = np.nanmax(dem_data['Z'])
+            st.metric("Elevación Máxima", f"{elev_max:.1f} m" if not np.isnan(elev_max) else "N/A")
+        with col3:
+            elev_prom = np.nanmean(dem_data['Z'])
+            st.metric("Elevación Promedio", f"{elev_prom:.1f} m" if not np.isnan(elev_prom) else "N/A")
+        with col4:
+            fuente = dem_data.get('fuente', 'Desconocida')
+            st.metric("Fuente DEM", fuente)
 
-            visualizacion = st.radio(
-                "Tipo de visualización:",
-                ["Mapa Interactivo (Folium)", "Mapa de Pendientes", "Curvas de Nivel (estático)", "Modelo 3D"],
-                horizontal=True
-            )
+        visualizacion = st.radio(
+            "Tipo de visualización:",
+            ["Mapa Interactivo (Folium)", "Mapa de Pendientes", "Curvas de Nivel (estático)", "Modelo 3D"],
+            horizontal=True
+        )
 
-            if visualizacion == "Mapa Interactivo (Folium)":
-                # Usamos FOLIUM_OK en lugar de CURVAS_OK
-                if FOLIUM_OK and dem_data.get('curvas_con_elevacion'):
-                    st.subheader("🗺️ Mapa Interactivo de Curvas de Nivel")
-                    m = mapa_curvas_coloreadas(resultados['gdf_completo'], dem_data['curvas_con_elevacion'])
-                    if m:
-                        if FOLIUM_STATIC_OK:
-                            folium_static(m, width=1000, height=600)
-                        else:
-                            st.components.v1.html(m._repr_html_(), width=1000, height=600)
+        if visualizacion == "Mapa Interactivo (Folium)":
+            if FOLIUM_OK and dem_data.get('curvas_con_elevacion'):
+                st.subheader("🗺️ Mapa Interactivo de Curvas de Nivel")
+                m = mapa_curvas_coloreadas(resultados['gdf_completo'], dem_data['curvas_con_elevacion'])
+                if m:
+                    if FOLIUM_STATIC_OK:
+                        folium_static(m, width=1000, height=600)
                     else:
-                        st.error("No se pudo generar el mapa interactivo.")
+                        st.components.v1.html(m._repr_html_(), width=1000, height=600)
                 else:
-                    if not FOLIUM_OK:
-                        st.warning("⚠️ Folium no está instalado. No se puede mostrar el mapa interactivo.")
-                    elif not dem_data.get('curvas_con_elevacion'):
-                        st.warning("⚠️ No hay curvas de nivel generadas para esta área.")
+                    st.error("No se pudo generar el mapa interactivo.")
+            else:
+                if not FOLIUM_OK:
+                    st.warning("⚠️ Folium no está instalado. No se puede mostrar el mapa interactivo.")
+                elif not dem_data.get('curvas_con_elevacion'):
+                    st.warning("⚠️ No hay curvas de nivel generadas para esta área.")
 
-            # ... resto de opciones sin cambios ...
+        elif visualizacion == "Mapa de Pendientes":
+            st.subheader("📉 MAPA DE PENDIENTES")
+            if dem_data.get('pendientes') is not None:
+                fig, ax = plt.subplots(1, 1, figsize=(12, 6))
+                scatter = ax.scatter(dem_data['X'].flatten(), dem_data['Y'].flatten(),
+                                     c=dem_data['pendientes'].flatten(), cmap='RdYlGn_r',
+                                     s=5, alpha=0.7, vmin=0, vmax=30)
+                resultados['gdf_completo'].plot(ax=ax, color='none', edgecolor='black', linewidth=2)
+                plt.colorbar(scatter, ax=ax, label='Pendiente (%)')
+                ax.set_title(f'Mapa de Pendientes - {fuente}')
+                ax.set_xlabel('Longitud'); ax.set_ylabel('Latitud')
+                st.pyplot(fig)
+                buf = io.BytesIO()
+                fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+                buf.seek(0)
+                st.download_button(
+                    label="📥 Descargar Mapa de Pendientes PNG",
+                    data=buf,
+                    file_name=f"pendientes_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                    mime="image/png"
+                )
+            else:
+                st.info("No hay datos de pendiente disponibles.")
+
+        elif visualizacion == "Curvas de Nivel (estático)":
+            st.subheader("⛰️ MAPA DE CURVAS DE NIVEL")
+            if dem_data.get('curvas_nivel') and len(dem_data['curvas_nivel']) > 0:
+                fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+                contourf = ax.contourf(dem_data['X'], dem_data['Y'], dem_data['Z'],
+                                       levels=20, cmap='terrain', alpha=0.7)
+                plt.colorbar(contourf, ax=ax, label='Elevación (m)')
+                for line, elev in zip(dem_data['curvas_nivel'], dem_data['elevaciones']):
+                    x, y = line.xy
+                    ax.plot(x, y, 'b-', linewidth=0.8, alpha=0.7)
+                    if len(x) > 0:
+                        mid = len(x)//2
+                        ax.text(x[mid], y[mid], f'{elev:.0f}', fontsize=7,
+                                bbox=dict(boxstyle="round,pad=0.2", fc='white', alpha=0.7))
+                resultados['gdf_completo'].plot(ax=ax, color='none', edgecolor='black', linewidth=2)
+                ax.set_title(f'Curvas de Nivel - {fuente}')
+                ax.set_xlabel('Longitud'); ax.set_ylabel('Latitud')
+                st.pyplot(fig)
+            else:
+                st.info("No se generaron curvas de nivel.")
+
+        elif visualizacion == "Modelo 3D":
+            st.subheader("🎨 VISUALIZACIÓN 3D DEL TERRENO")
+            fig = plt.figure(figsize=(14, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            step = max(1, dem_data['X'].shape[0] // 50)
+            X_s = dem_data['X'][::step, ::step]
+            Y_s = dem_data['Y'][::step, ::step]
+            Z_s = dem_data['Z'][::step, ::step]
+            surf = ax.plot_surface(X_s, Y_s, Z_s, cmap='terrain', alpha=0.8,
+                                   linewidth=0, antialiased=True)
+            ax.set_xlabel('Longitud'); ax.set_ylabel('Latitud'); ax.set_zlabel('Elevación (m)')
+            ax.set_title(f'Modelo 3D del Terreno - {fuente}')
+            fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Elevación (m)')
+            ax.view_init(elev=30, azim=45)
+            st.pyplot(fig)
 
     else:
         st.info("ℹ️ No hay datos topográficos disponibles para esta parcela.")
