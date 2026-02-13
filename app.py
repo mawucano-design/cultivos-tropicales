@@ -1,7 +1,6 @@
 # app.py - Versión con visualización NDVI+NDRE en lugar de RGB
 # CORREGIDO: YOLO sin OpenCV, DEM real SRTM 30m con OpenTopography, mapas Folium interactivos
-# FIX: Función ejecutar_analisis_completo completada, indice_seleccionado en session_state,
-#      manejo robusto de OpenTopography y consolidación de resultados en gdf_completo.
+# FIX: Error crítico en análisis DEM (fill_value nan en array int16) - ahora se convierte a float32 con NaN
 
 import streamlit as st
 import geopandas as gpd
@@ -676,11 +675,12 @@ def crear_boton_descarga_tiff(buffer_png, gdf, nombre_archivo, texto_boton="📥
                 mime="image/tiff"
             )
 
-# ===== OBTENER DEM DESDE OPENTOPOGRAPHY =====
+# ===== OBTENER DEM DESDE OPENTOPOGRAPHY (CORREGIDO: CONVERSIÓN A FLOAT32 Y NaN) =====
 def obtener_dem_opentopography(gdf, api_key=None):
     """
     Descarga DEM SRTM 1 arc-seg (30m) desde OpenTopography.
     Retorna (dem_array, meta, transform) o (None, None, None) si falla.
+    CORRECCIÓN: dem_array convertido a float32 y valores nodata reemplazados por NaN.
     """
     if not CURVAS_OK:
         st.warning("⚠️ Librerías rasterio/scikit-image no instaladas. No se puede descargar DEM real.")
@@ -744,10 +744,11 @@ def obtener_dem_opentopography(gdf, api_key=None):
                 "nodata": -32768
             })
 
-        dem_array = out_image.squeeze()
-        dem_array = np.ma.masked_where(dem_array <= -32768, dem_array)
+        # CORRECCIÓN: Convertir a float32 y asignar NaN a los valores nodata
+        dem_array = out_image.squeeze().astype(np.float32)
+        dem_array[dem_array <= -32768] = np.nan
 
-        if dem_array.mask.all() if isinstance(dem_array, np.ma.MaskedArray) else np.all(dem_array <= -32768):
+        if np.all(np.isnan(dem_array)):
             st.warning("⚠️ El DEM descargado no contiene datos válidos dentro del polígono.")
             return None, None, None
 
@@ -761,21 +762,29 @@ def obtener_dem_opentopography(gdf, api_key=None):
         st.error(f"❌ Error inesperado al obtener DEM: {str(e)[:200]}")
         return None, None, None
 
+# ===== GENERACIÓN DE CURVAS DE NIVEL REALES (CORREGIDO: MANEJO DE NaN) =====
 def generar_curvas_nivel_reales(dem_array, transform, intervalo=10):
+    """
+    Genera curvas de nivel a partir de un DEM real (array con NaN) y su transform.
+    Retorna lista de (LineString, elevacion).
+    CORRECCIÓN: Rellenar NaN con -999 para find_contours.
+    """
     if dem_array is None or not CURVAS_OK:
         return []
-    if isinstance(dem_array, np.ma.MaskedArray):
-        data = dem_array.filled(fill_value=-999)
-    else:
-        data = dem_array.copy()
-        data[data <= -32768] = -999
+
+    # Convertir a float32 y reemplazar NaN por -999 (valor fuera de rango)
+    data = dem_array.copy().astype(np.float32)
+    data[np.isnan(data)] = -999
+
     vmin = data[data > -999].min()
     vmax = data[data > -999].max()
     if vmin is np.ma.masked or vmax is np.ma.masked or np.isnan(vmin):
         return []
+
     niveles = np.arange(np.floor(vmin / intervalo) * intervalo,
                         np.ceil(vmax / intervalo) * intervalo + intervalo,
                         intervalo)
+
     contours = []
     for nivel in niveles:
         try:
@@ -2220,16 +2229,15 @@ def ejecutar_analisis_completo(gdf, cultivo, n_divisiones, satelite, fecha_inici
             if dem_array is not None:
                 st.info("✅ Usando DEM real SRTM 30m (OpenTopography)")
                 dem_data['fuente'] = 'SRTM 30m'
+                # dem_array ya es float32 con NaN
                 height, width = dem_array.shape
                 cols = np.arange(width)
                 rows = np.arange(height)
                 X_grid, Y_grid = np.meshgrid(cols, rows)
                 X_geo = dem_transform[2] + dem_transform[0] * X_grid + dem_transform[1] * Y_grid
                 Y_geo = dem_transform[5] + dem_transform[3] * X_grid + dem_transform[4] * Y_grid
-                Z = dem_array.filled(np.nan) if isinstance(dem_array, np.ma.MaskedArray) else dem_array.copy()
-                Z[Z <= -32768] = np.nan
                 dem_data.update({
-                    'X': X_geo, 'Y': Y_geo, 'Z': Z,
+                    'X': X_geo, 'Y': Y_geo, 'Z': dem_array,
                     'bounds': gdf.total_bounds
                 })
                 if CURVAS_OK:
