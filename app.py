@@ -3935,8 +3935,8 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         st.dataframe(tabla_potencial.sort_values('Potencial Base (kg/ha)', ascending=False))
     
     with tab7:
-    st.subheader("🏔️ ANÁLISIS TOPOGRÁFICO Y CURVAS DE NIVEL")
-    if 'dem_data' in resultados and resultados['dem_data']:
+        st.subheader("🏔️ ANÁLISIS TOPOGRÁFICO Y CURVAS DE NIVEL")
+        if 'dem_data' in resultados and resultados['dem_data']:
         dem_data = resultados['dem_data']
         if dem_data['Z'] is not None and not np.all(np.isnan(dem_data['Z'])):
             col1, col2, col3, col4 = st.columns(4)
