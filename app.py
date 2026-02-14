@@ -2,6 +2,7 @@
 # CORREGIDO: YOLO sin OpenCV, DEM real SRTM 30m con OpenTopography, mapas Folium interactivos
 # FIX: Separación de dependencias y manejo robusto de curvas de nivel
 # AÑADIDO: Fuente alternativa Open Topo Data API (sin API Key)
+# MEJORADO: Visualización de curvas de nivel y mapa de pendientes (imshow)
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
@@ -1149,6 +1150,7 @@ def generar_curvas_nivel_reales(dem_array, transform, intervalo=10, polygon=None
         data[~valid_mask] = np.nan
 
     if not np.any(valid_mask):
+        st.warning("⚠️ El DEM no contiene datos válidos para generar curvas.")
         return []
 
     vmin = np.nanmin(data)
@@ -1159,6 +1161,12 @@ def generar_curvas_nivel_reales(dem_array, transform, intervalo=10, polygon=None
     niveles = np.arange(np.floor(vmin / intervalo) * intervalo,
                         np.ceil(vmax / intervalo) * intervalo + intervalo,
                         intervalo)
+
+    # Si el rango es muy pequeño, usar un intervalo más fino
+    if vmax - vmin < intervalo * 2 and len(niveles) < 3:
+        intervalo_ajustado = (vmax - vmin) / 5
+        niveles = np.arange(vmin, vmax + intervalo_ajustado, intervalo_ajustado)
+        st.info(f"ℹ️ Terreno muy plano: se usó intervalo de {intervalo_ajustado:.1f} m en lugar de {intervalo} m")
 
     # Rellenar con un valor muy negativo para que find_contours no se salga
     data_filled = np.where(valid_mask, data, -9999)
@@ -1185,6 +1193,10 @@ def generar_curvas_nivel_reales(dem_array, transform, intervalo=10, polygon=None
                             contours.append((line, nivel))
         except Exception:
             continue
+    if contours:
+        st.info(f"✅ Generadas {len(contours)} curvas de nivel (intervalo {intervalo} m)")
+    else:
+        st.warning("⚠️ No se generaron curvas de nivel. El terreno puede ser muy plano o el DEM no tiene variación.")
     return contours
 
 def generar_curvas_nivel_simuladas(gdf, intervalo=10):
@@ -1228,7 +1240,12 @@ def generar_curvas_nivel_simuladas(gdf, intervalo=10):
     # Rellenar NaN con valor muy bajo para find_contours
     Z_filled = np.where(np.isnan(Z), -9999, Z)
 
-    niveles = np.arange(np.nanmin(Z), np.nanmax(Z) + intervalo, intervalo)
+    vmin = np.nanmin(Z)
+    vmax = np.nanmax(Z)
+    if np.isnan(vmin) or np.isnan(vmax):
+        return []
+
+    niveles = np.arange(vmin, vmax + intervalo, intervalo)
     if len(niveles) < 2:
         return []
 
@@ -1251,6 +1268,10 @@ def generar_curvas_nivel_simuladas(gdf, intervalo=10):
                         contours.append((line, nivel))
         except Exception:
             continue
+    if contours:
+        st.info(f"✅ Generadas {len(contours)} curvas de nivel sintéticas (intervalo {intervalo} m)")
+    else:
+        st.warning("⚠️ No se generaron curvas de nivel sintéticas.")
     return contours
 
 def mapa_curvas_coloreadas(gdf_original, curvas_con_elevacion):
@@ -3333,6 +3354,10 @@ def extraer_curvas_de_grid(X, Y, Z, intervalo, polygon=None):
                         contours.append((line, nivel))
         except Exception:
             continue
+    if contours:
+        st.info(f"✅ Generadas {len(contours)} curvas de nivel desde grilla")
+    else:
+        st.warning("⚠️ No se generaron curvas de nivel desde la grilla.")
     return contours
 
 # ===== FUNCIONES DE VISUALIZACIÓN CON BOTONES DESCARGA =====
@@ -4219,12 +4244,24 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
             elif visualizacion == "Mapa de Pendientes":
                 st.subheader("📉 MAPA DE PENDIENTES")
                 if dem_data.get('pendientes') is not None:
-                    fig, ax = plt.subplots(1, 1, figsize=(12, 6))
-                    scatter = ax.scatter(dem_data['X'].flatten(), dem_data['Y'].flatten(),
-                                         c=dem_data['pendientes'].flatten(), cmap='RdYlGn_r',
-                                         s=5, alpha=0.7, vmin=0, vmax=30)
+                    fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+                    
+                    # Usar imshow para un mapa continuo de pendientes
+                    bounds = dem_data['bounds']
+                    minx, miny, maxx, maxy = bounds
+                    
+                    # Crear una máscara para valores NaN
+                    pendientes = dem_data['pendientes']
+                    pendientes_plot = np.ma.masked_invalid(pendientes)
+                    
+                    im = ax.imshow(pendientes_plot, extent=[minx, maxx, miny, maxy],
+                                  origin='lower', cmap='RdYlGn_r', alpha=0.8,
+                                  aspect='auto', vmin=0, vmax=30)
+                    plt.colorbar(im, ax=ax, label='Pendiente (%)')
+                    
+                    # Superponer el polígono de la parcela
                     resultados['gdf_completo'].plot(ax=ax, color='none', edgecolor='black', linewidth=2)
-                    plt.colorbar(scatter, ax=ax, label='Pendiente (%)')
+                    
                     ax.set_title(f'Mapa de Pendientes - {fuente}')
                     ax.set_xlabel('Longitud'); ax.set_ylabel('Latitud')
                     st.pyplot(fig)
@@ -4242,24 +4279,46 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
     
             elif visualizacion == "Curvas de Nivel (estático)":
                 st.subheader("⛰️ MAPA DE CURVAS DE NIVEL")
-                if dem_data.get('curvas_nivel') and len(dem_data['curvas_nivel']) > 0:
+                if dem_data['Z'] is not None and not np.all(np.isnan(dem_data['Z'])):
                     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
+                    
+                    # Dibujar el fondo de elevación (siempre)
                     contourf = ax.contourf(dem_data['X'], dem_data['Y'], dem_data['Z'],
                                            levels=20, cmap='terrain', alpha=0.7)
                     plt.colorbar(contourf, ax=ax, label='Elevación (m)')
-                    for line, elev in zip(dem_data['curvas_nivel'], dem_data['elevaciones']):
-                        x, y = line.xy
-                        ax.plot(x, y, 'b-', linewidth=0.8, alpha=0.7)
-                        if len(x) > 0:
-                            mid = len(x)//2
-                            ax.text(x[mid], y[mid], f'{elev:.0f}', fontsize=7,
-                                    bbox=dict(boxstyle="round,pad=0.2", fc='white', alpha=0.7))
+                    
+                    # Superponer curvas de nivel si existen
+                    if dem_data.get('curvas_nivel') and len(dem_data['curvas_nivel']) > 0:
+                        for line, elev in zip(dem_data['curvas_nivel'], dem_data['elevaciones']):
+                            x, y = line.xy
+                            ax.plot(x, y, 'b-', linewidth=0.8, alpha=0.7)
+                            if len(x) > 0:
+                                mid = len(x)//2
+                                ax.text(x[mid], y[mid], f'{elev:.0f}', fontsize=7,
+                                        bbox=dict(boxstyle="round,pad=0.2", fc='white', alpha=0.7))
+                    else:
+                        st.info("ℹ️ No se generaron curvas de nivel, solo se muestra el relieve.")
+                    
+                    # Dibujar el contorno de la parcela
                     resultados['gdf_completo'].plot(ax=ax, color='none', edgecolor='black', linewidth=2)
-                    ax.set_title(f'Curvas de Nivel - {fuente}')
-                    ax.set_xlabel('Longitud'); ax.set_ylabel('Latitud')
+                    
+                    ax.set_title(f'Curvas de Nivel - {dem_data.get("fuente", "Desconocida")}')
+                    ax.set_xlabel('Longitud')
+                    ax.set_ylabel('Latitud')
                     st.pyplot(fig)
+                    
+                    # Botón de descarga
+                    buf = io.BytesIO()
+                    fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+                    buf.seek(0)
+                    st.download_button(
+                        label="📥 Descargar Mapa de Curvas PNG",
+                        data=buf,
+                        file_name=f"curvas_nivel_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.png",
+                        mime="image/png"
+                    )
                 else:
-                    st.info("No se generaron curvas de nivel.")
+                    st.warning("No hay datos de elevación válidos para mostrar.")
     
             elif visualizacion == "Modelo 3D":
                 st.subheader("🎨 VISUALIZACIÓN 3D DEL TERRENO")
