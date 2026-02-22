@@ -75,6 +75,13 @@ try:
 except ImportError:
     FOLIUM_STATIC_OK = False
 
+import os
+import streamlit as st
+
+# Intenta desde secrets (Streamlit Cloud) o desde variable de entorno (local)
+DEEPSEEK_API_KEY = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
+if not DEEPSEEK_API_KEY:
+    st.warning("⚠️ No se encontró API Key de DeepSeek. La IA no estará disponible.")
 # ===== IMPORTACIONES GOOGLE EARTH ENGINE (NO MODIFICAR) =====
 try:
     import ee
