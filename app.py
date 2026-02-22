@@ -4645,7 +4645,7 @@ INTERPRETACIÓN:
             else:
                 st.warning("⚠️ Necesitas autenticación GEE para esta función")
 
-       st.markdown("---")
+    st.markdown("---")
     st.subheader("💾 EXPORTAR RESULTADOS")
     col_exp1, col_exp2, col_exp3 = st.columns(3)
     with col_exp1:
