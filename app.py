@@ -3907,7 +3907,7 @@ if uploaded_file:
 
 if st.session_state.analisis_completado and 'resultados_todos' in st.session_state:
     resultados = st.session_state.resultados_todos
-    
+
     tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
         "📊 Fertilidad Actual",
         "🧪 Recomendaciones NPK",
@@ -3919,7 +3919,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         "🌍 Visualización NDVI+NDRE",
         "🦠 Detección YOLO"
     ])
-    
+
     with tab1:
         st.subheader("FERTILIDAD ACTUAL")
         col1, col2, col3, col4 = st.columns(4)
@@ -3945,13 +3945,13 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 "📥 Descargar Mapa de Fertilidad TIFF", cultivo
             )
         st.subheader("📋 TABLA DE RESULTADOS")
-        columnas_fert = ['id_zona', 'area_ha', 'fert_npk_actual', 'fert_ndvi', 
-                       'fert_ndre', 'fert_materia_organica', 'fert_humedad_suelo']
+        columnas_fert = ['id_zona', 'area_ha', 'fert_npk_actual', 'fert_ndvi',
+                         'fert_ndre', 'fert_materia_organica', 'fert_humedad_suelo']
         tabla_fert = resultados['gdf_completo'][columnas_fert].copy()
-        tabla_fert.columns = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI', 
-                            'NDRE', 'Materia Org (%)', 'Humedad']
+        tabla_fert.columns = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI',
+                              'NDRE', 'Materia Org (%)', 'Humedad']
         st.dataframe(tabla_fert)
-    
+
     with tab2:
         st.subheader("RECOMENDACIONES NPK")
         col1, col2, col3 = st.columns(3)
@@ -3999,10 +3999,10 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         st.subheader("📋 TABLA DE RECOMENDACIONES")
         columnas_npk = ['id_zona', 'area_ha', 'rec_N', 'rec_P', 'rec_K']
         tabla_npk = resultados['gdf_completo'][columnas_npk].copy()
-        tabla_npk.columns = ['Zona', 'Área (ha)', 'Nitrógeno (kg/ha)', 
-                           'Fósforo (kg/ha)', 'Potasio (kg/ha)']
+        tabla_npk.columns = ['Zona', 'Área (ha)', 'Nitrógeno (kg/ha)',
+                             'Fósforo (kg/ha)', 'Potasio (kg/ha)']
         st.dataframe(tabla_npk)
-    
+
     with tab3:
         st.subheader("ANÁLISIS DE COSTOS")
         costo_total = resultados['gdf_completo']['costo_costo_total'].sum()
@@ -4030,13 +4030,13 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 mime="image/png"
             )
         st.subheader("📋 TABLA DE COSTOS POR ZONA")
-        columnas_costos = ['id_zona', 'area_ha', 'costo_costo_nitrogeno', 'costo_costo_fosforo', 
-                         'costo_costo_potasio', 'costo_costo_total']
+        columnas_costos = ['id_zona', 'area_ha', 'costo_costo_nitrogeno', 'costo_costo_fosforo',
+                           'costo_costo_potasio', 'costo_costo_total']
         tabla_costos = resultados['gdf_completo'][columnas_costos].copy()
-        tabla_costos.columns = ['Zona', 'Área (ha)', 'Costo N (USD)', 'Costo P (USD)', 
-                              'Costo K (USD)', 'Total (USD)']
+        tabla_costos.columns = ['Zona', 'Área (ha)', 'Costo N (USD)', 'Costo P (USD)',
+                                'Costo K (USD)', 'Total (USD)']
         st.dataframe(tabla_costos)
-    
+
     with tab4:
         st.subheader("TEXTURA DEL SUELO")
         textura_pred = resultados['gdf_completo']['textura_suelo'].mode()[0] if len(resultados['gdf_completo']) > 0 else "N/D"
@@ -4077,7 +4077,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         tabla_text = resultados['gdf_completo'][columnas_text].copy()
         tabla_text.columns = ['Zona', 'Área (ha)', 'Textura', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
         st.dataframe(tabla_text)
-    
+
     with tab5:
         st.subheader("PROYECCIONES DE COSECHA")
         rend_sin = resultados['gdf_completo']['proy_rendimiento_sin_fert'].sum()
@@ -4108,7 +4108,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         tabla_proy = resultados['gdf_completo'][columnas_proy].copy()
         tabla_proy.columns = ['Zona', 'Área (ha)', 'Sin Fertilización (kg)', 'Con Fertilización (kg)', 'Incremento (%)']
         st.dataframe(tabla_proy)
-    
+
     with tab6:
         st.subheader("🎯 POTENCIAL DE COSECHA")
         col1, col2, col3, col4 = st.columns(4)
@@ -4159,8 +4159,8 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         st.subheader("📋 ANÁLISIS POR ZONAS DE POTENCIAL")
         gdf_analisis = resultados['gdf_completo'].copy()
         gdf_analisis['potencial_categoria'] = pd.qcut(
-            gdf_analisis['proy_rendimiento_sin_fert'], 
-            q=3, 
+            gdf_analisis['proy_rendimiento_sin_fert'],
+            q=3,
             labels=['Bajo', 'Medio', 'Alto']
         )
         st.write("**Categorías de Potencial:**")
@@ -4200,27 +4200,27 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
         st.subheader("📋 TABLA DETALLADA DE POTENCIAL")
         columnas_potencial = [
             'id_zona', 'area_ha', 'potencial_categoria',
-            'proy_rendimiento_sin_fert', 'proy_rendimiento_con_fert', 
+            'proy_rendimiento_sin_fert', 'proy_rendimiento_con_fert',
             'proy_incremento_esperado', 'fert_npk_actual'
         ]
         tabla_potencial = gdf_analisis[columnas_potencial].copy()
         tabla_potencial.columns = [
-            'Zona', 'Área (ha)', 'Categoría', 
+            'Zona', 'Área (ha)', 'Categoría',
             'Potencial Base (kg/ha)', 'Potencial Mejorado (kg/ha)',
             'Incremento (%)', 'Índice Fertilidad'
         ]
         st.dataframe(tabla_potencial.sort_values('Potencial Base (kg/ha)', ascending=False))
-    
+
     with tab7:
         st.subheader("🏔️ ANÁLISIS TOPOGRÁFICO Y CURVAS DE NIVEL")
-        
+
         # Verificar si existen datos topográficos válidos
-        if ('dem_data' in resultados and resultados['dem_data'] and 
-            resultados['dem_data']['Z'] is not None and 
+        if ('dem_data' in resultados and resultados['dem_data'] and
+            resultados['dem_data']['Z'] is not None and
             not np.all(np.isnan(resultados['dem_data']['Z']))):
-            
+
             dem_data = resultados['dem_data']
-            
+
             col1, col2, col3, col4 = st.columns(4)
             with col1:
                 elev_min = np.nanmin(dem_data['Z'])
@@ -4234,13 +4234,13 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
             with col4:
                 fuente = dem_data.get('fuente', 'Desconocida')
                 st.metric("Fuente DEM", fuente)
-    
+
             visualizacion = st.radio(
                 "Tipo de visualización:",
                 ["Mapa Interactivo (Folium)", "Mapa de Pendientes", "Curvas de Nivel (estático)", "Modelo 3D"],
                 horizontal=True
             )
-    
+
             if visualizacion == "Mapa Interactivo (Folium)":
                 if FOLIUM_OK and dem_data.get('curvas_con_elevacion'):
                     st.subheader("🗺️ Mapa Interactivo de Curvas de Nivel")
@@ -4257,28 +4257,28 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                         st.warning("⚠️ Folium no está instalado. No se puede mostrar el mapa interactivo.")
                     elif not dem_data.get('curvas_con_elevacion'):
                         st.warning("⚠️ No hay curvas de nivel generadas para esta área.")
-    
+
             elif visualizacion == "Mapa de Pendientes":
                 st.subheader("📉 MAPA DE PENDIENTES")
                 if dem_data.get('pendientes') is not None:
                     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-                    
+
                     # Usar imshow para un mapa continuo de pendientes
                     bounds = dem_data['bounds']
                     minx, miny, maxx, maxy = bounds
-                    
+
                     # Crear una máscara para valores NaN
                     pendientes = dem_data['pendientes']
                     pendientes_plot = np.ma.masked_invalid(pendientes)
-                    
+
                     im = ax.imshow(pendientes_plot, extent=[minx, maxx, miny, maxy],
-                                  origin='lower', cmap='RdYlGn_r', alpha=0.8,
-                                  aspect='auto', vmin=0, vmax=30)
+                                   origin='lower', cmap='RdYlGn_r', alpha=0.8,
+                                   aspect='auto', vmin=0, vmax=30)
                     plt.colorbar(im, ax=ax, label='Pendiente (%)')
-                    
+
                     # Superponer el polígono de la parcela
                     resultados['gdf_completo'].plot(ax=ax, color='none', edgecolor='black', linewidth=2)
-                    
+
                     ax.set_title(f'Mapa de Pendientes - {fuente}')
                     ax.set_xlabel('Longitud'); ax.set_ylabel('Latitud')
                     st.pyplot(fig)
@@ -4293,17 +4293,17 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                     )
                 else:
                     st.info("No hay datos de pendiente disponibles.")
-    
+
             elif visualizacion == "Curvas de Nivel (estático)":
                 st.subheader("⛰️ MAPA DE CURVAS DE NIVEL")
                 if dem_data['Z'] is not None and not np.all(np.isnan(dem_data['Z'])):
                     fig, ax = plt.subplots(1, 1, figsize=(12, 8))
-                    
+
                     # Dibujar el fondo de elevación (siempre)
                     contourf = ax.contourf(dem_data['X'], dem_data['Y'], dem_data['Z'],
-                                           levels=20, cmap='terrain', alpha=0.7)
+                                            levels=20, cmap='terrain', alpha=0.7)
                     plt.colorbar(contourf, ax=ax, label='Elevación (m)')
-                    
+
                     # Superponer curvas de nivel si existen
                     if dem_data.get('curvas_nivel') and len(dem_data['curvas_nivel']) > 0:
                         for line, elev in zip(dem_data['curvas_nivel'], dem_data['elevaciones']):
@@ -4315,15 +4315,15 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                                         bbox=dict(boxstyle="round,pad=0.2", fc='white', alpha=0.7))
                     else:
                         st.info("ℹ️ No se generaron curvas de nivel, solo se muestra el relieve.")
-                    
+
                     # Dibujar el contorno de la parcela
                     resultados['gdf_completo'].plot(ax=ax, color='none', edgecolor='black', linewidth=2)
-                    
+
                     ax.set_title(f'Curvas de Nivel - {dem_data.get("fuente", "Desconocida")}')
                     ax.set_xlabel('Longitud')
                     ax.set_ylabel('Latitud')
                     st.pyplot(fig)
-                    
+
                     # Botón de descarga
                     buf = io.BytesIO()
                     fig.savefig(buf, format='png', dpi=150, bbox_inches='tight')
@@ -4336,7 +4336,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                     )
                 else:
                     st.warning("No hay datos de elevación válidos para mostrar.")
-    
+
             elif visualizacion == "Modelo 3D":
                 st.subheader("🎨 VISUALIZACIÓN 3D DEL TERRENO")
                 fig = plt.figure(figsize=(14, 10))
@@ -4352,10 +4352,10 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                 fig.colorbar(surf, ax=ax, shrink=0.5, aspect=5, label='Elevación (m)')
                 ax.view_init(elev=30, azim=45)
                 st.pyplot(fig)
-    
+
         else:
             st.info("ℹ️ No hay datos topográficos disponibles para esta parcela.")
-    
+
     with tab8:
         st.subheader("🌱 VISUALIZACIÓN NDVI + NDRE")
         col_info1, col_info2 = st.columns(2)
@@ -4380,7 +4380,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
               * Menos saturación en vegetación densa
               * Mejor para monitoreo de nitrógeno
             """)
-        
+
         st.subheader("🛰️ Generar Mapas Estáticos")
         if satelite_seleccionado in ['SENTINEL-2_GEE', 'LANDSAT-8_GEE', 'LANDSAT-9_GEE']:
             if st.session_state.gee_authenticated:
@@ -4396,7 +4396,7 @@ if st.session_state.analisis_completado and 'resultados_todos' in st.session_sta
                         st.success(mensaje)
                     else:
                         st.error(mensaje)
-                
+
                 if 'indices_data' in st.session_state:
                     indices_data = st.session_state.indices_data
                     st.subheader("🗺️ Mapas Generados")
@@ -4498,7 +4498,7 @@ INTERPRETACIÓN:
         else:
             st.warning("⚠️ Para visualizaciones NDVI+NDRE, selecciona una fuente GEE")
             st.info("Fuentes GEE disponibles: SENTINEL-2_GEE, LANDSAT-8_GEE, LANDSAT-9_GEE")
-        
+
         st.markdown("---")
         st.subheader("🗺️ Exportar GeoJSON de la Parcela")
         if st.button("📤 Generar GeoJSON de Parcela", use_container_width=True):
@@ -4529,7 +4529,7 @@ INTERPRETACIÓN:
                         st.json(geojson_dict, expanded=False)
                     except:
                         st.warning("No se pudo mostrar la previsualización")
-    
+
     with tab9:
         st.subheader("🦠 DETECCIÓN DE PLAGAS/ENFERMEDADES CON YOLO")
         col_yolo1, col_yolo2 = st.columns([2, 1])
@@ -4541,21 +4541,21 @@ INTERPRETACIÓN:
             )
         with col_yolo2:
             confianza = st.slider("Confianza mínima", 0.3, 0.9, 0.5, 0.05)
-        
+
         if 'modelo_yolo' not in st.session_state or st.session_state.modelo_yolo is None:
             with st.spinner("Cargando modelo YOLO..."):
                 st.session_state.modelo_yolo = cargar_modelo_yolo()
-        
+
         if fuente_imagen == "Subir imagen de campo":
             uploaded_image = st.file_uploader(
-                "Sube imagen de campo/dron", 
+                "Sube imagen de campo/dron",
                 type=['jpg', 'jpeg', 'png', 'bmp'],
                 help="Imágenes de cultivo para detección de plagas"
             )
             if uploaded_image and st.button("🔍 Analizar con YOLO", type="primary"):
                 with st.spinner("Procesando imagen con YOLO..."):
                     detecciones, imagen_resultado = detectar_plagas_yolo(
-                        uploaded_image, 
+                        uploaded_image,
                         st.session_state.modelo_yolo,
                         confianza_minima=confianza
                     )
@@ -4638,7 +4638,7 @@ INTERPRETACIÓN:
                             st.image(imagen_resultado, caption="Detecciones (simuladas)", use_container_width=True)
             else:
                 st.warning("⚠️ Necesitas autenticación GEE para esta función")
-    
+
     st.markdown("---")
     st.subheader("💾 EXPORTAR RESULTADOS")
     col_exp1, col_exp2, col_exp3 = st.columns(3)
@@ -4665,16 +4665,17 @@ INTERPRETACIÓN:
             )
     with col_exp2:
         st.markdown("**Reporte DOCX**")
+        # Botón para reporte estándar
         if st.button("📄 Generar Reporte Completo", key="generate_report"):
             with st.spinner("Generando reporte DOCX..."):
-            reporte = generar_reporte_completo(
-                resultados, 
-                cultivo, 
-                satelite_seleccionado, 
-                fecha_inicio, 
-                fecha_fin,
-                resolucion_dem,      # ← variable del sidebar
-                intervalo_curvas      # ← variable del sidebar
+                reporte = generar_reporte_completo(
+                    resultados,
+                    cultivo,
+                    satelite_seleccionado,
+                    fecha_inicio,
+                    fecha_fin,
+                    resolucion_dem,
+                    intervalo_curvas
                 )
                 if reporte:
                     st.session_state.reporte_completo = reporte
@@ -4689,6 +4690,21 @@ INTERPRETACIÓN:
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 key="report_download"
             )
+        # Botón para reporte con IA (nuevo)
+        st.markdown("---")
+        if st.button("🤖 Generar Reporte con IA", key="generate_ia_report"):
+            st.info("🚧 Funcionalidad en desarrollo. Próximamente: informes potenciados con DeepSeek.")
+            # Aquí irá la llamada a generar_reporte_con_ia cuando esté implementada
+            # with st.spinner("Generando informe con análisis de IA..."):
+            #     reporte_ia = generar_reporte_con_ia(
+            #         resultados, cultivo, satelite_seleccionado, fecha_inicio, fecha_fin,
+            #         resolucion_dem, intervalo_curvas
+            #     )
+            #     if reporte_ia:
+            #         st.session_state.reporte_ia = reporte_ia
+            #         st.session_state.nombre_reporte_ia = f"reporte_ia_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
+            #         st.success("✅ Reporte con IA generado")
+            #         st.rerun()
     with col_exp3:
         st.markdown("**Limpiar Resultados**")
         if st.button("🗑️ Limpiar Resultados", use_container_width=True):
