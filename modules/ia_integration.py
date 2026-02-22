@@ -1,6 +1,6 @@
 # modules/ia_integration.py
 import requests
-import json
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -17,9 +17,9 @@ def llamar_deepseek(prompt, temperatura=0.7, max_tokens=2000):
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json"
     }
-    
+
     payload = {
-        "model": "deepseek-chat",  # o "deepseek-reasoner" si prefieres
+        "model": "deepseek-chat",  # o "deepseek-reasoner"
         "messages": [
             {"role": "system", "content": "Eres un asesor agronómico experto con amplia experiencia en agricultura de precisión."},
             {"role": "user", "content": prompt}
@@ -50,10 +50,10 @@ def preparar_resumen_zonas(gdf_completo, cultivo):
             'fert_materia_organica', 'fert_humedad_suelo', 'rec_N', 'rec_P', 'rec_K',
             'textura_suelo', 'arena', 'limo', 'arcilla',
             'proy_rendimiento_sin_fert', 'proy_rendimiento_con_fert', 'proy_incremento_esperado']
-    
+
     # Solo las primeras 15 zonas para no exceder tokens (puedes ajustar)
     df_resumen = gdf_completo[cols].head(15).copy()
-    
+
     # Agregar estadísticas globales
     stats = {
         'area_total': gdf_completo['area_ha'].sum(),
@@ -65,7 +65,7 @@ def preparar_resumen_zonas(gdf_completo, cultivo):
         'costo_total': gdf_completo['costo_costo_total'].sum(),
         'textura_predominante': gdf_completo['textura_suelo'].mode()[0] if len(gdf_completo) > 0 else 'N/A'
     }
-    
+
     return df_resumen, stats
 
 def generar_analisis_fertilidad(df_resumen, stats, cultivo):
@@ -107,7 +107,7 @@ def generar_analisis_riesgo_hidrico(df_resumen, stats, cultivo):
     {df_resumen[['id_zona', 'fert_humedad_suelo', 'textura_suelo', 'arena', 'limo', 'arcilla']].to_string(index=False)}
 
     **Considera:**
-    - La humedad óptima para {cultivo} es alrededor de {PARAMETROS_CULTIVOS[cultivo]['HUMEDAD_OPTIMA']}.
+    - La humedad óptima para {cultivo} es alrededor de 0.3 (ajusta según cultivo si es necesario).
     - Texturas con más arcilla retienen más agua y pueden encharcarse.
     - Las zonas con humedad > 0.38 se consideran de atención prioritaria (según el ejemplo de La Pampa).
 
