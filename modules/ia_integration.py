@@ -5,7 +5,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-def llamar_deepseek(prompt, temperatura=0.7, max_tokens=2000):
+def llamar_deepseek(prompt, temperatura=0.7, max_tokens=3000):
     """
     Llama a la API de DeepSeek y devuelve el texto generado.
     """
@@ -19,9 +19,9 @@ def llamar_deepseek(prompt, temperatura=0.7, max_tokens=2000):
     }
 
     payload = {
-        "model": "deepseek-chat",  # o "deepseek-reasoner"
+        "model": "deepseek-chat",  # o "deepseek-reasoner" para razonamiento más profundo
         "messages": [
-            {"role": "system", "content": "Eres un asesor agronómico experto con amplia experiencia en agricultura de precisión."},
+            {"role": "system", "content": "Eres un asesor agronómico senior con 20 años de experiencia en agricultura de precisión. Tus informes son detallados, profesionales y se basan estrictamente en los datos proporcionados."},
             {"role": "user", "content": prompt}
         ],
         "temperature": temperatura,
@@ -70,78 +70,105 @@ def preparar_resumen_zonas(gdf_completo, cultivo):
 
 def generar_analisis_fertilidad(df_resumen, stats, cultivo):
     """
-    Genera un análisis textual de la fertilidad actual usando IA.
+    Genera un análisis textual detallado de la fertilidad actual usando IA.
     """
     prompt = f"""
-    Como asesor agronómico experto, analiza los siguientes datos de fertilidad para un cultivo de {cultivo}.
+    Eres un asesor agronómico senior con 20 años de experiencia en agricultura de precisión. 
+    Redacta un análisis PROFESIONAL y DETALLADO de fertilidad para un lote de {cultivo}.
 
-    **Resumen global del lote:**
+    **Contexto:** Este lote se ha dividido en {len(df_resumen)} zonas de manejo con datos satelitales y de suelo.
+
+    **Resumen global:**
     - Área total: {stats['area_total']:.2f} ha
-    - Índice NPK promedio: {stats['npk_promedio']:.3f}
-    - NDVI promedio: {stats['ndvi_promedio']:.3f}
+    - Índice NPK promedio: {stats['npk_promedio']:.3f} (escala 0-1, donde 1 es óptimo)
+    - NDVI promedio: {stats['ndvi_promedio']:.3f} (vigor vegetativo)
     - Materia orgánica promedio: {stats['mo_promedio']:.2f}%
     - Humedad del suelo promedio: {stats['humedad_promedio']:.3f}
     - Textura predominante: {stats['textura_predominante']}
 
-    **Datos por zona (solo las más representativas):**
-    {df_resumen.to_string(index=False)}
+    **Datos detallados por zona (primeras 10 zonas):**
+    {df_resumen.head(10).to_string(index=False)}
 
-    Por favor, redacta un análisis profesional que incluya:
-    1. Interpretación del nivel general de fertilidad (índice NPK) y su relación con el cultivo.
-    2. Identificación de las zonas con mejor y peor fertilidad, explicando por qué (basado en NDVI, materia orgánica, etc.).
-    3. Recomendaciones específicas para mejorar la fertilidad en las zonas críticas.
-    4. Relación entre la textura del suelo y la retención de nutrientes/humedad.
+    **Instrucciones específicas:**
+    1. **Interpretación general:** Explica qué significan estos valores para el cultivo de {cultivo}. ¿El lote es homogéneo o heterogéneo? ¿Qué zonas destacan?
+    2. **Análisis por parámetros:**
+       - **Índice NPK:** Identifica las 3 zonas con mayor y menor fertilidad. ¿Por qué?
+       - **NDVI:** Relación con la biomasa y estado sanitario.
+       - **Materia orgánica:** Impacto en la estructura del suelo y disponibilidad de nutrientes.
+       - **Humedad:** ¿Hay riesgo de estrés hídrico o encharcamiento?
+    3. **Recomendaciones concretas:**
+       - Para zonas con NPK < 0.5: ¿qué dosis de fertilizante y qué tipo (orgánico/sintético)?
+       - Para zonas con MO < 2.5%: ¿qué enmiendas aplicar y en qué momento?
+       - Para zonas con humedad > 0.4: ¿qué cultivos de cobertura o prácticas de drenaje?
 
-    Usa un tono técnico pero accesible para un productor. Evita listas genéricas; sé específico con los valores.
+    **Formato esperado:** 
+    - Usa párrafos profesionales, pero incluye viñetas para listas.
+    - Menciona siempre los valores numéricos (ej. "la zona 7 tiene NPK 0.44, lo que indica...").
+    - Termina con un párrafo de conclusión sobre la fertilidad general del lote.
     """
-    return llamar_deepseek(prompt, temperatura=0.7)
+    return llamar_deepseek(prompt, temperatura=0.7, max_tokens=3000)
 
 def generar_analisis_riesgo_hidrico(df_resumen, stats, cultivo):
     """
-    Análisis de riesgo de encharcamiento basado en humedad y textura.
+    Análisis detallado de riesgo de encharcamiento basado en humedad y textura.
     """
     prompt = f"""
-    Como asesor agronómico, analiza el riesgo de encharcamiento/exceso hídrico para el cultivo de {cultivo} en este lote.
+    Como especialista en manejo de agua y suelos, analiza en detalle el riesgo de encharcamiento para {cultivo}.
 
-    **Datos de humedad y textura por zona:**
-    {df_resumen[['id_zona', 'fert_humedad_suelo', 'textura_suelo', 'arena', 'limo', 'arcilla']].to_string(index=False)}
+    **Datos críticos (humedad y textura por zona):**
+    {df_resumen[['id_zona', 'fert_humedad_suelo', 'textura_suelo', 'arena', 'limo', 'arcilla']].head(15).to_string(index=False)}
 
-    **Considera:**
-    - La humedad óptima para {cultivo} es alrededor de 0.3 (ajusta según cultivo si es necesario).
-    - Texturas con más arcilla retienen más agua y pueden encharcarse.
-    - Las zonas con humedad > 0.38 se consideran de atención prioritaria (según el ejemplo de La Pampa).
+    **Criterios de análisis:**
+    - Humedad > 0.38 = riesgo alto (encharcamiento probable)
+    - Humedad 0.30-0.38 = riesgo moderado (monitorear)
+    - Textura arcillosa (>25% arcilla) = drenaje lento
+    - Textura arenosa (>60% arena) = drenaje rápido pero poca retención
 
-    Redacta un análisis que:
-    - Identifique las zonas con mayor probabilidad de encharcamiento.
-    - Explique la relación entre textura y drenaje.
-    - Proponga medidas de manejo (drenajes, cultivos de cobertura, etc.) para las zonas críticas.
+    **Instrucciones:**
+    1. **Identifica las zonas con mayor riesgo** (lista ordenada de mayor a menor humedad).
+    2. **Explica la relación textura-humedad:** ¿por qué zonas con similar textura tienen diferente humedad? (topografía, compactación, etc.)
+    3. **Propone medidas específicas:**
+       - Para zonas de alto riesgo: drenaje superficial, surcos en contorno, cultivos de cobertura con raíces profundas.
+       - Para zonas de riesgo moderado: monitoreo con sensores, evitar laboreo en exceso.
+       - Para zonas arenosas con humedad alta: posible capa freática elevada o posición topográfica baja.
+    4. **Incluye un párrafo sobre el impacto en el cultivo:** cómo afecta el exceso de agua al rendimiento de {cultivo} y qué síntomas observar.
+
+    **Ejemplo de estilo (como el informe La Pampa):**
+    "La zona 24 presenta la humedad más alta (0.433) y una textura franca con 18.6% de arcilla, lo que sugiere una posible acumulación de agua en microdepresiones. Las zonas 23, 15 y 29 combinan alta humedad (>0.40) con contenidos de arcilla superiores al 20%, incrementando el riesgo de saturación y mal drenaje."
     """
-    return llamar_deepseek(prompt)
+    return llamar_deepseek(prompt, temperatura=0.7, max_tokens=2800)
 
 def generar_recomendaciones_integradas(df_resumen, stats, cultivo):
     """
-    Recomendaciones finales que combinan fertilidad y riesgo hídrico.
+    Recomendaciones finales que combinan fertilidad y riesgo hídrico de forma integrada.
     """
     prompt = f"""
-    Basado en todos los datos disponibles para el cultivo de {cultivo}, genera un conjunto de recomendaciones agronómicas integradas.
+    Basado en TODOS los datos, genera un plan de manejo integrado para el lote de {cultivo}.
 
-    **Resumen global:**
+    **Resumen ejecutivo:**
     - Área: {stats['area_total']:.2f} ha
     - Fertilidad (NPK): {stats['npk_promedio']:.3f}
-    - Humedad promedio: {stats['humedad_promedio']:.3f}
-    - Incremento esperado con fertilización: {stats['incremento_promedio']:.1f}%
-    - Costo total estimado: ${stats['costo_total']:.2f} USD
+    - Humedad: {stats['humedad_promedio']:.3f}
+    - Incremento potencial con fertilización: {stats['incremento_promedio']:.1f}%
+    - Inversión total estimada: ${stats['costo_total']:,.2f} USD
 
-    **Datos de zonas críticas (bajo NPK o alta humedad):**
-    {df_resumen[df_resumen['fert_npk_actual'] < 0.5].to_string(index=False)}
-    {df_resumen[df_resumen['fert_humedad_suelo'] > 0.38].to_string(index=False)}
+    **Zonas críticas:**
+    - Baja fertilidad (NPK < 0.5): 
+      {df_resumen[df_resumen['fert_npk_actual'] < 0.5][['id_zona', 'fert_npk_actual', 'fert_materia_organica']].to_string(index=False)}
+    - Alta humedad (>0.38): 
+      {df_resumen[df_resumen['fert_humedad_suelo'] > 0.38][['id_zona', 'fert_humedad_suelo', 'textura_suelo']].to_string(index=False)}
 
-    Proporciona:
-    1. **Prioridades de intervención:** ¿qué zonas requieren atención inmediata y por qué?
-    2. **Manejo diferenciado:** recomendaciones específicas para grupos de zonas (ej. fertilización en zonas de baja fertilidad, drenaje en zonas húmedas).
-    3. **Prácticas agroecológicas** sugeridas (cultivos de cobertura, rotaciones, etc.).
-    4. **Validación en campo:** qué puntos verificar antes de implementar.
+    **Instrucciones: genera un plan en 5 secciones:**
 
-    El formato debe ser claro, con párrafos cortos y viñetas si es necesario.
+    1. **PRIORIDADES DE INTERVENCIÓN** (tabla conceptual con: zona, problema, urgencia, acción principal)
+    2. **MANEJO DIFERENCIADO POR GRUPOS:**
+       - Grupo A (baja fertilidad): dosis específicas, tipo de fertilizante, momento de aplicación.
+       - Grupo B (alta humedad): obras de drenaje, cultivos de cobertura, ajustes en labranza.
+       - Grupo C (mixto): combinación de ambas estrategias.
+    3. **PRÁCTICAS AGROECOLÓGICAS:** rotaciones, abonos verdes, control biológico, etc.
+    4. **VALIDACIÓN EN CAMPO:** qué puntos georreferenciados muestrear y qué analizar.
+    5. **CRONOGRAMA SUGERIDO:** actividades mes a mes para los próximos 6 meses.
+
+    **Estilo:** profesional, concreto, con datos específicos. Usa viñetas y tablas conceptuales cuando sea útil.
     """
-    return llamar_deepseek(prompt, max_tokens=2500)
+    return llamar_deepseek(prompt, temperatura=0.7, max_tokens=3500)
