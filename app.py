@@ -3656,15 +3656,34 @@ def exportar_a_geojson(gdf, nombre_base="parcela"):
         st.error(f"❌ Error exportando a GeoJSON: {str(e)}")
         return None, None
 
-def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_fin):
+def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fin, resolucion_dem, intervalo_curvas):
+    """
+    Genera un informe DOCX profesional con análisis generados por IA.
+    """
     try:
+        from modules.ia_integration import (
+            preparar_resumen_zonas,
+            generar_analisis_fertilidad,
+            generar_analisis_riesgo_hidrico,
+            generar_recomendaciones_integradas
+        )
+        from docx import Document
+        from docx.shared import Inches, Pt
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+        import numpy as np
+        from datetime import datetime
+        import io
+
         doc = Document()
-        title = doc.add_heading(f'REPORTE COMPLETO DE ANÁLISIS - {cultivo}', 0)
+        
+        # ===== PORTADA =====
+        title = doc.add_heading(f'REPORTE DE AMBIENTACIÓN AGRONÓMICA - {cultivo}', 0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         subtitle = doc.add_paragraph(f'Fecha: {datetime.now().strftime("%d/%m/%Y %H:%M")}')
         subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc.add_paragraph()
-        
+
+        # ===== 1. INFORMACIÓN GENERAL (sin IA, solo datos) =====
         doc.add_heading('1. INFORMACIÓN GENERAL', level=1)
         info_table = doc.add_table(rows=6, cols=2)
         info_table.style = 'Table Grid'
@@ -3672,22 +3691,16 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
         info_table.cell(1, 0).text = 'Área Total'; info_table.cell(1, 1).text = f'{resultados["area_total"]:.2f} ha'
         info_table.cell(2, 0).text = 'Zonas Analizadas'; info_table.cell(2, 1).text = str(len(resultados['gdf_completo']))
         info_table.cell(3, 0).text = 'Satélite'; info_table.cell(3, 1).text = satelite
-        info_table.cell(4, 0).text = 'Período de Análisis'; info_table.cell(4, 1).text = f'{fecha_inicio.strftime("%d/%m/%Y")} a {fecha_fin.strftime("%d/%m/%Y")}'
-        info_table.cell(5, 0).text = 'Fuente de Datos'; info_table.cell(5, 1).text = resultados['datos_satelitales']['fuente'] if resultados['datos_satelitales'] else 'N/A'
-        
-        if 'datos_satelitales' in resultados and resultados['datos_satelitales']:
-            datos_sat = resultados['datos_satelitales']
-            doc.add_paragraph()
-            doc.add_heading('1.1. DATOS SATELITALES', level=2)
-            doc.add_paragraph(f'Fuente: {datos_sat.get("fuente", "N/D")}')
-            doc.add_paragraph(f'Índice: {datos_sat.get("indice", "N/D")}')
-            doc.add_paragraph(f'Valor promedio: {datos_sat.get("valor_promedio", 0):.3f}')
-            doc.add_paragraph(f'Estado: {datos_sat.get("estado", "N/D")}')
-            if datos_sat.get("nota"): doc.add_paragraph(f'Nota: {datos_sat.get("nota")}')
-        
-        doc.add_paragraph()
-        doc.add_heading('2. FERTILIDAD ACTUAL', level=1)
-        doc.add_paragraph('Resumen de parámetros de fertilidad por zona:')
+        info_table.cell(4, 0).text = 'Período'; info_table.cell(4, 1).text = f'{fecha_inicio.strftime("%d/%m/%Y")} a {fecha_fin.strftime("%d/%m/%Y")}'
+        info_table.cell(5, 0).text = 'Fuente Datos'; info_table.cell(5, 1).text = resultados['datos_satelitales']['fuente'] if resultados['datos_satelitales'] else 'N/A'
+
+        # ===== PREPARAR DATOS PARA IA =====
+        df_resumen, stats = preparar_resumen_zonas(resultados['gdf_completo'], cultivo)
+
+        # ===== 2. ANÁLISIS DE FERTILIDAD (con IA) =====
+        doc.add_heading('2. ANÁLISIS DE FERTILIDAD', level=1)
+        # Tabla de fertilidad (igual que antes)
+        doc.add_paragraph('**Resumen de parámetros de fertilidad por zona:**')
         fert_table = doc.add_table(rows=1, cols=7)
         fert_table.style = 'Table Grid'
         headers = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI', 'NDRE', 'Materia Org (%)', 'Humedad']
@@ -3702,9 +3715,15 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
             row[5].text = f"{resultados['gdf_completo'].iloc[i]['fert_materia_organica']:.1f}"
             row[6].text = f"{resultados['gdf_completo'].iloc[i]['fert_humedad_suelo']:.3f}"
         doc.add_paragraph()
-        
+
+        # Análisis interpretativo generado por IA
+        doc.add_heading('2.1 Interpretación', level=2)
+        analisis_fert = generar_analisis_fertilidad(df_resumen, stats, cultivo)
+        doc.add_paragraph(analisis_fert)
+
+        # ===== 3. RECOMENDACIONES NPK (tabla + interpretación IA) =====
         doc.add_heading('3. RECOMENDACIONES NPK', level=1)
-        doc.add_paragraph('Recomendaciones de fertilización por zona (kg/ha):')
+        doc.add_paragraph('**Recomendaciones de fertilización por zona (kg/ha):**')
         npk_table = doc.add_table(rows=1, cols=4)
         npk_table.style = 'Table Grid'
         npk_headers = ['Zona', 'Nitrógeno (N)', 'Fósforo (P)', 'Potasio (K)']
@@ -3716,9 +3735,24 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
             row[2].text = f"{resultados['gdf_completo'].iloc[i]['rec_P']:.1f}"
             row[3].text = f"{resultados['gdf_completo'].iloc[i]['rec_K']:.1f}"
         doc.add_paragraph()
+
+        # ===== 4. RIESGO HÍDRICO Y TOPOGRAFÍA =====
+        doc.add_heading('4. RIESGO DE ENCHARCAMIENTO', level=1)
+        # Si hay datos DEM, mostrar tabla de humedad y textura
+        if 'dem_data' in resultados and resultados['dem_data']:
+            dem = resultados['dem_data']
+            doc.add_paragraph(f"**Fuente DEM:** {dem.get('fuente', 'N/A')}")
+            doc.add_paragraph(f"Elevación: min {np.nanmin(dem['Z']):.1f} m, max {np.nanmax(dem['Z']):.1f} m, prom {np.nanmean(dem['Z']):.1f} m")
+            if dem.get('pendientes') is not None:
+                doc.add_paragraph(f"Pendiente promedio: {np.nanmean(dem['pendientes']):.1f}%")
         
-        doc.add_heading('4. ANÁLISIS DE COSTOS', level=1)
-        doc.add_paragraph('Costos estimados de fertilización por zona (USD/ha):')
+        # Análisis de riesgo hídrico por IA
+        analisis_agua = generar_analisis_riesgo_hidrico(df_resumen, stats, cultivo)
+        doc.add_heading('4.1 Análisis de humedad y textura', level=2)
+        doc.add_paragraph(analisis_agua)
+
+        # ===== 5. COSTOS (tabla + resumen) =====
+        doc.add_heading('5. ANÁLISIS DE COSTOS', level=1)
         costo_table = doc.add_table(rows=1, cols=5)
         costo_table.style = 'Table Grid'
         costo_headers = ['Zona', 'Costo N', 'Costo P', 'Costo K', 'Costo Total']
@@ -3733,12 +3767,12 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
         doc.add_paragraph()
         costo_total = resultados['gdf_completo']['costo_costo_total'].sum()
         costo_promedio = resultados['gdf_completo']['costo_costo_total'].mean()
-        doc.add_paragraph(f'Costo total estimado: ${costo_total:.2f} USD')
-        doc.add_paragraph(f'Costo promedio por hectárea: ${costo_promedio:.2f} USD/ha')
+        doc.add_paragraph(f'**Costo total estimado:** ${costo_total:.2f} USD')
+        doc.add_paragraph(f'**Costo promedio por hectárea:** ${costo_promedio:.2f} USD/ha')
         doc.add_paragraph()
-        
-        doc.add_heading('5. TEXTURA DEL SUELO', level=1)
-        doc.add_paragraph('Composición granulométrica por zona:')
+
+        # ===== 6. TEXTURA DEL SUELO (tabla) =====
+        doc.add_heading('6. TEXTURA DEL SUELO', level=1)
         text_table = doc.add_table(rows=1, cols=5)
         text_table.style = 'Table Grid'
         text_headers = ['Zona', 'Textura', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
@@ -3751,9 +3785,9 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
             row[3].text = f"{resultados['gdf_completo'].iloc[i]['limo']:.1f}"
             row[4].text = f"{resultados['gdf_completo'].iloc[i]['arcilla']:.1f}"
         doc.add_paragraph()
-        
-        doc.add_heading('6. PROYECCIONES DE COSECHA', level=1)
-        doc.add_paragraph('Proyecciones de rendimiento con y sin fertilización (kg/ha):')
+
+        # ===== 7. PROYECCIONES DE COSECHA =====
+        doc.add_heading('7. PROYECCIONES DE COSECHA', level=1)
         proy_table = doc.add_table(rows=1, cols=4)
         proy_table.style = 'Table Grid'
         proy_headers = ['Zona', 'Sin Fertilización', 'Con Fertilización', 'Incremento (%)']
@@ -3768,46 +3802,20 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
         rend_sin_total = resultados['gdf_completo']['proy_rendimiento_sin_fert'].sum()
         rend_con_total = resultados['gdf_completo']['proy_rendimiento_con_fert'].sum()
         incremento_prom = resultados['gdf_completo']['proy_incremento_esperado'].mean()
-        doc.add_paragraph(f'Rendimiento total sin fertilización: {rend_sin_total:.0f} kg')
-        doc.add_paragraph(f'Rendimiento total con fertilización: {rend_con_total:.0f} kg')
-        doc.add_paragraph(f'Incremento promedio esperado: {incremento_prom:.1f}%')
+        doc.add_paragraph(f'**Rendimiento total sin fertilización:** {rend_sin_total:.0f} kg')
+        doc.add_paragraph(f'**Rendimiento total con fertilización:** {rend_con_total:.0f} kg')
+        doc.add_paragraph(f'**Incremento promedio esperado:** {incremento_prom:.1f}%')
         doc.add_paragraph()
-        
-        if 'dem_data' in resultados and resultados['dem_data']:
-            doc.add_heading('7. TOPOGRAFÍA Y CURVAS DE NIVEL', level=1)
-            dem = resultados['dem_data']
-            dem_stats = {
-                'Elevación mínima': f"{np.nanmin(dem['Z']):.1f} m" if dem['Z'] is not None else 'N/A',
-                'Elevación máxima': f"{np.nanmax(dem['Z']):.1f} m" if dem['Z'] is not None else 'N/A',
-                'Elevación promedio': f"{np.nanmean(dem['Z']):.1f} m" if dem['Z'] is not None else 'N/A',
-                'Pendiente promedio': f"{np.nanmean(dem['pendientes']):.1f} %" if dem.get('pendientes') is not None else 'N/A',
-                'Fuente DEM': dem.get('fuente', 'N/A'),
-                'Número de curvas': f"{len(dem.get('curvas_nivel', []))}"
-            }
-            for key, value in dem_stats.items():
-                p = doc.add_paragraph()
-                run_key = p.add_run(f'{key}: '); run_key.bold = True
-                p.add_run(value)
-            doc.add_paragraph()
-        
-        doc.add_heading('8. RECOMENDACIONES FINALES', level=1)
-        recomendaciones = [
-            f"Aplicar fertilización diferenciada por zonas según el análisis NPK",
-            f"Priorizar zonas con índice de fertilidad inferior a 0.5",
-            f"Considerar enmiendas orgánicas en zonas con materia orgánica < 2%",
-            f"Implementar riego suplementario en zonas con humedad < 0.2",
-            f"Realizar análisis de suelo de laboratorio para validar resultados",
-            f"Considerar agricultura de precisión para aplicación variable de insumos"
-        ]
-        for rec in recomendaciones:
-            p = doc.add_paragraph(style='List Bullet')
-            p.add_run(rec)
-        doc.add_paragraph()
-        
+
+        # ===== 8. RECOMENDACIONES INTEGRADAS (IA) =====
+        doc.add_heading('8. RECOMENDACIONES DE MANEJO', level=1)
+        recomendaciones_ia = generar_recomendaciones_integradas(df_resumen, stats, cultivo)
+        doc.add_paragraph(recomendaciones_ia)
+
+        # ===== 9. METADATOS TÉCNICOS =====
         doc.add_heading('9. METADATOS TÉCNICOS', level=1)
         metadatos = [
-            ('Generado por', 'Analizador Multi-Cultivo Satelital'),
-            ('Versión', '6.0 - Cultivos Extensivos con Google Earth Engine y DEM real'),
+            ('Generado por', 'Analizador Multi-Cultivo Satelital v6.1 con IA DeepSeek'),
             ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
             ('Número de zonas', str(len(resultados['gdf_completo']))),
@@ -3819,13 +3827,15 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
             p = doc.add_paragraph()
             run_key = p.add_run(f'{key}: '); run_key.bold = True
             p.add_run(value)
-        
-        docx_output = BytesIO()
+
+        # Guardar en memoria
+        docx_output = io.BytesIO()
         doc.save(docx_output)
         docx_output.seek(0)
         return docx_output
+
     except Exception as e:
-        st.error(f"❌ Error generando reporte DOCX: {str(e)}")
+        st.error(f"❌ Error generando reporte con IA: {str(e)}")
         import traceback
         traceback.print_exc()
         return None
