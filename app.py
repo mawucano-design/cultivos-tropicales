@@ -4666,16 +4666,16 @@ INTERPRETACIÓN:
     with col_exp2:
         st.markdown("**Reporte DOCX**")
         if st.button("📄 Generar Reporte Completo", key="generate_report"):
-    with st.spinner("Generando reporte DOCX..."):
-        reporte = generar_reporte_completo(
-            resultados, 
-            cultivo, 
-            satelite_seleccionado, 
-            fecha_inicio, 
-            fecha_fin,
-            resolucion_dem,      # ← variable del sidebar
-            intervalo_curvas      # ← variable del sidebar
-        )
+            with st.spinner("Generando reporte DOCX..."):
+            reporte = generar_reporte_completo(
+                resultados, 
+                cultivo, 
+                satelite_seleccionado, 
+                fecha_inicio, 
+                fecha_fin,
+                resolucion_dem,      # ← variable del sidebar
+                intervalo_curvas      # ← variable del sidebar
+                )
                 if reporte:
                     st.session_state.reporte_completo = reporte
                     st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
