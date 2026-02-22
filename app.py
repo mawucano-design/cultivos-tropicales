@@ -4645,7 +4645,7 @@ INTERPRETACIÓN:
             else:
                 st.warning("⚠️ Necesitas autenticación GEE para esta función")
 
-    st.markdown("---")
+       st.markdown("---")
     st.subheader("💾 EXPORTAR RESULTADOS")
     col_exp1, col_exp2, col_exp3 = st.columns(3)
     with col_exp1:
@@ -4669,54 +4669,54 @@ INTERPRETACIÓN:
                 mime="application/json",
                 key="geojson_download"
             )
-   with col_exp2:
-    st.markdown("**Reporte DOCX**")
-    # Botón para reporte estándar
-    if st.button("📄 Generar Reporte Completo", key="generate_report"):
-        with st.spinner("Generando reporte DOCX..."):
-            reporte = generar_reporte_completo(
-                resultados,
-                cultivo,
-                satelite_seleccionado,
-                fecha_inicio,
-                fecha_fin,
-                resolucion_dem,
-                intervalo_curvas
+    with col_exp2:
+        st.markdown("**Reporte DOCX**")
+        # Botón para reporte estándar
+        if st.button("📄 Generar Reporte Completo", key="generate_report"):
+            with st.spinner("Generando reporte DOCX..."):
+                reporte = generar_reporte_completo(
+                    resultados,
+                    cultivo,
+                    satelite_seleccionado,
+                    fecha_inicio,
+                    fecha_fin,
+                    resolucion_dem,
+                    intervalo_curvas
+                )
+                if reporte:
+                    st.session_state.reporte_completo = reporte
+                    st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
+                    st.success("✅ Reporte generado correctamente")
+                    st.rerun()
+        if 'reporte_completo' in st.session_state and st.session_state.reporte_completo:
+            st.download_button(
+                label="📥 Descargar Reporte DOCX",
+                data=st.session_state.reporte_completo,
+                file_name=st.session_state.nombre_reporte,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="report_download"
             )
-            if reporte:
-                st.session_state.reporte_completo = reporte
-                st.session_state.nombre_reporte = f"reporte_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
-                st.success("✅ Reporte generado correctamente")
-                st.rerun()
-    if 'reporte_completo' in st.session_state and st.session_state.reporte_completo:
-        st.download_button(
-            label="📥 Descargar Reporte DOCX",
-            data=st.session_state.reporte_completo,
-            file_name=st.session_state.nombre_reporte,
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key="report_download"
-        )
-    # Botón para reporte con IA
-    st.markdown("---")
-    if st.button("🤖 Generar Reporte con IA", key="generate_ia_report"):
-        with st.spinner("Generando informe con análisis de IA..."):
-            reporte_ia = generar_reporte_con_ia(
-                resultados, cultivo, satelite_seleccionado, fecha_inicio, fecha_fin,
-                resolucion_dem, intervalo_curvas
+        # Botón para reporte con IA
+        st.markdown("---")
+        if st.button("🤖 Generar Reporte con IA", key="generate_ia_report"):
+            with st.spinner("Generando informe con análisis de IA..."):
+                reporte_ia = generar_reporte_con_ia(
+                    resultados, cultivo, satelite_seleccionado, fecha_inicio, fecha_fin,
+                    resolucion_dem, intervalo_curvas
+                )
+                if reporte_ia:
+                    st.session_state.reporte_ia = reporte_ia
+                    st.session_state.nombre_reporte_ia = f"reporte_ia_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
+                    st.success("✅ Reporte con IA generado")
+                    st.rerun()
+        if 'reporte_ia' in st.session_state and st.session_state.reporte_ia:
+            st.download_button(
+                label="📥 Descargar Reporte con IA",
+                data=st.session_state.reporte_ia,
+                file_name=st.session_state.nombre_reporte_ia,
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                key="ia_report_download"
             )
-            if reporte_ia:
-                st.session_state.reporte_ia = reporte_ia
-                st.session_state.nombre_reporte_ia = f"reporte_ia_{cultivo}_{datetime.now().strftime('%Y%m%d_%H%M')}.docx"
-                st.success("✅ Reporte con IA generado")
-                st.rerun()
-    if 'reporte_ia' in st.session_state and st.session_state.reporte_ia:
-        st.download_button(
-            label="📥 Descargar Reporte con IA",
-            data=st.session_state.reporte_ia,
-            file_name=st.session_state.nombre_reporte_ia,
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            key="ia_report_download"
-        )
     with col_exp3:
         st.markdown("**Limpiar Resultados**")
         if st.button("🗑️ Limpiar Resultados", use_container_width=True):
