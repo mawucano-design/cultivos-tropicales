@@ -31,7 +31,13 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 import geojson
 import requests
 import contextily as ctx
-
+from modules.ia_integration import (
+    preparar_resumen_zonas,
+    generar_analisis_fertilidad,
+    generar_analisis_riesgo_hidrico,
+    generar_recomendaciones_integradas,
+    llamar_deepseek
+)
 # ===== SOLUCIÓN PARA ERROR libGL.so.1 =====
 # Configurar matplotlib para usar backend no interactivo
 import matplotlib
