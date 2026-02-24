@@ -28,3 +28,4 @@ opencv-python-headless>=4.8.0
 scikit-image
 rasterio
 branca
+qwen-api>=0.1.0
