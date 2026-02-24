@@ -36,7 +36,7 @@ from modules.ia_integration import (
     generar_analisis_fertilidad,
     generar_analisis_riesgo_hidrico,
     generar_recomendaciones_integradas,
-    llamar_deepseek
+    llamar_qwen  # <-- cambió el nombre
 )
 # ===== SOLUCIÓN PARA ERROR libGL.so.1 =====
 # Configurar matplotlib para usar backend no interactivo
@@ -84,10 +84,14 @@ except ImportError:
 import os
 import streamlit as st
 
-# Intenta desde secrets (Streamlit Cloud) o desde variable de entorno (local)
-DEEPSEEK_API_KEY = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
-if not DEEPSEEK_API_KEY:
-    st.warning("⚠️ No se encontró API Key de DeepSeek. La IA no estará disponible.")
+# ===== CONFIGURACIÓN DE IA =====
+# Intentar obtener API key de Qwen (desde secrets o variable de entorno)
+QWEN_API_KEY = st.secrets.get("QWEN_API_KEY", os.getenv("QWEN_API_KEY"))
+if not QWEN_API_KEY:
+    st.warning("⚠️ No se encontró API Key de Qwen. La IA no estará disponible.")
+else:
+    # Opcional: establecer variable de entorno para que el módulo la tome
+    os.environ["QWEN_API_KEY"] = QWEN_API_KEY
 # ===== IMPORTACIONES GOOGLE EARTH ENGINE (NO MODIFICAR) =====
 try:
     import ee
