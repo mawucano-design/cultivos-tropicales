@@ -1,45 +1,50 @@
-# modules/ia_integration.py
 import os
 import json
 import pandas as pd
 from typing import Dict, Any, Optional
+import requests
 
-# Intentar importar qwen-api
-try:
-    from qwen_api import Qwen
-    QWEN_AVAILABLE = True
-except ImportError:
-    QWEN_AVAILABLE = False
+# Configuración
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")  # deepseek-chat o deepseek-coder
 
-# Configuración desde entorno
-QWEN_API_KEY = os.getenv("QWEN_API_KEY", "")
-QWEN_MODEL = os.getenv("QWEN_MODEL", "qwen-max-latest")
-
-def _get_qwen_client():
-    """Retorna instancia del cliente Qwen (singleton simple)"""
-    if not QWEN_AVAILABLE:
-        raise ImportError("qwen-api no está instalado. Ejecuta: pip install qwen-api")
-    if not QWEN_API_KEY:
-        raise ValueError("QWEN_API_KEY no está configurada en las variables de entorno")
-    return Qwen(api_key=QWEN_API_KEY)
-
-def llamar_qwen(prompt: str, system_prompt: str = None, temperature: float = 0.3) -> str:
+def llamar_deepseek(prompt: str, system_prompt: str = None, temperature: float = 0.3) -> str:
     """
-    Llama a Qwen usando el SDK no oficial.
-    Si system_prompt se provee, se incluye como mensaje del sistema.
+    Llama a DeepSeek API usando el endpoint oficial.
     """
-    client = _get_qwen_client()
+    if not DEEPSEEK_API_KEY:
+        raise ValueError("DEEPSEEK_API_KEY no está configurada en las variables de entorno")
+
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
     messages.append({"role": "user", "content": prompt})
 
-    response = client.chat.completions.create(
-        model=QWEN_MODEL,
-        messages=messages,
-        temperature=temperature
-    )
-    return response.choices[0].message.content
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": messages,
+        "temperature": temperature,
+        "stream": False
+    }
+
+    try:
+        response = requests.post(
+            "https://api.deepseek.com/v1/chat/completions",
+            headers=headers,
+            json=payload,
+            timeout=30
+        )
+        response.raise_for_status()
+        result = response.json()
+        return result['choices'][0]['message']['content']
+    except requests.exceptions.RequestException as e:
+        print(f"Error en llamada a DeepSeek: {str(e)}")
+        raise
 
 # ========== Funciones específicas para el análisis agronómico ==========
 
@@ -74,7 +79,7 @@ def preparar_resumen_zonas(gdf_completo, cultivo: str) -> tuple:
     return df, stats
 
 def generar_analisis_fertilidad(df_resumen: pd.DataFrame, stats: Dict, cultivo: str) -> str:
-    """Genera análisis interpretativo de fertilidad usando Qwen"""
+    """Genera análisis interpretativo de fertilidad usando DeepSeek"""
     system = f"Eres un ingeniero agrónomo experto en {cultivo}. Analiza los datos de fertilidad por zonas y proporciona un diagnóstico claro y recomendaciones prácticas."
     prompt = f"""
     Se ha realizado un análisis de fertilidad en un lote de {cultivo} dividido en {stats['num_zonas']} zonas.
@@ -92,7 +97,7 @@ def generar_analisis_fertilidad(df_resumen: pd.DataFrame, stats: Dict, cultivo: 
     2. Posibles causas de la variabilidad
     3. Recomendaciones de manejo específicas
     """
-    return llamar_qwen(prompt, system_prompt=system, temperature=0.3)
+    return llamar_deepseek(prompt, system_prompt=system, temperature=0.3)
 
 def generar_analisis_riesgo_hidrico(df_resumen: pd.DataFrame, stats: Dict, cultivo: str) -> str:
     """Análisis de riesgo de encharcamiento / estrés hídrico"""
@@ -110,7 +115,7 @@ def generar_analisis_riesgo_hidrico(df_resumen: pd.DataFrame, stats: Dict, culti
     - Zonas con riesgo de sequía
     - Recomendaciones de drenaje o riego
     """
-    return llamar_qwen(prompt, system_prompt=system, temperature=0.3)
+    return llamar_deepseek(prompt, system_prompt=system, temperature=0.3)
 
 def generar_recomendaciones_integradas(df_resumen: pd.DataFrame, stats: Dict, cultivo: str) -> str:
     """Recomendaciones finales de manejo integrado"""
@@ -130,4 +135,4 @@ def generar_recomendaciones_integradas(df_resumen: pd.DataFrame, stats: Dict, cu
     - Otras prácticas agronómicas (cultivos de cobertura, labranza, etc.)
     - Priorización de zonas para intervención
     """
-    return llamar_qwen(prompt, system_prompt=system, temperature=0.3)
+    return llamar_deepseek(prompt, system_prompt=system, temperature=0.3)
