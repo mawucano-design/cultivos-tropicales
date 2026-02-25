@@ -3,6 +3,7 @@
 # FIX: Separación de dependencias y manejo robusto de curvas de nivel
 # AÑADIDO: Fuente alternativa Open Topo Data API (sin API Key)
 # MEJORADO: Visualización de curvas de nivel y mapa de pendientes (imshow)
+# MODIFICADO: Reemplazo de DeepSeek por Qwen (SDK no oficial) para análisis con IA
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
@@ -31,13 +32,14 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 import geojson
 import requests
 import contextily as ctx
+# ===== IMPORTACIÓN DE MÓDULOS IA (AHORA CON QWEN) =====
 from modules.ia_integration import (
     preparar_resumen_zonas,
     generar_analisis_fertilidad,
     generar_analisis_riesgo_hidrico,
-    generar_recomendaciones_integradas,
-    llamar_qwen  # <-- cambió el nombre
+    generar_recomendaciones_integradas
 )
+
 # ===== SOLUCIÓN PARA ERROR libGL.so.1 =====
 # Configurar matplotlib para usar backend no interactivo
 import matplotlib
@@ -81,17 +83,14 @@ try:
 except ImportError:
     FOLIUM_STATIC_OK = False
 
-import os
-import streamlit as st
-
-# ===== CONFIGURACIÓN DE IA =====
-# Intentar obtener API key de Qwen (desde secrets o variable de entorno)
+# ===== CONFIGURACIÓN DE IA (QWEN) =====
 QWEN_API_KEY = st.secrets.get("QWEN_API_KEY", os.getenv("QWEN_API_KEY"))
 if not QWEN_API_KEY:
     st.warning("⚠️ No se encontró API Key de Qwen. La IA no estará disponible.")
 else:
-    # Opcional: establecer variable de entorno para que el módulo la tome
+    # Establecer variable de entorno para que el módulo la tome
     os.environ["QWEN_API_KEY"] = QWEN_API_KEY
+
 # ===== IMPORTACIONES GOOGLE EARTH ENGINE (NO MODIFICAR) =====
 try:
     import ee
@@ -2266,6 +2265,13 @@ with st.sidebar:
     intervalo_curvas = st.slider("Intervalo entre curvas (metros):", 1.0, 20.0, 5.0, 1.0)
     resolucion_dem = st.slider("Resolución DEM (metros):", 5.0, 50.0, 10.0, 5.0)
 
+    st.subheader("🤖 Configuración de IA")
+    proveedor_ia = st.selectbox(
+        "Proveedor de IA para análisis:",
+        ["qwen"],  # Solo Qwen por ahora
+        help="Selecciona el motor de IA para generar análisis interpretativos"
+    )
+
     st.subheader("📤 Subir Parcela")
     uploaded_file = st.file_uploader("Subir archivo de tu parcela", type=['zip', 'kml', 'kmz'],
                                      help="Formatos aceptados: Shapefile (.zip), KML (.kml), KMZ (.kmz)")
@@ -3666,9 +3672,10 @@ def exportar_a_geojson(gdf, nombre_base="parcela"):
         st.error(f"❌ Error exportando a GeoJSON: {str(e)}")
         return None, None
 
-def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fin, resolucion_dem, intervalo_curvas):
+def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fin,
+                           resolucion_dem, intervalo_curvas, proveedor_ia="qwen"):
     """
-    Genera un informe DOCX profesional con análisis generados por IA.
+    Genera un informe DOCX profesional con análisis generados por IA (Qwen).
     """
     try:
         from modules.ia_integration import (
@@ -3825,7 +3832,7 @@ def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fi
         # ===== 9. METADATOS TÉCNICOS =====
         doc.add_heading('9. METADATOS TÉCNICOS', level=1)
         metadatos = [
-            ('Generado por', 'Analizador Multi-Cultivo Satelital v6.1 con IA DeepSeek'),
+            ('Generado por', 'Analizador Multi-Cultivo Satelital v6.1 con IA Qwen'),
             ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
             ('Número de zonas', str(len(resultados['gdf_completo']))),
@@ -4706,7 +4713,7 @@ INTERPRETACIÓN:
             with st.spinner("Generando informe con análisis de IA..."):
                 reporte_ia = generar_reporte_con_ia(
                     resultados, cultivo, satelite_seleccionado, fecha_inicio, fecha_fin,
-                    resolucion_dem, intervalo_curvas
+                    resolucion_dem, intervalo_curvas, proveedor_ia=proveedor_ia
                 )
                 if reporte_ia:
                     st.session_state.reporte_ia = reporte_ia
