@@ -1,59 +1,41 @@
+# modules/ia_integration.py (Gemini)
 import os
 import json
 import pandas as pd
 from typing import Dict, Any, Optional
-import requests
+import google.generativeai as genai
 
 # Configuración
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")  # deepseek-chat o deepseek-coder
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # Modelo gratuito y rápido
 
-def llamar_deepseek(prompt: str, system_prompt: str = None, temperature: float = 0.3) -> str:
-    """
-    Llama a DeepSeek API usando el endpoint oficial.
-    """
-    if not DEEPSEEK_API_KEY:
-        raise ValueError("DEEPSEEK_API_KEY no está configurada en las variables de entorno")
-
-    headers = {
-        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    messages = []
-    if system_prompt:
-        messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": prompt})
-
-    payload = {
-        "model": DEEPSEEK_MODEL,
-        "messages": messages,
-        "temperature": temperature,
-        "stream": False
-    }
-
+def llamar_gemini(prompt: str, system_prompt: str = None, temperature: float = 0.3) -> str:
+    """Llama a Gemini API"""
+    if not GEMINI_API_KEY:
+        raise ValueError("GEMINI_API_KEY no está configurada en las variables de entorno")
+    
+    genai.configure(api_key=GEMINI_API_KEY)
+    model = genai.GenerativeModel(GEMINI_MODEL)
+    
+    # Gemini no tiene system prompt separado, lo incluimos en el prompt
+    full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    
     try:
-        response = requests.post(
-            "https://api.deepseek.com/v1/chat/completions",
-            headers=headers,
-            json=payload,
-            timeout=30
+        response = model.generate_content(
+            full_prompt,
+            generation_config=genai.types.GenerationConfig(
+                temperature=temperature
+            )
         )
-        response.raise_for_status()
-        result = response.json()
-        return result['choices'][0]['message']['content']
-    except requests.exceptions.RequestException as e:
-        print(f"Error en llamada a DeepSeek: {str(e)}")
+        return response.text
+    except Exception as e:
+        print(f"Error en llamada a Gemini: {str(e)}")
         raise
 
 # ========== Funciones específicas para el análisis agronómico ==========
 
 def preparar_resumen_zonas(gdf_completo, cultivo: str) -> tuple:
-    """
-    Prepara un DataFrame resumen y estadísticas para alimentar a la IA.
-    Similar a la versión original pero simplificada.
-    """
-    # Seleccionar columnas de interés
+    """Prepara un DataFrame resumen y estadísticas para alimentar a la IA."""
     cols = ['id_zona', 'area_ha', 'fert_npk_actual', 'fert_ndvi', 'fert_ndre',
             'fert_materia_organica', 'fert_humedad_suelo', 'rec_N', 'rec_P', 'rec_K',
             'costo_costo_total', 'proy_rendimiento_sin_fert', 'proy_rendimiento_con_fert',
@@ -62,7 +44,6 @@ def preparar_resumen_zonas(gdf_completo, cultivo: str) -> tuple:
     df.columns = ['Zona', 'Area_ha', 'NPK', 'NDVI', 'NDRE', 'MO_%', 'Humedad',
                   'N_rec', 'P_rec', 'K_rec', 'Costo_total', 'Rend_sin_fert',
                   'Rend_con_fert', 'Inc_%', 'Textura', 'Arena_%', 'Limo_%', 'Arcilla_%']
-    # Estadísticas generales
     stats = {
         'total_area': df['Area_ha'].sum(),
         'num_zonas': len(df),
@@ -79,7 +60,7 @@ def preparar_resumen_zonas(gdf_completo, cultivo: str) -> tuple:
     return df, stats
 
 def generar_analisis_fertilidad(df_resumen: pd.DataFrame, stats: Dict, cultivo: str) -> str:
-    """Genera análisis interpretativo de fertilidad usando DeepSeek"""
+    """Genera análisis interpretativo de fertilidad"""
     system = f"Eres un ingeniero agrónomo experto en {cultivo}. Analiza los datos de fertilidad por zonas y proporciona un diagnóstico claro y recomendaciones prácticas."
     prompt = f"""
     Se ha realizado un análisis de fertilidad en un lote de {cultivo} dividido en {stats['num_zonas']} zonas.
@@ -97,7 +78,7 @@ def generar_analisis_fertilidad(df_resumen: pd.DataFrame, stats: Dict, cultivo: 
     2. Posibles causas de la variabilidad
     3. Recomendaciones de manejo específicas
     """
-    return llamar_deepseek(prompt, system_prompt=system, temperature=0.3)
+    return llamar_gemini(prompt, system_prompt=system, temperature=0.3)
 
 def generar_analisis_riesgo_hidrico(df_resumen: pd.DataFrame, stats: Dict, cultivo: str) -> str:
     """Análisis de riesgo de encharcamiento / estrés hídrico"""
@@ -115,7 +96,7 @@ def generar_analisis_riesgo_hidrico(df_resumen: pd.DataFrame, stats: Dict, culti
     - Zonas con riesgo de sequía
     - Recomendaciones de drenaje o riego
     """
-    return llamar_deepseek(prompt, system_prompt=system, temperature=0.3)
+    return llamar_gemini(prompt, system_prompt=system, temperature=0.3)
 
 def generar_recomendaciones_integradas(df_resumen: pd.DataFrame, stats: Dict, cultivo: str) -> str:
     """Recomendaciones finales de manejo integrado"""
@@ -135,4 +116,4 @@ def generar_recomendaciones_integradas(df_resumen: pd.DataFrame, stats: Dict, cu
     - Otras prácticas agronómicas (cultivos de cobertura, labranza, etc.)
     - Priorización de zonas para intervención
     """
-    return llamar_deepseek(prompt, system_prompt=system, temperature=0.3)
+    return llamar_gemini(prompt, system_prompt=system, temperature=0.3)
