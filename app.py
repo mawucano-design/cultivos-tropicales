@@ -3829,7 +3829,7 @@ def generar_reporte_completo(resultados, cultivo, satelite, fecha_inicio, fecha_
 def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fin,
                            resolucion_dem, intervalo_curvas):
     """
-    Genera un informe DOCX con análisis de IA usando DeepSeek.
+    Genera un informe DOCX con análisis de IA (DeepSeek) e incluye mapas y gráficos.
     """
     try:
         from modules.ia_integration import (
@@ -3839,11 +3839,14 @@ def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fi
             generar_recomendaciones_integradas
         )
         from docx import Document
-        from docx.shared import Inches, Pt
+        from docx.shared import Inches, Pt, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
+        from docx.enum.section import WD_SECTION
         import numpy as np
         from datetime import datetime
         import io
+        import tempfile
+        import os
 
         doc = Document()
         
@@ -3868,134 +3871,267 @@ def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fi
         # ===== PREPARAR DATOS PARA IA =====
         df_resumen, stats = preparar_resumen_zonas(resultados['gdf_completo'], cultivo)
 
-        # ===== 2. ANÁLISIS DE FERTILIDAD =====
-        doc.add_heading('2. ANÁLISIS DE FERTILIDAD', level=1)
-        doc.add_paragraph('**Resumen de parámetros de fertilidad por zona:**')
-        fert_table = doc.add_table(rows=1, cols=7)
-        fert_table.style = 'Table Grid'
-        headers = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI', 'NDRE', 'Materia Org (%)', 'Humedad']
-        for i, header in enumerate(headers): fert_table.cell(0, i).text = header
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = fert_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = f"{resultados['gdf_completo'].iloc[i]['area_ha']:.2f}"
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['fert_npk_actual']:.3f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['fert_ndvi']:.3f}"
-            row[4].text = f"{resultados['gdf_completo'].iloc[i]['fert_ndre']:.3f}"
-            row[5].text = f"{resultados['gdf_completo'].iloc[i]['fert_materia_organica']:.1f}"
-            row[6].text = f"{resultados['gdf_completo'].iloc[i]['fert_humedad_suelo']:.3f}"
-        doc.add_paragraph()
+        # Crear un directorio temporal para guardar las imágenes
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # ===== 2. ANÁLISIS DE FERTILIDAD =====
+            doc.add_heading('2. ANÁLISIS DE FERTILIDAD', level=1)
+            doc.add_paragraph('**Resumen de parámetros de fertilidad por zona:**')
+            fert_table = doc.add_table(rows=1, cols=7)
+            fert_table.style = 'Table Grid'
+            headers = ['Zona', 'Área (ha)', 'Índice NPK', 'NDVI', 'NDRE', 'Materia Org (%)', 'Humedad']
+            for i, header in enumerate(headers): fert_table.cell(0, i).text = header
+            for i in range(min(10, len(resultados['gdf_completo']))):
+                row = fert_table.add_row().cells
+                row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
+                row[1].text = f"{resultados['gdf_completo'].iloc[i]['area_ha']:.2f}"
+                row[2].text = f"{resultados['gdf_completo'].iloc[i]['fert_npk_actual']:.3f}"
+                row[3].text = f"{resultados['gdf_completo'].iloc[i]['fert_ndvi']:.3f}"
+                row[4].text = f"{resultados['gdf_completo'].iloc[i]['fert_ndre']:.3f}"
+                row[5].text = f"{resultados['gdf_completo'].iloc[i]['fert_materia_organica']:.1f}"
+                row[6].text = f"{resultados['gdf_completo'].iloc[i]['fert_humedad_suelo']:.3f}"
+            doc.add_paragraph()
 
-        # Análisis interpretativo generado por IA
-        doc.add_heading('2.1 Interpretación', level=2)
-        analisis_fert = generar_analisis_fertilidad(df_resumen, stats, cultivo)
-        doc.add_paragraph(analisis_fert)
+            # Insertar mapa de fertilidad
+            mapa_fert = crear_mapa_fertilidad(resultados['gdf_completo'], cultivo, satelite)
+            if mapa_fert:
+                img_path = os.path.join(tmpdir, 'mapa_fertilidad.png')
+                with open(img_path, 'wb') as f:
+                    f.write(mapa_fert.getvalue())
+                doc.add_picture(img_path, width=Inches(6))
+                doc.add_paragraph("Figura 1: Mapa de Índice de Fertilidad NPK", style='Caption')
 
-        # ===== 3. RECOMENDACIONES NPK =====
-        doc.add_heading('3. RECOMENDACIONES NPK', level=1)
-        doc.add_paragraph('**Recomendaciones de fertilización por zona (kg/ha):**')
-        npk_table = doc.add_table(rows=1, cols=4)
-        npk_table.style = 'Table Grid'
-        npk_headers = ['Zona', 'Nitrógeno (N)', 'Fósforo (P)', 'Potasio (K)']
-        for i, header in enumerate(npk_headers): npk_table.cell(0, i).text = header
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = npk_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = f"{resultados['gdf_completo'].iloc[i]['rec_N']:.1f}"
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['rec_P']:.1f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['rec_K']:.1f}"
-        doc.add_paragraph()
+            # Análisis interpretativo generado por IA
+            doc.add_heading('2.1 Interpretación', level=2)
+            analisis_fert = generar_analisis_fertilidad(df_resumen, stats, cultivo)
+            doc.add_paragraph(analisis_fert)
 
-        # ===== 4. RIESGO HÍDRICO Y TOPOGRAFÍA =====
-        doc.add_heading('4. RIESGO DE ENCHARCAMIENTO', level=1)
-        if 'dem_data' in resultados and resultados['dem_data']:
-            dem = resultados['dem_data']
-            doc.add_paragraph(f"**Fuente DEM:** {dem.get('fuente', 'N/A')}")
-            doc.add_paragraph(f"Elevación: min {np.nanmin(dem['Z']):.1f} m, max {np.nanmax(dem['Z']):.1f} m, prom {np.nanmean(dem['Z']):.1f} m")
-            if dem.get('pendientes') is not None:
-                doc.add_paragraph(f"Pendiente promedio: {np.nanmean(dem['pendientes']):.1f}%")
-        
-        # Análisis de riesgo hídrico por IA
-        analisis_agua = generar_analisis_riesgo_hidrico(df_resumen, stats, cultivo)
-        doc.add_heading('4.1 Análisis de humedad y textura', level=2)
-        doc.add_paragraph(analisis_agua)
+            # ===== 3. RECOMENDACIONES NPK =====
+            doc.add_heading('3. RECOMENDACIONES NPK', level=1)
+            doc.add_paragraph('**Recomendaciones de fertilización por zona (kg/ha):**')
+            npk_table = doc.add_table(rows=1, cols=4)
+            npk_table.style = 'Table Grid'
+            npk_headers = ['Zona', 'Nitrógeno (N)', 'Fósforo (P)', 'Potasio (K)']
+            for i, header in enumerate(npk_headers): npk_table.cell(0, i).text = header
+            for i in range(min(10, len(resultados['gdf_completo']))):
+                row = npk_table.add_row().cells
+                row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
+                row[1].text = f"{resultados['gdf_completo'].iloc[i]['rec_N']:.1f}"
+                row[2].text = f"{resultados['gdf_completo'].iloc[i]['rec_P']:.1f}"
+                row[3].text = f"{resultados['gdf_completo'].iloc[i]['rec_K']:.1f}"
+            doc.add_paragraph()
 
-        # ===== 5. COSTOS =====
-        doc.add_heading('5. ANÁLISIS DE COSTOS', level=1)
-        costo_table = doc.add_table(rows=1, cols=5)
-        costo_table.style = 'Table Grid'
-        costo_headers = ['Zona', 'Costo N', 'Costo P', 'Costo K', 'Costo Total']
-        for i, header in enumerate(costo_headers): costo_table.cell(0, i).text = header
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = costo_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_nitrogeno']:.2f}"
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_fosforo']:.2f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_potasio']:.2f}"
-            row[4].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_total']:.2f}"
-        doc.add_paragraph()
-        costo_total = resultados['gdf_completo']['costo_costo_total'].sum()
-        costo_promedio = resultados['gdf_completo']['costo_costo_total'].mean()
-        doc.add_paragraph(f'**Costo total estimado:** ${costo_total:.2f} USD')
-        doc.add_paragraph(f'**Costo promedio por hectárea:** ${costo_promedio:.2f} USD/ha')
-        doc.add_paragraph()
+            # Mapas de NPK (podemos insertar los tres o elegir uno)
+            doc.add_heading('3.1 Mapas de recomendaciones', level=2)
+            # Mapa de Nitrógeno
+            mapa_n = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'N')
+            if mapa_n:
+                img_path = os.path.join(tmpdir, 'mapa_n.png')
+                with open(img_path, 'wb') as f:
+                    f.write(mapa_n.getvalue())
+                doc.add_picture(img_path, width=Inches(5))
+                doc.add_paragraph("Figura 2: Recomendación de Nitrógeno (kg/ha)", style='Caption')
+            # Mapa de Fósforo
+            mapa_p = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'P')
+            if mapa_p:
+                img_path = os.path.join(tmpdir, 'mapa_p.png')
+                with open(img_path, 'wb') as f:
+                    f.write(mapa_p.getvalue())
+                doc.add_picture(img_path, width=Inches(5))
+                doc.add_paragraph("Figura 3: Recomendación de Fósforo (kg/ha)", style='Caption')
+            # Mapa de Potasio
+            mapa_k = crear_mapa_npk(resultados['gdf_completo'], cultivo, 'K')
+            if mapa_k:
+                img_path = os.path.join(tmpdir, 'mapa_k.png')
+                with open(img_path, 'wb') as f:
+                    f.write(mapa_k.getvalue())
+                doc.add_picture(img_path, width=Inches(5))
+                doc.add_paragraph("Figura 4: Recomendación de Potasio (kg/ha)", style='Caption')
 
-        # ===== 6. TEXTURA DEL SUELO =====
-        doc.add_heading('6. TEXTURA DEL SUELO', level=1)
-        text_table = doc.add_table(rows=1, cols=5)
-        text_table.style = 'Table Grid'
-        text_headers = ['Zona', 'Textura', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
-        for i, header in enumerate(text_headers): text_table.cell(0, i).text = header
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = text_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = str(resultados['gdf_completo'].iloc[i]['textura_suelo'])
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['arena']:.1f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['limo']:.1f}"
-            row[4].text = f"{resultados['gdf_completo'].iloc[i]['arcilla']:.1f}"
-        doc.add_paragraph()
+            # ===== 4. RIESGO HÍDRICO Y TOPOGRAFÍA =====
+            doc.add_heading('4. RIESGO DE ENCHARCAMIENTO', level=1)
+            if 'dem_data' in resultados and resultados['dem_data']:
+                dem = resultados['dem_data']
+                doc.add_paragraph(f"**Fuente DEM:** {dem.get('fuente', 'N/A')}")
+                doc.add_paragraph(f"Elevación: min {np.nanmin(dem['Z']):.1f} m, max {np.nanmax(dem['Z']):.1f} m, prom {np.nanmean(dem['Z']):.1f} m")
+                if dem.get('pendientes') is not None:
+                    doc.add_paragraph(f"Pendiente promedio: {np.nanmean(dem['pendientes']):.1f}%")
+                # Insertar mapa de pendientes o curvas de nivel
+                if dem.get('pendientes') is not None:
+                    # Generar mapa de pendientes (necesitamos una función que lo cree como imagen)
+                    # Podemos usar la misma lógica que en la pestaña de topografía
+                    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+                    bounds = dem['bounds']
+                    minx, miny, maxx, maxy = bounds
+                    pendientes = dem['pendientes']
+                    pendientes_plot = np.ma.masked_invalid(pendientes)
+                    im = ax.imshow(pendientes_plot, extent=[minx, maxx, miny, maxy],
+                                   origin='lower', cmap='RdYlGn_r', alpha=0.8,
+                                   aspect='auto', vmin=0, vmax=30)
+                    plt.colorbar(im, ax=ax, label='Pendiente (%)')
+                    resultados['gdf_completo'].plot(ax=ax, color='none', edgecolor='black', linewidth=2)
+                    ax.set_title('Mapa de Pendientes')
+                    ax.set_xlabel('Longitud'); ax.set_ylabel('Latitud')
+                    img_path = os.path.join(tmpdir, 'pendientes.png')
+                    plt.savefig(img_path, dpi=150, bbox_inches='tight')
+                    plt.close()
+                    doc.add_picture(img_path, width=Inches(6))
+                    doc.add_paragraph("Figura 5: Mapa de Pendientes", style='Caption')
+            
+            # Análisis de riesgo hídrico por IA
+            analisis_agua = generar_analisis_riesgo_hidrico(df_resumen, stats, cultivo)
+            doc.add_heading('4.1 Análisis de humedad y textura', level=2)
+            doc.add_paragraph(analisis_agua)
 
-        # ===== 7. PROYECCIONES DE COSECHA =====
-        doc.add_heading('7. PROYECCIONES DE COSECHA', level=1)
-        proy_table = doc.add_table(rows=1, cols=4)
-        proy_table.style = 'Table Grid'
-        proy_headers = ['Zona', 'Sin Fertilización', 'Con Fertilización', 'Incremento (%)']
-        for i, header in enumerate(proy_headers): proy_table.cell(0, i).text = header
-        for i in range(min(10, len(resultados['gdf_completo']))):
-            row = proy_table.add_row().cells
-            row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
-            row[1].text = f"{resultados['gdf_completo'].iloc[i]['proy_rendimiento_sin_fert']:.0f}"
-            row[2].text = f"{resultados['gdf_completo'].iloc[i]['proy_rendimiento_con_fert']:.0f}"
-            row[3].text = f"{resultados['gdf_completo'].iloc[i]['proy_incremento_esperado']:.1f}"
-        doc.add_paragraph()
-        rend_sin_total = resultados['gdf_completo']['proy_rendimiento_sin_fert'].sum()
-        rend_con_total = resultados['gdf_completo']['proy_rendimiento_con_fert'].sum()
-        incremento_prom = resultados['gdf_completo']['proy_incremento_esperado'].mean()
-        doc.add_paragraph(f'**Rendimiento total sin fertilización:** {rend_sin_total:.0f} kg')
-        doc.add_paragraph(f'**Rendimiento total con fertilización:** {rend_con_total:.0f} kg')
-        doc.add_paragraph(f'**Incremento promedio esperado:** {incremento_prom:.1f}%')
-        doc.add_paragraph()
+            # ===== 5. COSTOS =====
+            doc.add_heading('5. ANÁLISIS DE COSTOS', level=1)
+            costo_table = doc.add_table(rows=1, cols=5)
+            costo_table.style = 'Table Grid'
+            costo_headers = ['Zona', 'Costo N', 'Costo P', 'Costo K', 'Costo Total']
+            for i, header in enumerate(costo_headers): costo_table.cell(0, i).text = header
+            for i in range(min(10, len(resultados['gdf_completo']))):
+                row = costo_table.add_row().cells
+                row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
+                row[1].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_nitrogeno']:.2f}"
+                row[2].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_fosforo']:.2f}"
+                row[3].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_potasio']:.2f}"
+                row[4].text = f"{resultados['gdf_completo'].iloc[i]['costo_costo_total']:.2f}"
+            doc.add_paragraph()
+            costo_total = resultados['gdf_completo']['costo_costo_total'].sum()
+            costo_promedio = resultados['gdf_completo']['costo_costo_total'].mean()
+            doc.add_paragraph(f'**Costo total estimado:** ${costo_total:.2f} USD')
+            doc.add_paragraph(f'**Costo promedio por hectárea:** ${costo_promedio:.2f} USD/ha')
+            doc.add_paragraph()
 
-        # ===== 8. RECOMENDACIONES INTEGRADAS (IA) =====
-        doc.add_heading('8. RECOMENDACIONES DE MANEJO', level=1)
-        recomendaciones_ia = generar_recomendaciones_integradas(df_resumen, stats, cultivo)
-        doc.add_paragraph(recomendaciones_ia)
+            # Gráfico de costos
+            costos_n = resultados['gdf_completo']['costo_costo_nitrogeno'].sum()
+            costos_p = resultados['gdf_completo']['costo_costo_fosforo'].sum()
+            costos_k = resultados['gdf_completo']['costo_costo_potasio'].sum()
+            otros = costo_total - (costos_n + costos_p + costos_k)
+            grafico_costos = crear_grafico_distribucion_costos(costos_n, costos_p, costos_k, otros, costo_total)
+            if grafico_costos:
+                img_path = os.path.join(tmpdir, 'costos.png')
+                with open(img_path, 'wb') as f:
+                    f.write(grafico_costos.getvalue())
+                doc.add_picture(img_path, width=Inches(6))
+                doc.add_paragraph("Figura 6: Distribución de costos de fertilización", style='Caption')
 
-        # ===== 9. METADATOS TÉCNICOS =====
-        doc.add_heading('9. METADATOS TÉCNICOS', level=1)
-        metadatos = [
-            ('Generado por', 'Analizador Multi-Cultivo Satelital v6.1 con IA DeepSeek'),
-            ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
-            ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
-            ('Número de zonas', str(len(resultados['gdf_completo']))),
-            ('Resolución satelital', SATELITES_DISPONIBLES[satelite]['resolucion']),
-            ('Resolución DEM', f'{resolucion_dem} m'),
-            ('Intervalo curvas de nivel', f'{intervalo_curvas} m')
-        ]
-        for key, value in metadatos:
-            p = doc.add_paragraph()
-            run_key = p.add_run(f'{key}: '); run_key.bold = True
-            p.add_run(value)
+            # ===== 6. TEXTURA DEL SUELO =====
+            doc.add_heading('6. TEXTURA DEL SUELO', level=1)
+            text_table = doc.add_table(rows=1, cols=5)
+            text_table.style = 'Table Grid'
+            text_headers = ['Zona', 'Textura', 'Arena (%)', 'Limo (%)', 'Arcilla (%)']
+            for i, header in enumerate(text_headers): text_table.cell(0, i).text = header
+            for i in range(min(10, len(resultados['gdf_completo']))):
+                row = text_table.add_row().cells
+                row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
+                row[1].text = str(resultados['gdf_completo'].iloc[i]['textura_suelo'])
+                row[2].text = f"{resultados['gdf_completo'].iloc[i]['arena']:.1f}"
+                row[3].text = f"{resultados['gdf_completo'].iloc[i]['limo']:.1f}"
+                row[4].text = f"{resultados['gdf_completo'].iloc[i]['arcilla']:.1f}"
+            doc.add_paragraph()
+
+            # Mapa de texturas
+            mapa_text = crear_mapa_texturas(resultados['gdf_completo'], cultivo)
+            if mapa_text:
+                img_path = os.path.join(tmpdir, 'texturas.png')
+                with open(img_path, 'wb') as f:
+                    f.write(mapa_text.getvalue())
+                doc.add_picture(img_path, width=Inches(6))
+                doc.add_paragraph("Figura 7: Mapa de texturas del suelo", style='Caption')
+
+            # Gráfico de composición granulométrica
+            arena_prom = resultados['gdf_completo']['arena'].mean()
+            limo_prom = resultados['gdf_completo']['limo'].mean()
+            arcilla_prom = resultados['gdf_completo']['arcilla'].mean()
+            textura_dist = resultados['gdf_completo']['textura_suelo'].value_counts()
+            grafico_textura = crear_grafico_composicion_textura(arena_prom, limo_prom, arcilla_prom, textura_dist)
+            if grafico_textura:
+                img_path = os.path.join(tmpdir, 'textura_pie.png')
+                with open(img_path, 'wb') as f:
+                    f.write(grafico_textura.getvalue())
+                doc.add_picture(img_path, width=Inches(6))
+                doc.add_paragraph("Figura 8: Composición granulométrica promedio", style='Caption')
+
+            # ===== 7. PROYECCIONES DE COSECHA =====
+            doc.add_heading('7. PROYECCIONES DE COSECHA', level=1)
+            proy_table = doc.add_table(rows=1, cols=4)
+            proy_table.style = 'Table Grid'
+            proy_headers = ['Zona', 'Sin Fertilización', 'Con Fertilización', 'Incremento (%)']
+            for i, header in enumerate(proy_headers): proy_table.cell(0, i).text = header
+            for i in range(min(10, len(resultados['gdf_completo']))):
+                row = proy_table.add_row().cells
+                row[0].text = str(resultados['gdf_completo'].iloc[i]['id_zona'])
+                row[1].text = f"{resultados['gdf_completo'].iloc[i]['proy_rendimiento_sin_fert']:.0f}"
+                row[2].text = f"{resultados['gdf_completo'].iloc[i]['proy_rendimiento_con_fert']:.0f}"
+                row[3].text = f"{resultados['gdf_completo'].iloc[i]['proy_incremento_esperado']:.1f}"
+            doc.add_paragraph()
+            rend_sin_total = resultados['gdf_completo']['proy_rendimiento_sin_fert'].sum()
+            rend_con_total = resultados['gdf_completo']['proy_rendimiento_con_fert'].sum()
+            incremento_prom = resultados['gdf_completo']['proy_incremento_esperado'].mean()
+            doc.add_paragraph(f'**Rendimiento total sin fertilización:** {rend_sin_total:.0f} kg')
+            doc.add_paragraph(f'**Rendimiento total con fertilización:** {rend_con_total:.0f} kg')
+            doc.add_paragraph(f'**Incremento promedio esperado:** {incremento_prom:.1f}%')
+            doc.add_paragraph()
+
+            # Gráfico de proyecciones
+            zonas_ids = resultados['gdf_completo']['id_zona'].astype(str).tolist()
+            sin_fert = resultados['gdf_completo']['proy_rendimiento_sin_fert'].tolist()
+            con_fert = resultados['gdf_completo']['proy_rendimiento_con_fert'].tolist()
+            grafico_proy = crear_grafico_proyecciones_rendimiento(zonas_ids, sin_fert, con_fert)
+            if grafico_proy:
+                img_path = os.path.join(tmpdir, 'proyecciones.png')
+                with open(img_path, 'wb') as f:
+                    f.write(grafico_proy.getvalue())
+                doc.add_picture(img_path, width=Inches(6))
+                doc.add_paragraph("Figura 9: Proyecciones de rendimiento por zona", style='Caption')
+
+            # ===== 8. POTENCIAL DE COSECHA =====
+            doc.add_heading('8. POTENCIAL DE COSECHA', level=1)
+            # Mapa de potencial base
+            mapa_pot_base = crear_mapa_potencial_cosecha(resultados['gdf_completo'], cultivo)
+            if mapa_pot_base:
+                img_path = os.path.join(tmpdir, 'potencial_base.png')
+                with open(img_path, 'wb') as f:
+                    f.write(mapa_pot_base.getvalue())
+                doc.add_picture(img_path, width=Inches(5))
+                doc.add_paragraph("Figura 10: Potencial base de cosecha (sin fertilización)", style='Caption')
+            # Mapa de potencial con recomendaciones
+            mapa_pot_rec = crear_mapa_potencial_con_recomendaciones(resultados['gdf_completo'], cultivo)
+            if mapa_pot_rec:
+                img_path = os.path.join(tmpdir, 'potencial_rec.png')
+                with open(img_path, 'wb') as f:
+                    f.write(mapa_pot_rec.getvalue())
+                doc.add_picture(img_path, width=Inches(5))
+                doc.add_paragraph("Figura 11: Potencial con recomendaciones", style='Caption')
+            # Gráfico comparativo
+            grafico_comp = crear_grafico_comparativo_potencial(resultados['gdf_completo'], cultivo)
+            if grafico_comp:
+                img_path = os.path.join(tmpdir, 'comparativo_potencial.png')
+                with open(img_path, 'wb') as f:
+                    f.write(grafico_comp.getvalue())
+                doc.add_picture(img_path, width=Inches(6))
+                doc.add_paragraph("Figura 12: Comparativa de potencial", style='Caption')
+
+            # ===== 9. RECOMENDACIONES INTEGRADAS (IA) =====
+            doc.add_heading('9. RECOMENDACIONES DE MANEJO', level=1)
+            recomendaciones_ia = generar_recomendaciones_integradas(df_resumen, stats, cultivo)
+            doc.add_paragraph(recomendaciones_ia)
+
+            # ===== 10. METADATOS TÉCNICOS =====
+            doc.add_heading('10. METADATOS TÉCNICOS', level=1)
+            metadatos = [
+                ('Generado por', 'Analizador Multi-Cultivo Satelital v6.1 con IA DeepSeek'),
+                ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+                ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
+                ('Número de zonas', str(len(resultados['gdf_completo']))),
+                ('Resolución satelital', SATELITES_DISPONIBLES[satelite]['resolucion']),
+                ('Resolución DEM', f'{resolucion_dem} m'),
+                ('Intervalo curvas de nivel', f'{intervalo_curvas} m')
+            ]
+            for key, value in metadatos:
+                p = doc.add_paragraph()
+                run_key = p.add_run(f'{key}: '); run_key.bold = True
+                p.add_run(value)
 
         # Guardar en memoria
         docx_output = io.BytesIO()
@@ -4008,7 +4144,6 @@ def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fi
         import traceback
         traceback.print_exc()
         return None
-
 # ===== INTERFAZ PRINCIPAL =====
 st.title("ANALIZADOR MULTI-CULTIVO SATELITAL")
 
