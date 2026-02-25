@@ -1,21 +1,28 @@
-# modules/ia_integration.py (Gemini)
+# modules/ia_integration.py (Gemini corregido)
 import os
-import json
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict
 import google.generativeai as genai
 
 # Configuración
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")  # Modelo gratuito y rápido
+# Usamos gemini-1.5-pro que es estable y ampliamente disponible
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
 
 def llamar_gemini(prompt: str, system_prompt: str = None, temperature: float = 0.3) -> str:
-    """Llama a Gemini API"""
+    """Llama a Gemini API con manejo correcto del modelo"""
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY no está configurada en las variables de entorno")
     
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel(GEMINI_MODEL)
+    
+    # Verificar que el modelo existe
+    try:
+        model = genai.GenerativeModel(GEMINI_MODEL)
+    except Exception as e:
+        # Si falla, intentamos con gemini-pro como fallback
+        print(f"Modelo {GEMINI_MODEL} no disponible, usando gemini-pro")
+        model = genai.GenerativeModel("gemini-pro")
     
     # Gemini no tiene system prompt separado, lo incluimos en el prompt
     full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
@@ -24,7 +31,8 @@ def llamar_gemini(prompt: str, system_prompt: str = None, temperature: float = 0
         response = model.generate_content(
             full_prompt,
             generation_config=genai.types.GenerationConfig(
-                temperature=temperature
+                temperature=temperature,
+                max_output_tokens=2048
             )
         )
         return response.text
