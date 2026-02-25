@@ -83,14 +83,12 @@ try:
 except ImportError:
     FOLIUM_STATIC_OK = False
 
-# ===== CONFIGURACIÓN DE IA (DEEPSEEK) =====
-DEEPSEEK_API_KEY = st.secrets.get("DEEPSEEK_API_KEY", os.getenv("DEEPSEEK_API_KEY"))
-if not DEEPSEEK_API_KEY:
-    st.warning("⚠️ No se encontró API Key de DeepSeek. La IA no estará disponible.")
+# ===== CONFIGURACIÓN DE IA (GEMINI) =====
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+if not GEMINI_API_KEY:
+    st.warning("⚠️ No se encontró API Key de Gemini. La IA no estará disponible.")
 else:
-    # Establecer variable de entorno para que el módulo la tome
-    os.environ["DEEPSEEK_API_KEY"] = DEEPSEEK_API_KEY
-
+    os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
 # ===== IMPORTACIONES GOOGLE EARTH ENGINE (NO MODIFICAR) =====
 try:
     import ee
