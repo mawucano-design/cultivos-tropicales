@@ -3982,7 +3982,7 @@ def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fi
         # ===== 9. METADATOS TÉCNICOS =====
         doc.add_heading('9. METADATOS TÉCNICOS', level=1)
         metadatos = [
-            ('Generado por', 'Analizador Multi-Cultivo Satelital v6.1 con IA DeepSeek'),
+            ('Generado por', 'Analizador Multi-Cultivo Satelital v6.1 con IA Gemini'),
             ('Fecha de generación', datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
             ('Sistema de coordenadas', 'EPSG:4326 (WGS84)'),
             ('Número de zonas', str(len(resultados['gdf_completo']))),
