@@ -1,4 +1,4 @@
-# modules/ia_integration.py (Gemini corregido)
+# modules/ia_integration.py (Gemini corregido con fallback)
 import os
 import pandas as pd
 from typing import Dict
@@ -6,23 +6,46 @@ import google.generativeai as genai
 
 # Configuración
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-# Usamos gemini-1.5-pro que es estable y ampliamente disponible
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+# Intentamos con gemini-1.5-pro primero, pero si falla usaremos gemini-pro
+PREFERRED_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-pro")
+FALLBACK_MODEL = "gemini-pro"
+
+def _get_available_model():
+    """
+    Obtiene un modelo disponible. Primero intenta con el preferido,
+    si no está disponible, usa el fallback. Si ambos fallan, lanza excepción.
+    """
+    genai.configure(api_key=GEMINI_API_KEY)
+    
+    # Listar modelos disponibles para diagnóstico
+    try:
+        models = [m.name for m in genai.list_models()]
+        print(f"Modelos disponibles: {models}")
+    except:
+        pass
+    
+    # Intentar con el modelo preferido
+    try:
+        model = genai.GenerativeModel(PREFERRED_MODEL)
+        # Probar con una generación simple para verificar
+        response = model.generate_content("test", generation_config=genai.types.GenerationConfig(max_output_tokens=5))
+        return model
+    except Exception as e:
+        print(f"Modelo preferido {PREFERRED_MODEL} no disponible: {e}")
+        # Intentar con el fallback
+        try:
+            model = genai.GenerativeModel(FALLBACK_MODEL)
+            return model
+        except Exception as e2:
+            raise RuntimeError(f"Ningún modelo Gemini disponible. Preferido: {PREFERRED_MODEL}, Fallback: {FALLBACK_MODEL}. Error: {e2}")
 
 def llamar_gemini(prompt: str, system_prompt: str = None, temperature: float = 0.3) -> str:
-    """Llama a Gemini API con manejo correcto del modelo"""
+    """Llama a Gemini API con manejo de modelos"""
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY no está configurada en las variables de entorno")
     
-    genai.configure(api_key=GEMINI_API_KEY)
-    
-    # Verificar que el modelo existe
-    try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
-    except Exception as e:
-        # Si falla, intentamos con gemini-pro como fallback
-        print(f"Modelo {GEMINI_MODEL} no disponible, usando gemini-pro")
-        model = genai.GenerativeModel("gemini-pro")
+    # Obtener modelo disponible
+    model = _get_available_model()
     
     # Gemini no tiene system prompt separado, lo incluimos en el prompt
     full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
