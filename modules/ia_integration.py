@@ -1,27 +1,25 @@
-# modules/ia_integration.py - Versión para DeepSeek API (compatible OpenAI)
+# modules/ia_integration.py - Versión para Groq (compatible con la interfaz DeepSeek)
 import os
 import time
 import pandas as pd
 from typing import Dict, Tuple, Optional
-from openai import OpenAI
+from groq import Groq
 import streamlit as st
 
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-# Inicializar cliente DeepSeek (usa base_url oficial)
-def _get_deepseek_client():
-    if not DEEPSEEK_API_KEY:
+# Inicializar cliente Groq
+def _get_groq_client():
+    if not GROQ_API_KEY:
         return None
-    return OpenAI(
-        api_key=DEEPSEEK_API_KEY,
-        base_url="https://api.deepseek.com"
-    )
+    return Groq(api_key=GROQ_API_KEY)
 
 def llamar_deepseek(prompt: str, system_prompt: str = None, temperature: float = 0.3, max_retries: int = 2) -> Optional[str]:
     """
-    Llama a DeepSeek API con reintentos. Retorna None si falla permanentemente.
+    Llama a Groq API (usando modelo Llama 3.3) con reintentos.
+    Mantenemos el nombre 'llamar_deepseek' para no cambiar las llamadas existentes.
     """
-    client = _get_deepseek_client()
+    client = _get_groq_client()
     if client is None:
         return None
 
@@ -33,7 +31,7 @@ def llamar_deepseek(prompt: str, system_prompt: str = None, temperature: float =
     for intento in range(max_retries):
         try:
             response = client.chat.completions.create(
-                model="deepseek-chat",  # modelo gratuito con 1M contexto
+                model="llama-3.3-70b-versatile",  # Modelo gratuito de Groq
                 messages=messages,
                 temperature=temperature,
                 max_tokens=2048,
