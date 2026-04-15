@@ -4,6 +4,7 @@
 # AÑADIDO: Fuente alternativa Open Topo Data API (sin API Key)
 # MEJORADO: Visualización de curvas de nivel y mapa de pendientes (imshow)
 # MODIFICADO: Integración con Gemini (IA gratuita) para análisis agronómico
+# AÑADIDO: Cultivo de Avena con sus parámetros agronómicos y textura óptima
 import streamlit as st
 import geopandas as gpd
 import pandas as pd
@@ -363,7 +364,7 @@ def generar_reporte_plagas(detecciones, cultivo):
 
         # Recomendaciones específicas por cultivo
         reporte += "\n**🧪 RECOMENDACIONES ESPECÍFICAS:**\n"
-        if cultivo in ['TRIGO', 'MAIZ', 'SORGO']:
+        if cultivo in ['TRIGO', 'MAIZ', 'SORGO', 'AVENA']:
             if any('roya' in clase.lower() for clase in conteo_plagas.keys()):
                 reporte += "- **Fungicida**: Aplicar Triazol (0.5-1.0 L/ha) cada 15 días\n"
             if any('gusano' in clase.lower() for clase in conteo_plagas.keys()):
@@ -1754,7 +1755,7 @@ SATELITES_DISPONIBLES = {
     }
 }
 
-# ===== CONFIGURACIÓN VARIEDADES CULTIVOS (ACTUALIZADO CON NUEVOS CULTIVOS) =====
+# ===== CONFIGURACIÓN VARIEDADES CULTIVOS (ACTUALIZADO CON AVENA) =====
 VARIEDADES_CULTIVOS = {
     'TRIGO': [
         'ACA 303', 'ACA 315', 'Baguette Premium 11', 'Baguette Premium 13',
@@ -1820,10 +1821,15 @@ VARIEDADES_CULTIVOS = {
         'Tenera', 'Dura', 'Pisifera', 'DxP', 'Yangambi',
         'AVROS', 'La Mé', 'Ekona', 'Calabar', 'NIFOR',
         'MARDI', 'CIRAD', 'ASD Costa Rica', 'Dami', 'Socfindo'
+    ],
+    'AVENA': [
+        'Cristal INTA', 'Milagros INTA', 'Bonaerense INTA', 'Calén',
+        'Laura', 'Carlota', 'Küller', 'Pampeana',
+        'Estanzuela 109', 'Estanzuela 208', 'Tacuarí', 'Poli'
     ]
 }
 
-# ===== CONFIGURACIÓN PARÁMETROS CULTIVOS (ACTUALIZADO) =====
+# ===== CONFIGURACIÓN PARÁMETROS CULTIVOS (ACTUALIZADO CON AVENA) =====
 PARAMETROS_CULTIVOS = {
     'TRIGO': {
         'NITROGENO': {'min': 100, 'max': 180},
@@ -2006,10 +2012,24 @@ PARAMETROS_CULTIVOS = {
         'PRECIO_VENTA': 0.40,
         'VARIEDADES': VARIEDADES_CULTIVOS['PALMA_ACEITERA'],
         'ZONAS_ARGENTINA': ['Formosa', 'Chaco', 'Misiones']
+    },
+    'AVENA': {
+        'NITROGENO': {'min': 90, 'max': 150},
+        'FOSFORO': {'min': 35, 'max': 70},
+        'POTASIO': {'min': 80, 'max': 140},
+        'MATERIA_ORGANICA_OPTIMA': 3.2,
+        'HUMEDAD_OPTIMA': 0.30,
+        'NDVI_OPTIMO': 0.72,
+        'NDRE_OPTIMO': 0.38,
+        'RENDIMIENTO_OPTIMO': 4500,
+        'COSTO_FERTILIZACION': 320,
+        'PRECIO_VENTA': 0.22,
+        'VARIEDADES': VARIEDADES_CULTIVOS['AVENA'],
+        'ZONAS_ARGENTINA': ['Pampeana', 'Sur de Santa Fe', 'Sudeste de Buenos Aires']
     }
 }
 
-# ===== CONFIGURACIÓN TEXTURA SUELO ÓPTIMA (ACTUALIZADO) =====
+# ===== CONFIGURACIÓN TEXTURA SUELO ÓPTIMA (ACTUALIZADO CON AVENA) =====
 TEXTURA_SUELO_OPTIMA = {
     'TRIGO': {
         'textura_optima': 'Franco-arcilloso',
@@ -2114,10 +2134,18 @@ TEXTURA_SUELO_OPTIMA = {
         'arcilla_optima': 20,
         'densidad_aparente_optima': 1.30,
         'porosidad_optima': 0.51
+    },
+    'AVENA': {
+        'textura_optima': 'Franco-arenoso',
+        'arena_optima': 50,
+        'limo_optima': 30,
+        'arcilla_optima': 20,
+        'densidad_aparente_optima': 1.38,
+        'porosidad_optima': 0.47
     }
 }
 
-# ===== ICONOS Y COLORES PARA CULTIVOS (ACTUALIZADO) =====
+# ===== ICONOS Y COLORES PARA CULTIVOS (ACTUALIZADO CON AVENA) =====
 ICONOS_CULTIVOS = {
     'TRIGO': '🌾',
     'MAIZ': '🌽',
@@ -2131,7 +2159,8 @@ ICONOS_CULTIVOS = {
     'BANANO': '🍌',
     'CAFE': '☕',
     'CACAO': '🍫',
-    'PALMA_ACEITERA': '🌴'
+    'PALMA_ACEITERA': '🌴',
+    'AVENA': '🌾'
 }
 
 COLORES_CULTIVOS = {
@@ -2147,7 +2176,8 @@ COLORES_CULTIVOS = {
     'BANANO': '#FFD700',
     'CAFE': '#8B4513',
     'CACAO': '#4A2C2A',
-    'PALMA_ACEITERA': '#32CD32'
+    'PALMA_ACEITERA': '#32CD32',
+    'AVENA': '#DAA520'
 }
 
 PALETAS_GEE = {
@@ -2204,7 +2234,8 @@ with st.sidebar:
     
     CULTIVOS_TOTALES = [
         "TRIGO", "MAIZ", "SORGO", "SOJA", "GIRASOL", "MANI",
-        "VID", "OLIVO", "ALMENDRO", "BANANO", "CACAO", "CAFE", "PALMA_ACEITERA"
+        "VID", "OLIVO", "ALMENDRO", "BANANO", "CACAO", "CAFE", "PALMA_ACEITERA",
+        "AVENA"
     ]
     
     cultivo = st.selectbox("Cultivo:", CULTIVOS_TOTALES)
@@ -4073,11 +4104,6 @@ def generar_reporte_con_ia(resultados, cultivo, satelite, fecha_inicio, fecha_fi
         doc.save(docx_output)
         docx_output.seek(0)
         return docx_output
-
-# ===== INTERFAZ PRINCIPAL (el resto del código, incluyendo tabs y footer, sigue igual) =====
-# ... (todo el código de la interfaz principal, tabs, etc., debe continuar aquí)
-
-# NOTA: Por razones de espacio, no repito el código de la interfaz principal (desde la línea donde termina la función generar_reporte_con_ia hasta el final), pero debe permanecer igual al que ya tienes en tu archivo original. Asegúrate de que las funciones crear_mapa_*, ICONOS_CULTIVOS, etc., estén definidas antes de usarlas.
 
 # ===== INTERFAZ PRINCIPAL =====
 st.title("ANALIZADOR MULTI-CULTIVO SATELITAL")
